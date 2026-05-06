@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { formatAuthError } from "../lib/auth-errors";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 type AuthContextValue = {
@@ -33,15 +34,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!cancelled) {
+        setSession(next);
+        setLoading(false);
+      }
+    });
+
     supabase.auth.getSession().then(({ data }) => {
       if (!cancelled) {
         setSession(data.session ?? null);
         setLoading(false);
       }
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
     });
 
     return () => {
@@ -55,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error("Supabase no está configurado") };
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error ? new Error(error.message) : null };
+    return { error: error ? new Error(formatAuthError(error)) : null };
   }, []);
 
   const signOut = useCallback(async () => {

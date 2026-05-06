@@ -22,7 +22,15 @@ export function LoginPage() {
     );
   }
 
-  if (!loading && user) {
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
+        Comprobando sesión…
+      </div>
+    );
+  }
+
+  if (user) {
     return <Navigate to="/" replace />;
   }
 
@@ -72,12 +80,15 @@ export function LoginPage() {
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             type="submit"
-            disabled={busy || loading}
+            disabled={busy}
             className="w-full rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
           >
             {busy ? "Entrando…" : "Entrar"}
           </button>
         </form>
+        <p className="mt-4 text-center text-xs text-slate-500">
+          Solo entran usuarios dados de alta en el sistema. Las cuentas nuevas las crea un administrador en Supabase.
+        </p>
       </div>
     </div>
   );

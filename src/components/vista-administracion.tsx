@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -30,8 +34,7 @@ import {
   DollarSign,
   Calendar,
   User,
-  MapPin,
-  AlertTriangle,
+  Search,
 } from "lucide-react";
 
 type OTFinanciera = {
@@ -118,146 +121,157 @@ const adicionales1042 = [
   },
 ];
 
-function estadoBadge(estado: OTFinanciera["estado"]) {
+function estadoBadge(estado: OTFinanciera["estado"], compact?: boolean) {
   switch (estado) {
     case "al-dia":
       return (
-        <Badge className="bg-green-100 text-green-800 border-green-200 font-semibold text-xs">
-          <CheckCircle2 className="h-3 w-3 mr-1" />
+        <Badge
+          variant="secondary"
+          className="border border-green-200 bg-green-50 text-green-800 font-medium text-xs gap-1"
+        >
+          <CheckCircle2 className="h-3 w-3" aria-hidden />
           Al día
         </Badge>
       );
     case "bloqueada":
       return (
-        <Badge className="bg-red-100 text-red-800 border-red-200 font-semibold text-xs">
-          <XCircle className="h-3 w-3 mr-1" />
-          Falta Seña — Obra Bloqueada
+        <Badge
+          variant="secondary"
+          className="border border-red-200 bg-red-50 text-red-800 font-medium text-xs gap-1"
+        >
+          <XCircle className="h-3 w-3 shrink-0" aria-hidden />
+          {compact ? "Sin seña" : "Sin seña · obra detenida"}
         </Badge>
       );
     case "saldo-pendiente":
       return (
-        <Badge className="bg-amber-100 text-amber-800 border-amber-200 font-semibold text-xs">
-          <Clock className="h-3 w-3 mr-1" />
-          Saldo Pendiente
+        <Badge
+          variant="secondary"
+          className="border border-amber-200 bg-amber-50 text-amber-900 font-medium text-xs gap-1"
+        >
+          <Clock className="h-3 w-3" aria-hidden />
+          Saldo pendiente
         </Badge>
       );
   }
 }
 
+function formatUsdAmount(n: number) {
+  return n.toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+/** Mock: suma de adicionales pendientes de cobro por OT (conectar a backend después). */
+function adicionalesPendientesUSD(otId: string): number {
+  if (otId === "1042") return adicionales1042.reduce((a, x) => a + x.montoUSD, 0);
+  return 0;
+}
+
 export function VistaAdministracion() {
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
   const [otSeleccionada, setOtSeleccionada] = useState<OTFinanciera | null>(null);
+  const [busqueda, setBusqueda] = useState("");
 
   function abrirExpediente(ot: OTFinanciera) {
     setOtSeleccionada(ot);
     setExpedienteAbierto(true);
   }
 
+  const otsFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return ots;
+    return ots.filter(
+      (o) =>
+        o.id.toLowerCase().includes(q) ||
+        o.cliente.toLowerCase().includes(q) ||
+        o.obra.toLowerCase().includes(q)
+    );
+  }, [busqueda]);
+
+  const otExp = otSeleccionada;
+  const saldoContratoExp = otExp ? otExp.totalUSD - otExp.senaUSD : 0;
+  const extrasExp = otExp ? adicionalesPendientesUSD(otExp.id) : 0;
+  const totalACobrarExp = saldoContratoExp + extrasExp;
+
   const totalCuentasCobrar = ots.reduce(
     (acc, ot) => acc + (ot.totalUSD - ot.senaUSD),
     0
   );
   const totalSenasRecibidas = ots.reduce((acc, ot) => acc + ot.senaUSD, 0);
-  const otsConSena = ots.filter((ot) => ot.senaUSD === 0).length;
+  const otsSinSena = ots.filter((ot) => ot.senaUSD === 0).length;
+  const montoRiesgoUSD = ots
+    .filter((o) => o.senaUSD === 0)
+    .reduce((a, o) => a + o.totalUSD, 0);
 
   return (
-    <div className="flex-1 flex flex-col bg-background overflow-auto">
-      {/* Header */}
-      <header className="bg-card border-b border-border px-8 py-5 shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">
-              Administración y Cuentas Corrientes
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
+      <header className="shrink-0 border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              Ventas — Caja y cuentas corrientes
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Seguimiento financiero de obras activas
+            <p className="text-sm text-muted-foreground">
+              Cobranzas, señas y saldos por obra. La caja del día en pesos; contratos en dólares (mock).
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-md">
-            <DollarSign className="h-3.5 w-3.5" />
-            Cotización hoy: 1 USD = $1.180 ARS
-          </div>
+          <p className="shrink-0 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Dólar ref.</span> 1 USD = $1.180 ARS
+          </p>
         </div>
       </header>
 
-      <div className="px-8 py-6 space-y-6">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-3 gap-4">
+      <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Card className="border-border shadow-sm">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Caja Diaria
-                  </p>
-                  <p className="text-2xl font-bold text-foreground mt-1">
-                    $2.124.000
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">ARS</p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Wallet className="h-5 w-5 text-green-700" />
-                </div>
+            <CardContent className="flex gap-4 p-4 sm:p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Wallet className="h-5 w-5 text-foreground/80" aria-hidden />
               </div>
-              <div className="mt-3 pt-3 border-t border-border">
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Caja diaria (ARS)</p>
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                  $2.124.000
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Ingresos hoy: <span className="text-green-600 font-semibold">$840.000</span>
-                  &nbsp;·&nbsp;
-                  Egresos: <span className="text-red-500 font-semibold">$312.000</span>
+                  <span className="text-green-700 dark:text-green-400">+ $840.000</span> ingresos ·{" "}
+                  <span className="text-red-600 dark:text-red-400">− $312.000</span> egresos
                 </p>
               </div>
             </CardContent>
           </Card>
 
           <Card className="border-border shadow-sm">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Cuentas por Cobrar
-                  </p>
-                  <p className="text-2xl font-bold text-foreground mt-1">
-                    USD ${totalCuentasCobrar.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    En {ots.filter((o) => o.totalUSD > o.senaUSD).length} obras activas
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <TrendingUp className="h-5 w-5 text-blue-700" />
-                </div>
+            <CardContent className="flex gap-4 p-4 sm:p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <TrendingUp className="h-5 w-5 text-foreground/80" aria-hidden />
               </div>
-              <div className="mt-3 pt-3 border-t border-border">
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Por cobrar (USD)</p>
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                  USD {formatUsdAmount(totalCuentasCobrar)}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Señas recibidas: <span className="text-foreground font-semibold">USD ${totalSenasRecibidas.toLocaleString()}</span>
+                  {ots.filter((o) => o.totalUSD > o.senaUSD).length} obras con saldo · Señas recibidas USD{" "}
+                  {formatUsdAmount(totalSenasRecibidas)}
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-border shadow-sm">
-            <CardContent className="pt-5 pb-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Señas Pendientes
-                  </p>
-                  <p className="text-2xl font-bold text-foreground mt-1">
-                    {otsConSena}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {otsConSena === 1 ? "obra bloqueada sin seña" : "obras bloqueadas sin seña"}
-                  </p>
-                </div>
-                <div className="h-10 w-10 rounded-lg bg-red-100 flex items-center justify-center">
-                  <Clock className="h-5 w-5 text-red-700" />
-                </div>
+          <Card className="border-border shadow-sm sm:col-span-2 lg:col-span-1">
+            <CardContent className="flex gap-4 p-4 sm:p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Clock className="h-5 w-5 text-foreground/80" aria-hidden />
               </div>
-              <div className="mt-3 pt-3 border-t border-border">
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Sin seña (obras detenidas)</p>
+                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+                  {otsSinSena}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Monto en riesgo:{" "}
-                  <span className="text-red-600 font-semibold">
-                    USD ${ots.filter((o) => o.senaUSD === 0).reduce((a, o) => a + o.totalUSD, 0).toLocaleString()}
+                  Riesgo contrato: USD{" "}
+                  <span className="font-medium text-amber-900 dark:text-amber-200">
+                    {formatUsdAmount(montoRiesgoUSD)}
                   </span>
                 </p>
               </div>
@@ -265,326 +279,343 @@ export function VistaAdministracion() {
           </Card>
         </div>
 
-        {/* Tabla de OTs */}
         <Card className="border-border shadow-sm">
-          <CardHeader className="pb-3 border-b border-border">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-semibold text-foreground">
-                Seguimiento de Pagos por Obra
-              </CardTitle>
-              <Button variant="outline" size="sm" className="gap-1.5 text-xs">
-                <Plus className="h-3.5 w-3.5" />
-                Nuevo Ingreso
-              </Button>
+          <CardHeader className="space-y-4 border-b border-border pb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold text-foreground">
+                  Obras y pagos
+                </CardTitle>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Tocá una fila o usá el botón para abrir el expediente.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar por OT, cliente u obra…"
+                    className="h-9 w-full pl-9 sm:w-[260px]"
+                    aria-label="Filtrar obras"
+                  />
+                </div>
+                <Button type="button" size="sm" className="h-9 gap-1.5 shrink-0">
+                  <Plus className="h-3.5 w-3.5" />
+                  Movimiento de caja
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="text-xs font-semibold text-muted-foreground pl-6">OT / Obra</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground">Cliente</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground">Total Acordado</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground">Seña Pagada</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground">Saldo Deudor</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground">Estado Financiero</TableHead>
-                  <TableHead className="text-xs font-semibold text-muted-foreground pr-6">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ots.map((ot) => {
-                  const saldo = ot.totalUSD - ot.senaUSD;
-                  const porcentaje =
-                    ot.totalUSD > 0
-                      ? Math.round((ot.senaUSD / ot.totalUSD) * 100)
-                      : 0;
-                  return (
-                    <TableRow
-                      key={ot.id}
-                      className="cursor-pointer hover:bg-muted/40 transition-colors"
-                      onClick={() => abrirExpediente(ot)}
-                    >
-                      <TableCell className="pl-6 py-4">
-                        <div>
-                          <span className="font-semibold text-accent text-sm">
-                            OT #{ot.id}
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-0.5 max-w-[180px] truncate">
-                            {ot.obra}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-foreground font-medium">
-                        {ot.cliente}
-                      </TableCell>
-                      <TableCell className="text-sm text-foreground font-semibold">
-                        USD ${ot.totalUSD.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <span className="text-sm text-foreground font-semibold">
-                            USD ${ot.senaUSD.toLocaleString()}
-                          </span>
-                          {/* Progress bar */}
-                          <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className={
-                                porcentaje === 0
-                                  ? "h-full bg-red-400 rounded-full"
-                                  : porcentaje === 100
-                                  ? "h-full bg-green-500 rounded-full"
-                                  : "h-full bg-amber-400 rounded-full"
-                              }
-                              style={{ width: `${porcentaje}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {porcentaje}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={
-                            saldo === 0
-                              ? "text-sm font-semibold text-green-600"
-                              : "text-sm font-semibold text-red-600"
-                          }
-                        >
-                          {saldo === 0 ? "—" : `USD $${saldo.toLocaleString()}`}
-                        </span>
-                      </TableCell>
-                      <TableCell>{estadoBadge(ot.estado)}</TableCell>
-                      <TableCell className="pr-6">
-                        {ot.estado === "bloqueada" ? (
-                          <Button
-                            size="sm"
-                            className="text-xs bg-primary text-primary-foreground h-7"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              abrirExpediente(ot);
-                            }}
-                          >
-                            Registrar Pago Inicial
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7 gap-1"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              abrirExpediente(ot);
-                            }}
-                          >
-                            Ver Expediente
-                            <ChevronRight className="h-3 w-3" />
-                          </Button>
-                        )}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="whitespace-nowrap pl-4 text-xs font-medium text-muted-foreground sm:pl-6">
+                      Obra
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Contrato (USD)
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Avance
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Falta (USD)
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Estado
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap pr-4 text-right text-xs font-medium text-muted-foreground sm:pr-6">
+                      Acción
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {otsFiltradas.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                        No hay resultados para «{busqueda}».
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  ) : (
+                    otsFiltradas.map((ot) => {
+                      const saldo = ot.totalUSD - ot.senaUSD;
+                      const porcentaje =
+                        ot.totalUSD > 0 ? Math.round((ot.senaUSD / ot.totalUSD) * 100) : 0;
+                      return (
+                        <TableRow
+                          key={ot.id}
+                          className="cursor-pointer transition-colors hover:bg-muted/50"
+                          onClick={() => abrirExpediente(ot)}
+                        >
+                          <TableCell className="max-w-[220px] py-3 pl-4 sm:max-w-[280px] sm:pl-6">
+                            <p className="text-sm font-medium text-accent">OT #{ot.id}</p>
+                            <p className="truncate text-xs text-muted-foreground">{ot.cliente}</p>
+                            <p className="line-clamp-2 text-xs text-muted-foreground/90">{ot.obra}</p>
+                          </TableCell>
+                          <TableCell className="py-3 tabular-nums text-sm font-medium">
+                            {formatUsdAmount(ot.totalUSD)}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            <div className="flex w-[7rem] flex-col gap-1">
+                              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full transition-all",
+                                    porcentaje === 0
+                                      ? "bg-red-400"
+                                      : porcentaje === 100
+                                        ? "bg-green-600"
+                                        : "bg-amber-500"
+                                  )}
+                                  style={{ width: `${porcentaje}%` }}
+                                />
+                              </div>
+                              <span className="text-[11px] text-muted-foreground tabular-nums">
+                                {formatUsdAmount(ot.senaUSD)} · {porcentaje}%
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-3 tabular-nums text-sm font-semibold">
+                            {saldo === 0 ? (
+                              <span className="font-medium text-green-700 dark:text-green-400">Listo</span>
+                            ) : (
+                              <span className="text-destructive">{formatUsdAmount(saldo)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3">{estadoBadge(ot.estado)}</TableCell>
+                          <TableCell className="py-3 pr-4 text-right sm:pr-6">
+                            {ot.estado === "bloqueada" ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirExpediente(ot);
+                                }}
+                              >
+                                Registrar seña
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirExpediente(ot);
+                                }}
+                              >
+                                Expediente
+                                <ChevronRight className="h-3 w-3 opacity-70" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Modal Expediente */}
       <Dialog open={expedienteAbierto} onOpenChange={setExpedienteAbierto}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader className="border-b border-border pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-primary" />
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="shrink-0 space-y-3 border-b border-border px-5 pb-4 pt-5 text-left">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <FileText className="h-5 w-5 text-foreground" aria-hidden />
               </div>
-              <div>
-                <DialogTitle className="text-base font-bold text-foreground">
-                  Expediente de Obra — OT #{otSeleccionada?.id}
+              <div className="min-w-0">
+                <DialogTitle className="text-base font-semibold leading-snug sm:text-lg">
+                  OT #{otSeleccionada?.id}
                 </DialogTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {otSeleccionada?.cliente} · {otSeleccionada?.obra}
+                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                  {otSeleccionada?.obra}
                 </p>
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="gap-1 font-normal">
+                <User className="h-3 w-3" aria-hidden />
+                {otSeleccionada?.cliente}
+              </Badge>
+              {otSeleccionada ? estadoBadge(otSeleccionada.estado, true) : null}
+            </div>
           </DialogHeader>
 
-          {otSeleccionada && (
-            <div className="space-y-5 pt-2">
-              {/* Info rápida */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-medium">Cliente</span>
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">{otSeleccionada.cliente}</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-medium">Estado</span>
-                  </div>
-                  <div>{estadoBadge(otSeleccionada.estado)}</div>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-medium">Total acordado</span>
-                  </div>
-                  <p className="text-sm font-bold text-foreground">
-                    USD ${otSeleccionada.totalUSD.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Resumen financiero */}
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="bg-muted/50 px-4 py-2.5 border-b border-border">
-                  <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                    Resumen de Pagos
-                  </p>
-                </div>
-                <div className="divide-y divide-border">
+          {otSeleccionada ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-foreground">Pagos registrados</h3>
                   {otSeleccionada.id === "1042" ? (
-                    pagos1042.map((pago, i) => (
-                      <div key={i} className="flex items-center justify-between px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-7 w-7 rounded-full bg-green-100 flex items-center justify-center">
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-foreground font-medium">{pago.concepto}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
+                    <ul className="space-y-2">
+                      {pagos1042.map((pago, i) => (
+                        <li
+                          key={i}
+                          className="flex items-start justify-between gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground">{pago.concepto}</p>
+                            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                              <Calendar className="h-3 w-3 shrink-0" aria-hidden />
                               {pago.fecha} · {pago.metodo}
                             </p>
                           </div>
-                        </div>
-                        <span className="text-sm font-bold text-green-600">
-                          + USD ${pago.montoUSD.toLocaleString()}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-4 flex items-center gap-3 text-muted-foreground">
-                      <AlertTriangle className="h-4 w-4 text-red-400" />
-                      <p className="text-sm">Sin pagos registrados. La obra está bloqueada.</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Totales */}
-                <div className="bg-muted/30 px-4 py-3 border-t border-border space-y-1.5">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Total acordado</span>
-                    <span className="font-medium text-foreground">
-                      USD ${otSeleccionada.totalUSD.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Señas / pagos recibidos</span>
-                    <span className="font-medium text-green-600">
-                      − USD ${otSeleccionada.senaUSD.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm font-bold border-t border-border pt-1.5">
-                    <span className="text-foreground">Saldo deudor</span>
-                    <span
-                      className={
-                        otSeleccionada.totalUSD - otSeleccionada.senaUSD === 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }
-                    >
-                      USD ${(otSeleccionada.totalUSD - otSeleccionada.senaUSD).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Adicionales en obra */}
-              <div className="border border-amber-200 rounded-lg overflow-hidden">
-                <div className="bg-amber-50 px-4 py-2.5 border-b border-amber-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
-                      Adicionales en Obra
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-6 text-xs border-amber-300 text-amber-700 hover:bg-amber-100 gap-1"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Agregar
-                  </Button>
-                </div>
-
-                {otSeleccionada.id === "1042" ? (
-                  <div className="divide-y divide-amber-100">
-                    {adicionales1042.map((ad) => (
-                      <div key={ad.id} className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-foreground font-medium">{ad.descripcion}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                            <Calendar className="h-3 w-3" />
-                            {ad.fecha} · {ad.motivo}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-sm font-bold text-amber-700">
-                            + USD ${ad.montoUSD}
+                          <span className="shrink-0 tabular-nums font-semibold text-green-700 dark:text-green-400">
+                            +{formatUsdAmount(pago.montoUSD)}
                           </span>
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
-                            Pendiente cobro
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="bg-amber-50/50 px-4 py-2.5 flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground font-medium">
-                        Total adicionales
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
+                      Sin pagos cargados. Registrá la seña para desbloquear la obra.
+                    </p>
+                  )}
+
+                  <Separator className="my-4" />
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-4 text-muted-foreground">
+                      <span>Total acordado</span>
+                      <span className="tabular-nums font-medium text-foreground">
+                        USD {formatUsdAmount(otSeleccionada.totalUSD)}
                       </span>
-                      <span className="text-sm font-bold text-amber-700">
-                        + USD ${adicionales1042.reduce((a, ad) => a + ad.montoUSD, 0)}
+                    </div>
+                    <div className="flex justify-between gap-4 text-muted-foreground">
+                      <span>Pagado</span>
+                      <span className="tabular-nums font-medium text-green-700 dark:text-green-400">
+                        − USD {formatUsdAmount(otSeleccionada.senaUSD)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-t border-border pt-2 font-medium text-foreground">
+                      <span>Saldo contrato</span>
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          saldoContratoExp === 0
+                            ? "text-green-700 dark:text-green-400"
+                            : "text-destructive"
+                        )}
+                      >
+                        USD {formatUsdAmount(saldoContratoExp)}
                       </span>
                     </div>
                   </div>
-                ) : (
-                  <div className="px-4 py-4">
-                    <p className="text-sm text-muted-foreground">
-                      Sin adicionales registrados para esta obra.
-                    </p>
+
+                  <Separator className="my-4" />
+
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium text-foreground">Adicionales en obra</h3>
+                    <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 text-xs">
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar
+                    </Button>
                   </div>
-                )}
+                  {otSeleccionada.id === "1042" ? (
+                    <ul className="space-y-2">
+                      {adicionales1042.map((ad) => (
+                        <li
+                          key={ad.id}
+                          className="flex flex-col gap-1 rounded-md border border-border px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground">{ad.descripcion}</p>
+                            <p className="text-xs text-muted-foreground">{ad.fecha}</p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="tabular-nums font-semibold text-foreground">
+                              +{formatUsdAmount(ad.montoUSD)}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] font-normal">
+                              A cobrar
+                            </Badge>
+                          </div>
+                        </li>
+                      ))}
+                      <li className="flex justify-between rounded-md bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                        <span>Subtotal adicionales</span>
+                        <span className="tabular-nums text-foreground">
+                          USD {formatUsdAmount(extrasExp)}
+                        </span>
+                      </li>
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Sin adicionales en esta obra.</p>
+                  )}
+
+                  {otSeleccionada.estado !== "bloqueada" && totalACobrarExp > 0 ? (
+                    <div className="mt-6 space-y-3 rounded-lg border border-border bg-muted/40 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Monto del próximo registro
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-snug">
+                        Importe del próximo registro de cobro en esta obra (contrato + adicionales pendientes, si
+                        hay).
+                      </p>
+                      <div className="space-y-2 rounded-md border border-border bg-background px-3 py-3 text-sm">
+                        <div className="flex justify-between gap-4 text-muted-foreground">
+                          <span>Saldo contrato</span>
+                          <span className="tabular-nums font-medium text-foreground">
+                            USD {formatUsdAmount(saldoContratoExp)}
+                          </span>
+                        </div>
+                        {extrasExp > 0 ? (
+                          <div className="flex justify-between gap-4 text-muted-foreground">
+                            <span>Adicionales pendientes</span>
+                            <span className="tabular-nums font-medium text-foreground">
+                              USD {formatUsdAmount(extrasExp)}
+                            </span>
+                          </div>
+                        ) : null}
+                        <Separator />
+                        <div className="flex justify-between gap-4 text-base font-semibold text-foreground">
+                          <span>Total a registrar</span>
+                          <span className="tabular-nums">USD {formatUsdAmount(totalACobrarExp)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
-              {/* Acciones */}
-              <div className="flex justify-end gap-2 pt-1">
+              <DialogFooter className="shrink-0 flex-col gap-2 border-t border-border bg-muted/20 px-5 py-4 sm:flex-row sm:justify-end">
                 <Button
+                  type="button"
                   variant="outline"
-                  size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => setExpedienteAbierto(false)}
                 >
                   Cerrar
                 </Button>
                 {otSeleccionada.estado === "bloqueada" ? (
-                  <Button size="sm" className="bg-primary text-primary-foreground gap-1.5">
-                    <Plus className="h-3.5 w-3.5" />
-                    Registrar Pago Inicial
+                  <Button type="button" className="w-full gap-1.5 sm:w-auto">
+                    <Plus className="h-4 w-4" />
+                    Registrar pago / seña
+                  </Button>
+                ) : totalACobrarExp > 0 ? (
+                  <Button type="button" className="w-full gap-1.5 sm:w-auto">
+                    <DollarSign className="h-4 w-4" />
+                    Registrar cobro
                   </Button>
                 ) : (
-                  <Button size="sm" className="bg-primary text-primary-foreground gap-1.5">
-                    <DollarSign className="h-3.5 w-3.5" />
-                    Cobrar Saldo USD ${(otSeleccionada.totalUSD - otSeleccionada.senaUSD).toLocaleString()}
+                  <Button type="button" variant="secondary" className="w-full sm:w-auto" disabled>
+                    Sin monto pendiente
                   </Button>
                 )}
-              </div>
-            </div>
-          )}
+              </DialogFooter>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

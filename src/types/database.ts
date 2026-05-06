@@ -14,7 +14,7 @@ export type ProfileRole = "admin" | "staff" | "sales";
 export interface Database {
   public: {
     Tables: {
-      profiles: {
+      usuarios: {
         Row: {
           id: string;
           full_name: string | null;
@@ -65,6 +65,36 @@ export interface Database {
         };
         Relationships: [];
       };
+      materials: {
+        Row: {
+          id: string;
+          name: string;
+          unit: string;
+          stock_qty: number;
+          reorder_level: number | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          unit?: string;
+          stock_qty?: number;
+          reorder_level?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          unit?: string;
+          stock_qty?: number;
+          reorder_level?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       quotes: {
         Row: {
           id: string;
@@ -108,6 +138,13 @@ export interface Database {
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "quotes_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
             referencedColumns: ["id"];
           },
         ];

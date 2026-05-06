@@ -56,7 +56,7 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
   const initials = initialsFromUser(user?.email, meta?.full_name);
 
   return (
-    <aside className="flex w-56 min-h-screen shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col self-stretch bg-sidebar">
       <div className="border-b border-sidebar-border px-5 py-5">
         <div className="flex items-center gap-2">
           <LayoutDashboard className="h-6 w-6 text-accent" />
