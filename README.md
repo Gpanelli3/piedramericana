@@ -51,9 +51,9 @@ npm run tauri build
 
 Los artefactos quedan en `src-tauri/target/release/bundle/`.
 
-## Integración con mockup v0
+## UI (v0 / shadcn)
 
-Cuando tengas el código exportado desde v0, sustituye o fusiona componentes en `src/pages/` y el layout en `src/layouts/AppShell.tsx`. Lista de artefactos pendientes: [`docs/ARTIFACTOS.md`](docs/ARTIFACTOS.md).
+La interfaz del mockup v0 ya está integrada: vistas en `src/components/vista-*.tsx`, sidebar en `src/components/app-sidebar.tsx`, componentes en `src/components/ui/`. El alias de importación es `@/` → `src/` (ver `vite.config.ts` y `tsconfig.json`).
 
 ## Identificador de la app
 
