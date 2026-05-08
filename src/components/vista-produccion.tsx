@@ -33,8 +33,10 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useStock } from "@/contexts/StockContext";
+import { toast } from "sonner";
 
-const ETAPAS_ORDEN = ["medicion", "corte", "pulido", "pegado", "despacho"] as const;
+const ETAPAS_ORDEN = ["medicion", "corte", "produccion", "despacho"] as const;
 type EtapaId = (typeof ETAPAS_ORDEN)[number];
 
 interface OT {
@@ -78,7 +80,7 @@ const OT_INICIAL: OT[] = [
     material: "Dekton TRILIUM 12mm",
     m2: "4.20 m²",
     vendedor: "rcampillo",
-    columna: "pulido",
+    columna: "produccion",
     prioridad: "normal",
   },
   {
@@ -88,7 +90,7 @@ const OT_INICIAL: OT[] = [
     material: "Cuarcita Black Taurus",
     m2: "1.80 m²",
     vendedor: "operelna",
-    columna: "pegado",
+    columna: "produccion",
     prioridad: "baja",
   },
   {
@@ -106,8 +108,7 @@ const OT_INICIAL: OT[] = [
 const columnas: { id: EtapaId; label: string; color: string }[] = [
   { id: "medicion", label: "Medición", color: "border-t-blue-400" },
   { id: "corte", label: "Corte", color: "border-t-orange-400" },
-  { id: "pulido", label: "Pulido", color: "border-t-yellow-400" },
-  { id: "pegado", label: "Pegado", color: "border-t-purple-400" },
+  { id: "produccion", label: "Producción", color: "border-t-violet-400" },
   { id: "despacho", label: "Despacho", color: "border-t-green-400" },
 ];
 
@@ -122,6 +123,7 @@ function etapaIndex(e: EtapaId): number {
 }
 
 export function VistaProduccion() {
+  const { tryDeducirChapaPorRotura } = useStock();
   const [ots, setOts] = useState<OT[]>(OT_INICIAL);
   const [modalRoturaOpen, setModalRoturaOpen] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
@@ -186,6 +188,14 @@ export function VistaProduccion() {
 
   const handleConfirmarRotura = () => {
     if (!selectedOT || !motivo || !materialDescuento) return;
+    const { removed, bulto } = tryDeducirChapaPorRotura(materialDescuento);
+    if (removed) {
+      toast.success(`Stock actualizado: se dio de baja la chapa ${bulto ?? ""}`.trim());
+    } else {
+      toast.warning(
+        "No había chapa disponible de ese material en stock; la OT queda pausada igual."
+      );
+    }
     setOts((prev) => {
       const next = prev.map((o) =>
         o.id === selectedOT.id ? { ...o, pausada: true } : o
@@ -280,7 +290,7 @@ export function VistaProduccion() {
                       }}
                       onVer={() => abrirDetalle(ot)}
                       onRotura={() => handleRotura(ot)}
-                      showRotura={col.id === "corte" || col.id === "pulido"}
+                      showRotura={col.id === "corte" || col.id === "produccion"}
                     />
                   ))}
 
@@ -426,8 +436,9 @@ export function VistaProduccion() {
               Registrar rotura / reproceso
             </DialogTitle>
             <DialogDescription>
-              Al confirmar, la OT queda pausada hasta que el taller la reanude. El descuento de
-              stock y el costo para rentabilidad se conectarán al backend más adelante.
+              Al confirmar, la OT queda pausada hasta que el taller la reanude. Se intenta dar de
+              baja una chapa disponible del material elegido en el módulo Stock (mock compartido en
+              esta sesión).
             </DialogDescription>
           </DialogHeader>
 

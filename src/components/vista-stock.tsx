@@ -52,14 +52,7 @@ import {
   Container,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type ChapaRow = {
-  bulto: string;
-  material: string;
-  largoCm: number;
-  anchoCm: number;
-  estado: "Disponible" | "Reservada";
-};
+import { useStock, type ChapaRow } from "@/contexts/StockContext";
 
 const MATERIALES_SUGERIDOS = [
   "Granito Negro Brasil Extra 20mm",
@@ -69,44 +62,6 @@ const MATERIALES_SUGERIDOS = [
   "Granito Black Cosmic Leather 20mm",
   "Granito Negro Boreal Leather 20mm",
 ] as const;
-
-const CHAPAS_INICIAL: ChapaRow[] = [
-  {
-    bulto: "#8890",
-    material: "Granito Negro Brasil Extra 20mm",
-    largoCm: 320,
-    anchoCm: 180,
-    estado: "Disponible",
-  },
-  {
-    bulto: "#8891",
-    material: "Silestone Blanco Stellar",
-    largoCm: 305,
-    anchoCm: 140,
-    estado: "Disponible",
-  },
-  {
-    bulto: "#8876",
-    material: "Cuarcita Blue Roma",
-    largoCm: 290,
-    anchoCm: 165,
-    estado: "Reservada",
-  },
-  {
-    bulto: "#8850",
-    material: "Dekton TRILIUM 12mm",
-    largoCm: 320,
-    anchoCm: 145,
-    estado: "Reservada",
-  },
-  {
-    bulto: "#8845",
-    material: "Granito Black Cosmic Leather 20mm",
-    largoCm: 310,
-    anchoCm: 175,
-    estado: "Disponible",
-  },
-];
 
 const retazosData = [
   {
@@ -215,7 +170,7 @@ function materialDesdeSelector(valorSelect: string, otroTexto: string): string {
 const MAX_LOTE_CONTENEDOR = 120;
 
 export function VistaStock() {
-  const [chapas, setChapas] = useState<ChapaRow[]>(CHAPAS_INICIAL);
+  const { chapas, setChapas } = useStock();
   const [asignados, setAsignados] = useState<string[]>([]);
   const [retazosOpen, setRetazosOpen] = useState(false);
   const [busquedaPiedra, setBusquedaPiedra] = useState("");
