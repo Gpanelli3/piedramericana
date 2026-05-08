@@ -290,21 +290,15 @@ export function VistaAdministracion() {
                   Tocá una fila o usá el botón para abrir el expediente.
                 </p>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                    placeholder="Buscar por OT, cliente u obra…"
-                    className="h-9 w-full pl-9 sm:w-[260px]"
-                    aria-label="Filtrar obras"
-                  />
-                </div>
-                <Button type="button" size="sm" className="h-9 gap-1.5 shrink-0">
-                  <Plus className="h-3.5 w-3.5" />
-                  Movimiento de caja
-                </Button>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por OT, cliente u obra…"
+                  className="h-9 w-full pl-9 sm:w-[260px]"
+                  aria-label="Filtrar obras"
+                />
               </div>
             </div>
           </CardHeader>

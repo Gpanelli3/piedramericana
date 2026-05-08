@@ -20,7 +20,10 @@ export interface LineaItemOTCalcInput {
   desperdicioPct: string;
 }
 
-/** Valores de línea en UI: dimensiones en centímetros (M2 en modo dimensiones, ML). */
+/**
+ * Valores de línea en UI: `altoCm` guarda **centímetros** en M2 modo dimensiones, y **metros**
+ * en artículos ML (único dato de altura). Nombre histórico del campo.
+ */
 export interface LineaItemOTUiInput {
   articuloId: string;
   modoIngreso: ModoIngresoM2;
@@ -31,7 +34,7 @@ export interface LineaItemOTUiInput {
   desperdicioPct: string;
 }
 
-/** Convierte cm de interfaz a metros para `computeLineaPresupuesto`. */
+/** Convierte entradas de interfaz a metros para `computeLineaPresupuesto`. */
 export function buildLineaCalcInput(art: ArticuloMock, line: LineaItemOTUiInput): LineaItemOTCalcInput {
   const cmToMStr = (cm: string) => {
     const m = parseDecimalInput(cm) / 100;
@@ -49,7 +52,7 @@ export function buildLineaCalcInput(art: ArticuloMock, line: LineaItemOTUiInput)
     return { ...base, altoM: "0", anchoM: "0" };
   }
   if (art.unidad === "ML") {
-    return { ...base, altoM: cmToMStr(line.altoCm), anchoM: "0" };
+    return { ...base, altoM: String(parseDecimalInput(line.altoCm)), anchoM: "0" };
   }
   if (art.unidad === "M2" && line.modoIngreso === "manual") {
     return { ...base, altoM: "0", anchoM: "0" };

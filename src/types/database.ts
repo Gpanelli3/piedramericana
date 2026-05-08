@@ -10,6 +10,7 @@ export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired"
 export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
+export type InventorySlabEstado = "Disponible" | "Reservada";
 
 export interface Database {
   public: {
@@ -270,14 +271,266 @@ export interface Database {
           },
         ];
       };
+      suppliers: {
+        Row: {
+          id: string;
+          name: string;
+          phone: string | null;
+          email: string | null;
+          cuit: string | null;
+          tax_condition: string | null;
+          address: string | null;
+          postal_code: string | null;
+          province: string | null;
+          locality: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          phone?: string | null;
+          email?: string | null;
+          cuit?: string | null;
+          tax_condition?: string | null;
+          address?: string | null;
+          postal_code?: string | null;
+          province?: string | null;
+          locality?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          phone?: string | null;
+          email?: string | null;
+          cuit?: string | null;
+          tax_condition?: string | null;
+          address?: string | null;
+          postal_code?: string | null;
+          province?: string | null;
+          locality?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      remitos: {
+        Row: {
+          id: string;
+          supplier_id: string;
+          branch_code: string;
+          serial_code: string;
+          issue_date: string;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          supplier_id: string;
+          branch_code?: string;
+          serial_code?: string;
+          issue_date: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          supplier_id?: string;
+          branch_code?: string;
+          serial_code?: string;
+          issue_date?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "remitos_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "remitos_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      remito_lines: {
+        Row: {
+          id: string;
+          remito_id: string;
+          material_id: string | null;
+          material_label: string;
+          qty_slabs: number;
+          largo_cm: number;
+          ancho_cm: number;
+          precio_unitario: number | null;
+          sort_order: number;
+        };
+        Insert: {
+          id?: string;
+          remito_id: string;
+          material_id?: string | null;
+          material_label: string;
+          qty_slabs: number;
+          largo_cm: number;
+          ancho_cm: number;
+          precio_unitario?: number | null;
+          sort_order?: number;
+        };
+        Update: {
+          id?: string;
+          remito_id?: string;
+          material_id?: string | null;
+          material_label?: string;
+          qty_slabs?: number;
+          largo_cm?: number;
+          ancho_cm?: number;
+          precio_unitario?: number | null;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "remito_lines_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "remito_lines_remito_id_fkey";
+            columns: ["remito_id"];
+            isOneToOne: false;
+            referencedRelation: "remitos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      inventory_slabs: {
+        Row: {
+          id: string;
+          remito_line_id: string | null;
+          bulto: string;
+          material_id: string | null;
+          material_label: string;
+          largo_cm: number;
+          ancho_cm: number;
+          estado: InventorySlabEstado;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          remito_line_id?: string | null;
+          bulto: string;
+          material_id?: string | null;
+          material_label: string;
+          largo_cm: number;
+          ancho_cm: number;
+          estado?: InventorySlabEstado;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          remito_line_id?: string | null;
+          bulto?: string;
+          material_id?: string | null;
+          material_label?: string;
+          largo_cm?: number;
+          ancho_cm?: number;
+          estado?: InventorySlabEstado;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_slabs_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inventory_slabs_remito_line_id_fkey";
+            columns: ["remito_line_id"];
+            isOneToOne: false;
+            referencedRelation: "remito_lines";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      stock_scraps: {
+        Row: {
+          id: string;
+          accion: string;
+          ingreso_tipo: string;
+          material_id: string | null;
+          material_label: string;
+          cantidad: number;
+          n_chapa: string | null;
+          observacion: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          accion?: string;
+          ingreso_tipo: string;
+          material_id?: string | null;
+          material_label: string;
+          cantidad?: number;
+          n_chapa?: string | null;
+          observacion?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          accion?: string;
+          ingreso_tipo?: string;
+          material_id?: string | null;
+          material_label?: string;
+          cantidad?: number;
+          n_chapa?: string | null;
+          observacion?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stock_scraps_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "stock_scraps_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_remito_with_slabs: {
+        Args: { p_payload: Json };
+        Returns: string;
+      };
+    };
     Enums: {
       quote_status: QuoteStatus;
       job_status: JobStatus;
       invoice_status: InvoiceStatus;
       profile_role: ProfileRole;
+      inventory_slab_estado: InventorySlabEstado;
     };
   };
 }

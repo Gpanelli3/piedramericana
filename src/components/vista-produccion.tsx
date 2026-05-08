@@ -186,9 +186,9 @@ export function VistaProduccion() {
     setModalRoturaOpen(true);
   };
 
-  const handleConfirmarRotura = () => {
+  const handleConfirmarRotura = async () => {
     if (!selectedOT || !motivo || !materialDescuento) return;
-    const { removed, bulto } = tryDeducirChapaPorRotura(materialDescuento);
+    const { removed, bulto } = await tryDeducirChapaPorRotura(materialDescuento);
     if (removed) {
       toast.success(`Stock actualizado: se dio de baja la chapa ${bulto ?? ""}`.trim());
     } else {

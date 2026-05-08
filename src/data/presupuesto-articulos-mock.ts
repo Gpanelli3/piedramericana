@@ -8,6 +8,11 @@ export interface ArticuloMock {
   calculaMaterial: boolean;
   /** Si está definido: m² por unidad de compra (cantidad × medida). */
   medidaEstandarM2?: number;
+  /**
+   * Si true: al agregar la línea se usa modo manual (cantidad = m² totales, sin alto/ancho).
+   * Siempre se puede alternar con el enlace bajo Cant. cuando el artículo lo permita.
+   */
+  preferModoManualM2?: boolean;
   /** Precio sugerido mock: $/m² si calcula material M2/ML; $/unidad si UNI o no calcula. */
   precioUnitario: number;
 }
@@ -27,12 +32,13 @@ export const ARTICULOS_MOCK: ArticuloMock[] = [
     descripcion: "Mesada de asador — m² manual (mismo cálculo material)",
     unidad: "M2",
     calculaMaterial: true,
+    preferModoManualM2: true,
     precioUnitario: 4800,
   },
   {
     id: "art-bisel-ml",
     codigo: "BIS-ML",
-    descripcion: "Biselado — metro lineal (alto en cm para material)",
+    descripcion: "Biselado — metro lineal (alto en metros para material)",
     unidad: "ML",
     calculaMaterial: true,
     precioUnitario: 12000,

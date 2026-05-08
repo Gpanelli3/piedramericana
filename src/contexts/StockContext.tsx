@@ -2,68 +2,25 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
 } from "react";
+import {
+  type ChapaRow,
+  STOCK_CHAPAS_INICIAL,
+  fetchInventorySlabs,
+  deleteFirstAvailableSlabMatching,
+} from "@/lib/stock-api";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
-export type ChapaRow = {
-  bulto: string;
-  material: string;
-  largoCm: number;
-  anchoCm: number;
-  estado: "Disponible" | "Reservada";
-};
+export type { ChapaRow };
+export { STOCK_CHAPAS_INICIAL };
 
-/** Inventario inicial compartido entre Stock y Producción (roturas). */
-export const STOCK_CHAPAS_INICIAL: ChapaRow[] = [
-  {
-    bulto: "#8890",
-    material: "Granito Negro Brasil Extra 20mm",
-    largoCm: 320,
-    anchoCm: 180,
-    estado: "Disponible",
-  },
-  {
-    bulto: "#8891",
-    material: "Silestone Blanco Stellar",
-    largoCm: 305,
-    anchoCm: 140,
-    estado: "Disponible",
-  },
-  {
-    bulto: "#8876",
-    material: "Cuarcita Blue Roma",
-    largoCm: 290,
-    anchoCm: 165,
-    estado: "Reservada",
-  },
-  {
-    bulto: "#8850",
-    material: "Dekton TRILIUM 12mm",
-    largoCm: 320,
-    anchoCm: 145,
-    estado: "Disponible",
-  },
-  {
-    bulto: "#8851",
-    material: "Dekton TRILIUM 12mm",
-    largoCm: 300,
-    anchoCm: 150,
-    estado: "Reservada",
-  },
-  {
-    bulto: "#8845",
-    material: "Granito Black Cosmic Leather 20mm",
-    largoCm: 310,
-    anchoCm: 175,
-    estado: "Disponible",
-  },
-];
-
-/** Claves del selector de rotura en producción → fragmento a buscar en `ChapaRow.material`. */
+/** Claves del selector de rotura en producción → fragmento a buscar en material. */
 const ROTURA_KEY_TO_NEEDLE: Record<string, string> = {
   "granito-negro": "Granito Negro Brasil",
   "silestone-blanco": "Silestone",
@@ -74,40 +31,79 @@ const ROTURA_KEY_TO_NEEDLE: Record<string, string> = {
 
 type StockContextValue = {
   chapas: ChapaRow[];
+  slabsLoading: boolean;
+  useRemoteStock: boolean;
   setChapas: Dispatch<SetStateAction<ChapaRow[]>>;
+  reloadChapas: () => Promise<void>;
   /** Quita la primera chapa disponible cuyo material contenga la aguja del catálogo de roturas. */
-  tryDeducirChapaPorRotura: (materialSelectKey: string) => { removed: boolean; bulto?: string };
+  tryDeducirChapaPorRotura: (materialSelectKey: string) => Promise<{ removed: boolean; bulto?: string }>;
 };
 
 const StockContext = createContext<StockContextValue | null>(null);
 
 export function StockProvider({ children }: { children: ReactNode }) {
   const [chapas, setChapas] = useState<ChapaRow[]>(STOCK_CHAPAS_INICIAL);
+  const [slabsLoading, setSlabsLoading] = useState(false);
 
-  const tryDeducirChapaPorRotura = useCallback((materialSelectKey: string) => {
-    const needle = ROTURA_KEY_TO_NEEDLE[materialSelectKey];
-    let removed = false;
-    let bulto: string | undefined;
-    setChapas((prev) => {
-      if (!needle) return prev;
-      const idx = prev.findIndex(
-        (c) => c.estado === "Disponible" && c.material.includes(needle)
-      );
-      if (idx === -1) return prev;
-      removed = true;
-      bulto = prev[idx]!.bulto;
-      return prev.filter((_, i) => i !== idx);
-    });
-    return { removed, bulto };
+  const useRemoteStock = isSupabaseConfigured;
+
+  const reloadChapas = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setSlabsLoading(true);
+    try {
+      const rows = await fetchInventorySlabs();
+      setChapas(rows);
+    } catch {
+      setChapas([]);
+    } finally {
+      setSlabsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void reloadChapas();
+  }, [reloadChapas]);
+
+  const tryDeducirChapaPorRotura = useCallback(
+    async (materialSelectKey: string): Promise<{ removed: boolean; bulto?: string }> => {
+      const needle = ROTURA_KEY_TO_NEEDLE[materialSelectKey];
+      if (!needle) return { removed: false };
+
+      if (!isSupabaseConfigured) {
+        let out: { removed: boolean; bulto?: string } = { removed: false };
+        setChapas((prev) => {
+          const idx = prev.findIndex(
+            (c) => c.estado === "Disponible" && c.material.includes(needle),
+          );
+          if (idx === -1) return prev;
+          out = { removed: true, bulto: prev[idx]!.bulto };
+          return prev.filter((_, i) => i !== idx);
+        });
+        return out;
+      }
+
+      const result = await deleteFirstAvailableSlabMatching(needle);
+      await reloadChapas();
+      return result;
+    },
+    [reloadChapas],
+  );
+
+  const setChapasSafe: Dispatch<SetStateAction<ChapaRow[]>> = useCallback((action) => {
+    setChapas(action);
   }, []);
 
   const value = useMemo(
     () => ({
       chapas,
-      setChapas,
+      slabsLoading,
+      useRemoteStock,
+      setChapas: setChapasSafe,
+      reloadChapas,
       tryDeducirChapaPorRotura,
     }),
-    [chapas, tryDeducirChapaPorRotura]
+    [chapas, slabsLoading, useRemoteStock, setChapasSafe, reloadChapas, tryDeducirChapaPorRotura],
   );
 
   return <StockContext.Provider value={value}>{children}</StockContext.Provider>;
