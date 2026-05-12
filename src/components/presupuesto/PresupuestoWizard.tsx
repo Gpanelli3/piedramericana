@@ -89,6 +89,12 @@ import {
   PresupuestoResumenInterior,
   type LineaResumenMoneda,
 } from "@/components/presupuesto/PresupuestoResumenInterior";
+import { PresupuestoLayoutContainer } from "@/components/presupuesto/PresupuestoLayoutContainer";
+import { ClienteStep } from "@/components/presupuesto/steps/ClienteStep";
+import { OrdenTrabajoStep } from "@/components/presupuesto/steps/OrdenTrabajoStep";
+import { LogisticaStep } from "@/components/presupuesto/steps/LogisticaStep";
+import { ConfirmacionStep } from "@/components/presupuesto/steps/ConfirmacionStep";
+import { PickCliente } from "@/components/presupuesto/PickCliente";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 
@@ -267,171 +273,6 @@ function SectionPresupuesto({
       </div>
       <div className="px-5 py-4">{children}</div>
     </section>
-  );
-}
-
-function PickCliente({
-  clientes,
-  value,
-  onChange,
-  onNuevoCliente,
-}: {
-  clientes: ClientePresupuestoMock[];
-  value: string | null;
-  onChange: (c: ClientePresupuestoMock) => void;
-  /** Abre el alta de cliente; recibe el texto buscado para precargar nombre si no hubo coincidencias. */
-  onNuevoCliente: (textoBuscado: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
-
-  const query = search.trim();
-  const filtered = useMemo(() => {
-    if (!query) return [];
-    const q = query.toLowerCase();
-    return clientes.filter(
-      (c) =>
-        c.nombre.toLowerCase().includes(q) ||
-        c.contacto.toLowerCase().includes(q),
-    );
-  }, [clientes, query]);
-
-  useEffect(() => {
-    const sel = value ? clientes.find((c) => c.id === value) : undefined;
-    setSearch(sel?.nombre ?? "");
-  }, [value, clientes]);
-
-  useEffect(() => {
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setShowSuggestions(false);
-        const sel = value ? clientes.find((c) => c.id === value) : undefined;
-        setSearch(sel?.nombre ?? "");
-      }
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [value, clientes]);
-
-  const handleAbrirAlta = () => {
-    onNuevoCliente(query);
-    setShowSuggestions(false);
-  };
-
-  const panelOpen = showSuggestions && query.length > 0;
-
-  return (
-    <div ref={rootRef} className="relative w-full">
-      <Search
-        className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-      <Input
-        type="search"
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={panelOpen}
-        aria-controls={panelOpen ? listboxId : undefined}
-        aria-haspopup="listbox"
-        aria-autocomplete="list"
-        aria-label="Buscar cliente o profesional"
-        placeholder="Nombre o firma…"
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setShowSuggestions(true);
-        }}
-        onFocus={() => {
-          if (search.trim().length > 0) setShowSuggestions(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setShowSuggestions(false);
-            const sel = value
-              ? clientes.find((c) => c.id === value)
-              : undefined;
-            setSearch(sel?.nombre ?? "");
-            e.preventDefault();
-          }
-        }}
-        className={cn(
-          "h-9 w-full border-cyan-600 bg-background pl-8 pr-2.5 text-sm shadow-sm md:text-sm",
-          "text-foreground placeholder:text-muted-foreground",
-          "focus-visible:border-cyan-600 focus-visible:ring-[3px] focus-visible:ring-cyan-500/40",
-        )}
-      />
-
-      {panelOpen ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(18rem,50vh)] overflow-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
-        >
-          {filtered.length > 0 ? (
-            <ul className="p-0 m-0 list-none">
-              {filtered.map((c) => (
-                <li key={c.id} role="none">
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={value === c.id}
-                    className={cn(
-                      "flex w-full items-start gap-2 px-3 py-2 text-left text-sm",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      value === c.id &&
-                        "bg-cyan-600 text-primary-foreground hover:bg-cyan-700 hover:text-primary-foreground",
-                    )}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      onChange(c);
-                      setSearch(c.nombre);
-                      setShowSuggestions(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0",
-                        value === c.id ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <div className="flex min-w-0 flex-col gap-0">
-                      <span className="truncate font-medium">{c.nombre}</span>
-                      <span className="truncate text-[10px] opacity-80">
-                        {c.contacto}
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="space-y-3 px-3 py-3">
-              <p className="text-sm text-muted-foreground">
-                No hay ningún cliente que coincida
-                {query ? ` con «${query}»` : ""}.
-              </p>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Podés dar de alta uno nuevo con el botón de abajo o el{" "}
-                <span className="font-medium text-foreground">+</span> al
-                costado.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="w-full gap-1.5 bg-sky-600 text-white hover:bg-sky-700"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleAbrirAlta}
-              >
-                <Plus className="h-4 w-4 shrink-0" />
-                Agregar nuevo cliente
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -710,6 +551,7 @@ export function PresupuestoWizard() {
   const dolarHoy = 1250.5;
 
   const [mecScope, setMecScope] = useState<"global" | "por_ot">("global");
+  const [currentStep, setCurrentStep] = useState(0);
   const [mMedicionGlobal, setMMedicionGlobal] = useState(true);
   const [mEntregaGlobal, setMEntregaGlobal] = useState(true);
   const [mColocacionGlobal, setMColocacionGlobal] = useState(true);
@@ -1369,6 +1211,90 @@ export function PresupuestoWizard() {
     );
   };
 
+  // Definir los pasos del wizard
+  const steps = [
+    { label: "Cliente", description: "Datos de cliente" },
+    { label: "Orden de Trabajo", description: "Trabajos a realizar" },
+    { label: "Logística", description: "Entrega y flete" },
+    { label: "Confirmación", description: "Revisar y guardar" },
+  ];
+
+  // Resumen para el bottom bar
+  const resumenData = {
+    materialLabel: ordenes[0]?.materialId
+      ? ARTICULOS_MOCK.find((a) => a.id === ordenes[0]?.materialId)?.descripcion
+      : undefined,
+    desglose: {
+      piedra: lineasResumen[0]?.monto ? parseMoneyInput(lineasResumen[0].monto) : 0,
+      manoObra: lineasResumen[1]?.monto ? parseMoneyInput(lineasResumen[1].monto) : 0,
+      flete: lineasResumen[2]?.monto ? parseMoneyInput(lineasResumen[2].monto) : 0,
+    },
+    totales: {
+      usd: totalUsdEquivalente,
+      ars: totalArsEquivalente,
+    },
+  };
+
+  // Renderizar el contenido del paso actual
+  const renderCurrentStep = () => {
+    switch (currentStep) {
+      case 0:
+        return (
+          <ClienteStep
+            clienteSeleccionadoId={clienteSeleccionadoId}
+            onClienteChange={(id) => {
+              const cliente = CLIENTES_PRESUPUESTO_MOCK.find((c) => c.id === id);
+              if (cliente) aplicarCliente(cliente);
+            }}
+            onNuevoCliente={abrirNuevoCliente}
+            listaPrecioId={listaPrecioId}
+            onListaPrecioChange={setListaPrecioId}
+            monedaPresupuesto={monedaPresupuesto}
+            onMonedaChange={setMonedaPresupuesto}
+            origenVentas={origenVentas}
+            onOrigenChange={setOrigenVentas}
+            contacto={contacto}
+            onContactoChange={setContacto}
+            tel={tel}
+            onTelChange={setTel}
+            email={email}
+            onEmailChange={setEmail}
+            direccion={direccion}
+            onDireccionChange={setDireccion}
+            obsCabecera={obsCabecera}
+            onObsCabeceraChange={setObsCabecera}
+          />
+        );
+      case 1:
+        return <OrdenTrabajoStep />;
+      case 2:
+        return <LogisticaStep />;
+      case 3:
+        return <ConfirmacionStep />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <PresupuestoLayoutContainer
+      currentStep={currentStep}
+      steps={steps}
+      onNextStep={() => setCurrentStep(currentStep + 1)}
+      onPrevStep={() => setCurrentStep(currentStep - 1)}
+      isLastStep={currentStep === 3}
+      resumenData={resumenData}
+      onSave={handleGrabar}
+      onGeneratePDF={handleImprimir}
+    >
+      {renderCurrentStep()}
+    </PresupuestoLayoutContainer>
+  );
+}
+
+/* LEGACY CODE - KEEP FOR REFERENCE WHILE COMPLETING IMPLEMENTATION */
+/*
+export function LegacyPresupuestoWizardFull() {
   return (
     <div className="w-full max-w-none space-y-6 pb-36">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
@@ -2643,3 +2569,4 @@ export function PresupuestoWizard() {
     </div>
   );
 }
+*/
