@@ -81,6 +81,7 @@ import {
   computeLineaPresupuesto,
   dimensionesHabilitadas,
   labelUnidad,
+  materialPesoEstimadoDesdeOt,
   permiteModoManualCantidadM2,
   type ModoIngresoM2,
 } from "@/lib/presupuesto-calculos";
@@ -88,6 +89,8 @@ import {
   PresupuestoResumenInterior,
   type LineaResumenMoneda,
 } from "@/components/presupuesto/PresupuestoResumenInterior";
+import type { MaterialWizardRow } from "@/types/material-catalog";
+import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 
 const MSG_MEC_INCORRECTO =
   "El costo del servicio MEC es incorrecto. Si tenés tildada medición, entrega o colocación, cargá un importe mayor a cero o destildá los servicios que no correspondan.";
@@ -106,14 +109,38 @@ const MODELOS_BACHA = [
   { value: "sin", label: "Sin especificar / a definir" },
 ] as const;
 
-const MATERIALES_MOCK_FALLBACK = [
-  { id: "__mock-silestone", name: "Silestone Blanco Norte", unit: "m2" },
-  { id: "__mock-granito", name: "Granito Negro Brasil Extra 20mm", unit: "m2" },
-  { id: "__mock-cuarcita", name: "Cuarcita Black Taurus", unit: "m2" },
+const MATERIALES_MOCK_FALLBACK: MaterialWizardRow[] = [
+  {
+    id: "__mock-silestone",
+    name: "Silestone Blanco Norte",
+    unit: "m2",
+    material_kind: "marmol",
+    peso_por_m2_kg: null,
+    bulk_stock_kg: 0,
+  },
+  {
+    id: "__mock-granito",
+    name: "Granito Negro Brasil Extra 20mm",
+    unit: "m2",
+    material_kind: "otra_piedra",
+    peso_por_m2_kg: 55,
+    bulk_stock_kg: 0,
+  },
+  {
+    id: "__mock-cuarcita",
+    name: "Cuarcita Black Taurus",
+    unit: "m2",
+    material_kind: "otra_piedra",
+    peso_por_m2_kg: 62,
+    bulk_stock_kg: 0,
+  },
   {
     id: "__mock-dekton",
     name: "Dekton DK Industrial Nilium Mate 8mm",
     unit: "m2",
+    material_kind: "agglomerado_otro",
+    peso_por_m2_kg: 28,
+    bulk_stock_kg: 0,
   },
 ];
 
@@ -709,7 +736,7 @@ export function PresupuestoWizard() {
   );
 
   const defaultMat = MATERIALES_MOCK_FALLBACK[0]!.id;
-  const [materials, setMaterials] = useState(MATERIALES_MOCK_FALLBACK);
+  const [materials, setMaterials] = useState<MaterialWizardRow[]>(MATERIALES_MOCK_FALLBACK);
   const [tecnicos, setTecnicos] = useState<
     { id: string; full_name: string | null }[]
   >([]);
@@ -775,10 +802,10 @@ export function PresupuestoWizard() {
       setCatalogoCargando(true);
       const { data: mats, error: matsErr } = await supabase
         .from("materials")
-        .select("id,name,unit")
+        .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
         .order("name");
       if (!cancelled && !matsErr && mats?.length) {
-        setMaterials(mats);
+        setMaterials(mats as MaterialWizardRow[]);
         setOrdenes((prev) =>
           prev.map((o) =>
             mats.some((m) => m.id === o.materialId)
@@ -787,7 +814,28 @@ export function PresupuestoWizard() {
           ),
         );
       } else if (!cancelled) {
-        setMaterials(MATERIALES_MOCK_FALLBACK);
+        const { data: basic, error: basicErr } = await supabase
+          .from("materials")
+          .select("id,name,unit")
+          .order("name");
+        if (!cancelled && !basicErr && basic?.length) {
+          const norm: MaterialWizardRow[] = basic.map((r) => ({
+            id: r.id,
+            name: r.name,
+            unit: r.unit,
+            material_kind: "marmol",
+            peso_por_m2_kg: null,
+            bulk_stock_kg: 0,
+          }));
+          setMaterials(norm);
+          setOrdenes((prev) =>
+            prev.map((o) =>
+              norm.some((m) => m.id === o.materialId) ? o : { ...o, materialId: norm[0]!.id },
+            ),
+          );
+        } else if (!cancelled) {
+          setMaterials(MATERIALES_MOCK_FALLBACK);
+        }
       }
       const { data: users, error: usersErr } = await supabase
         .from("usuarios")
@@ -939,16 +987,21 @@ export function PresupuestoWizard() {
   const totalesItems = useMemo(() => {
     let subtotal = 0;
     let totalM2 = 0;
+    let totalTon = 0;
+    let faltaPesoNonMarmol = false;
     const porOt: {
       key: string;
       titulo: string;
       subtotal: number;
       m2: number;
+      ton: number;
       cantLineas: number;
     }[] = [];
     for (const ot of ordenes) {
+      const materialRow = materials.find((m) => m.id === ot.materialId);
       let sOt = 0;
       let m2Ot = 0;
+      let tonOt = 0;
       let nLineas = 0;
       for (const line of ot.items) {
         const art = getArticuloById(line.articuloId);
@@ -960,20 +1013,46 @@ export function PresupuestoWizard() {
         sOt += subL;
         m2Ot += m2Linea;
         nLineas += 1;
+        const peso = materialPesoEstimadoDesdeOt(m2Linea, {
+          materialKind: materialRow?.material_kind ?? "marmol",
+          pesoPorM2Kg: materialRow?.peso_por_m2_kg,
+        });
+        if (peso) {
+          totalTon += peso.ton;
+          tonOt += peso.ton;
+        }
+        if (
+          art.calculaMaterial &&
+          m2Linea > 0 &&
+          materialRow &&
+          materialRow.material_kind !== "marmol" &&
+          (materialRow.peso_por_m2_kg == null || !(materialRow.peso_por_m2_kg > 0))
+        ) {
+          faltaPesoNonMarmol = true;
+        }
       }
       porOt.push({
         key: ot.key,
         titulo: ot.titulo.trim() || "Sin título",
         subtotal: sOt,
         m2: m2Ot,
+        ton: tonOt,
         cantLineas: nLineas,
       });
     }
     const dPct = Math.max(0, parseMoneyInput(descuentoGlobalPct));
     const factor = 1 - Math.min(dPct, 100) / 100;
     const totalConDesc = subtotal * factor;
-    return { subtotal, totalM2, totalConDesc, porOt, descuentoPct: dPct };
-  }, [ordenes, descuentoGlobalPct]);
+    return {
+      subtotal,
+      totalM2,
+      totalTon,
+      totalConDesc,
+      porOt,
+      descuentoPct: dPct,
+      faltaPesoNonMarmol,
+    };
+  }, [ordenes, descuentoGlobalPct, materials]);
 
   const totalMecImporte = useMemo(() => {
     if (mecScope === "global") {
@@ -1485,6 +1564,13 @@ export function PresupuestoWizard() {
         borderAccentClass="border-t-4 border-t-sky-500"
       >
         <div className="space-y-3">
+          {totalesItems.faltaPesoNonMarmol ? (
+            <p className="rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+              Alguna OT tiene material <span className="font-semibold">no mármol</span> pero sin{" "}
+              <span className="font-semibold">peso (kg/m²)</span> cargado en el maestro (menú lateral →{" "}
+              <span className="font-semibold">Cantera</span>). El total en toneladas puede quedar incompleto.
+            </p>
+          ) : null}
           {ordenes.map((ot, idx) => {
             const materialRow = materials.find((m) => m.id === ot.materialId);
             const materialNombre = materialRow
@@ -1565,6 +1651,7 @@ export function PresupuestoWizard() {
                                 patchOrden(ot.key, { materialId: id })
                               }
                             />
+                            <ConversionesMaestroHints parentMaterialId={ot.materialId} />
                           </div>
                         </div>
 
@@ -1929,6 +2016,17 @@ export function PresupuestoWizard() {
                                 }) ?? "0"}
                             </p>
                           </div>
+                          {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0) > 0 ? (
+                            <div>
+                              <p className="text-[10px] text-muted-foreground">Ton piedra (~)</p>
+                              <p className="font-semibold tabular-nums text-sky-800 dark:text-sky-100">
+                                {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0).toLocaleString(
+                                  "es-AR",
+                                  { minimumFractionDigits: 3, maximumFractionDigits: 3 },
+                                )}
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </CollapsibleContent>
@@ -2203,6 +2301,23 @@ export function PresupuestoWizard() {
               })}
             />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs" title="Solo piedra no mármol con peso cargado en maestro">
+              Total ton (~)
+            </Label>
+            <Input
+              readOnly
+              className="h-9 text-sm font-semibold tabular-nums text-sky-900 dark:text-sky-50"
+              value={
+                totalesItems.totalTon > 0
+                  ? totalesItems.totalTon.toLocaleString("es-AR", {
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 4,
+                    })
+                  : "—"
+              }
+            />
+          </div>
         </div>
         <p className="text-xs font-semibold mb-2">Desglose por OT</p>
         <ul className="space-y-1 text-sm">
@@ -2216,6 +2331,12 @@ export function PresupuestoWizard() {
               </span>
               <span className="tabular-nums text-muted-foreground shrink-0">
                 {p.m2.toLocaleString("es-AR", { minimumFractionDigits: 3 })} m²
+                {p.ton > 0 ? (
+                  <>
+                    {" "}
+                    · {p.ton.toLocaleString("es-AR", { minimumFractionDigits: 3 })} ton ~{" "}
+                  </>
+                ) : null}
                 · ${p.subtotal.toFixed(2)}
               </span>
             </li>
@@ -2441,6 +2562,10 @@ export function PresupuestoWizard() {
               setMonedaFinal={setMonedaFinal}
               totalUsdEquivalente={totalUsdEquivalente}
               totalArsEquivalente={totalArsEquivalente}
+              materialM2Presupuesto={totalesItems.totalM2}
+              materialTonEstimadoPresupuesto={
+                totalesItems.totalTon > 0 ? totalesItems.totalTon : null
+              }
             />
           </div>
           <DialogFooter className="border-t px-6 py-4 gap-2">
@@ -2476,6 +2601,18 @@ export function PresupuestoWizard() {
                 maximumFractionDigits: 3,
               })}
             </strong>
+            {totalesItems.totalTon > 0 ? (
+              <>
+                <span className="mx-2 text-border">|</span>
+                <span className="text-muted-foreground">ton (~)</span>{" "}
+                <strong>
+                  {totalesItems.totalTon.toLocaleString("es-AR", {
+                    minimumFractionDigits: 3,
+                    maximumFractionDigits: 4,
+                  })}
+                </strong>
+              </>
+            ) : null}
             <span className="mx-2 text-border">|</span>
             <span className="text-muted-foreground">Total</span>{" "}
             <strong>${totalPresupuesto.toFixed(2)}</strong>

@@ -131,7 +131,21 @@ export function VistaStock() {
   const materialesOpciones =
     materialesCatalogo.length > 0
       ? materialesCatalogo
-      : [...new Map(chapas.map((c) => [c.material, { id: c.material, name: c.material, unit: "u." }])).values()];
+      : [
+          ...new Map(
+            chapas.map((c) => [
+              c.material,
+              {
+                id: c.material,
+                name: c.material,
+                unit: "u.",
+                material_kind: "marmol" as MaterialOption["material_kind"],
+                peso_por_m2_kg: null as number | null,
+                bulk_stock_kg: 0,
+              } satisfies MaterialOption,
+            ]),
+          ).values(),
+        ];
 
   const openDisponibilidad = (nombre: string) => {
     setMaterialDisponibilidad(nombre);

@@ -37,6 +37,10 @@ type PresupuestoResumenInteriorProps = {
   setMonedaFinal: (v: string) => void;
   totalUsdEquivalente: number;
   totalArsEquivalente: number;
+  /** m² totales de líneas que calculan material. */
+  materialM2Presupuesto?: number;
+  /** Toneladas equivalentes (piedra no mármol con peso cargado). */
+  materialTonEstimadoPresupuesto?: number | null;
 };
 
 export function PresupuestoResumenInterior({
@@ -49,6 +53,8 @@ export function PresupuestoResumenInterior({
   setMonedaFinal,
   totalUsdEquivalente,
   totalArsEquivalente,
+  materialM2Presupuesto = 0,
+  materialTonEstimadoPresupuesto = null,
 }: PresupuestoResumenInteriorProps) {
   return (
     <div className="space-y-5">
@@ -162,6 +168,30 @@ export function PresupuestoResumenInterior({
             : `≈ $ ${formatArs(totalArsEquivalente)} ARS`}
         </p>
       </div>
+
+      {materialM2Presupuesto > 0 &&
+      materialTonEstimadoPresupuesto != null &&
+      materialTonEstimadoPresupuesto > 0 ? (
+        <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">
+          <p className="text-xs font-semibold text-foreground">Piedra natural (no mármol) — referencia</p>
+          <p className="text-sm tabular-nums text-foreground">
+            <span className="text-muted-foreground">Superficie material:</span>{" "}
+            {materialM2Presupuesto.toLocaleString("es-AR", {
+              minimumFractionDigits: 3,
+              maximumFractionDigits: 3,
+            })}{" "}
+            m²
+          </p>
+          <p className="text-sm font-semibold tabular-nums text-primary">
+            ≈{" "}
+            {materialTonEstimadoPresupuesto.toLocaleString("es-AR", {
+              minimumFractionDigits: 3,
+              maximumFractionDigits: 3,
+            })}{" "}
+            ton (según peso/kg m² del maestro)
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap pt-1">
         <Button

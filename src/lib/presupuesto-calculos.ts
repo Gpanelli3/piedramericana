@@ -7,6 +7,7 @@
  */
 
 import type { ArticuloMock, UnidadArticulo } from "@/data/presupuesto-articulos-mock";
+import type { Database } from "@/types/database";
 
 export type ModoIngresoM2 = "dimensiones" | "manual";
 
@@ -166,4 +167,20 @@ export function labelUnidad(u: UnidadArticulo): string {
     default:
       return u;
   }
+}
+
+/** Peso estimado de piedra (ton equiv en presupuesto), según tipo y kg/m² del maestro. */
+export function materialPesoEstimadoDesdeOt(
+  m2Linea: number,
+  opts: {
+    materialKind: Database["public"]["Enums"]["material_kind"];
+    pesoPorM2Kg: number | null | undefined;
+  },
+): { kg: number; ton: number } | null {
+  if (m2Linea <= 0) return null;
+  if (opts.materialKind === "marmol") return null;
+  const p = opts.pesoPorM2Kg;
+  if (p == null || !(p > 0)) return null;
+  const kg = m2Linea * p;
+  return { kg, ton: kg / 1000 };
 }

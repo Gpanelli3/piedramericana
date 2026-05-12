@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { FileText, LayoutDashboard, Package, Wallet, Wrench } from "lucide-react";
+import { FileText, LayoutDashboard, Mountain, Package, Wallet, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import type { WorkspaceTab } from "@/types/workspace";
@@ -27,6 +27,12 @@ const navItems: { id: WorkspaceTab; label: string; icon: ReactNode; color: strin
     label: "Producción",
     icon: <Wrench className="h-5 w-5" />,
     color: "text-green-400",
+  },
+  {
+    id: "cantera",
+    label: "Cantera",
+    icon: <Mountain className="h-5 w-5" />,
+    color: "text-sky-400",
   },
   {
     id: "stock",

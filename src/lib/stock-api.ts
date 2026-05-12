@@ -49,7 +49,7 @@ export function slabRowToChapa(row: {
 export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
   if (!isSupabaseConfigured) return [...STOCK_CHAPAS_INICIAL];
   const { data, error } = await supabase
-    .from("inventory_slabs")
+    .from("chapas_inventario")
     .select("id,bulto,material_label,largo_cm,ancho_cm,estado,created_at")
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -132,14 +132,30 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
 
 export type MaterialOption = Pick<
   Database["public"]["Tables"]["materials"]["Row"],
-  "id" | "name" | "unit"
+  "id" | "name" | "unit" | "material_kind" | "peso_por_m2_kg" | "bulk_stock_kg"
 >;
+
+const DEFAULT_MAT_OPT = (
+  r: Pick<Database["public"]["Tables"]["materials"]["Row"], "id" | "name" | "unit">,
+): MaterialOption => ({
+  ...r,
+  material_kind: "marmol",
+  peso_por_m2_kg: null,
+  bulk_stock_kg: 0,
+});
 
 export async function fetchMaterialsForStock(): Promise<MaterialOption[]> {
   if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase.from("materials").select("id,name,unit").order("name");
-  if (error) throw error;
-  return (data ?? []) as MaterialOption[];
+  const ext = await supabase
+    .from("materials")
+    .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
+    .order("name");
+  if (ext.error) {
+    const basic = await supabase.from("materials").select("id,name,unit").order("name");
+    if (basic.error) throw basic.error;
+    return (basic.data ?? []).map((r) => DEFAULT_MAT_OPT(r as { id: string; name: string; unit: string }));
+  }
+  return (ext.data ?? []) as MaterialOption[];
 }
 
 export type RemitoListRow = RemitoRow & {
@@ -218,7 +234,7 @@ export async function fetchRemitoLines(remitoId: string): Promise<RemitoLineDeta
 export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow[]> {
   if (!isSupabaseConfigured) return STOCK_CHAPAS_INICIAL.filter((c) => c.material === label);
   const { data, error } = await supabase
-    .from("inventory_slabs")
+    .from("chapas_inventario")
     .select("id,bulto,material_label,largo_cm,ancho_cm,estado,created_at")
     .eq("material_label", label)
     .order("bulto", { ascending: true });
@@ -270,7 +286,7 @@ export async function deleteFirstAvailableSlabMatching(needle: string): Promise<
   if (!needleSafe) return { removed: false };
 
   const { data: row, error: selErr } = await supabase
-    .from("inventory_slabs")
+    .from("chapas_inventario")
     .select("id,bulto")
     .eq("estado", "Disponible")
     .ilike("material_label", `%${needleSafe}%`)
@@ -281,7 +297,7 @@ export async function deleteFirstAvailableSlabMatching(needle: string): Promise<
   if (selErr) throw selErr;
   if (!row) return { removed: false };
 
-  const { error: delErr } = await supabase.from("inventory_slabs").delete().eq("id", row.id);
+  const { error: delErr } = await supabase.from("chapas_inventario").delete().eq("id", row.id);
   if (delErr) throw delErr;
   return { removed: true, bulto: row.bulto };
 }

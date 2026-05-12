@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ConfigWarning } from "@/components/ConfigWarning";
 import { Toaster } from "@/components/ui/sonner";
 import { VistaAdministracion } from "@/components/vista-administracion";
+import { VistaCantera } from "@/components/vista-cantera";
 import { VistaProduccion } from "@/components/vista-produccion";
 import { VistaStock } from "@/components/vista-stock";
 import { VistaVentas } from "@/components/vista-ventas";
@@ -23,6 +24,7 @@ export function MainWorkspace() {
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "ventas" && <VistaVentas />}
             {activeTab === "produccion" && <VistaProduccion />}
+            {activeTab === "cantera" && <VistaCantera />}
             {activeTab === "stock" && <VistaStock />}
             {activeTab === "administracion" && <VistaAdministracion />}
           </div>

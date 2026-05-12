@@ -11,6 +11,7 @@ export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
 export type InventorySlabEstado = "Disponible" | "Reservada";
+export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 
 export interface Database {
   public: {
@@ -75,6 +76,10 @@ export interface Database {
           reorder_level: number | null;
           notes: string | null;
           created_at: string;
+          material_kind: MaterialKindDb;
+          peso_por_m2_kg: number | null;
+          espesor_mm: number | null;
+          bulk_stock_kg: number;
         };
         Insert: {
           id?: string;
@@ -84,6 +89,10 @@ export interface Database {
           reorder_level?: number | null;
           notes?: string | null;
           created_at?: string;
+          material_kind?: MaterialKindDb;
+          peso_por_m2_kg?: number | null;
+          espesor_mm?: number | null;
+          bulk_stock_kg?: number;
         };
         Update: {
           id?: string;
@@ -93,6 +102,10 @@ export interface Database {
           reorder_level?: number | null;
           notes?: string | null;
           created_at?: string;
+          material_kind?: MaterialKindDb;
+          peso_por_m2_kg?: number | null;
+          espesor_mm?: number | null;
+          bulk_stock_kg?: number;
         };
         Relationships: [];
       };
@@ -412,7 +425,122 @@ export interface Database {
           },
         ];
       };
-      inventory_slabs: {
+      lotes_cantera: {
+        Row: {
+          id: string;
+          material_id: string;
+          qty_kg_remaining: number;
+          qty_kg_initial: number;
+          purchase_uom: string;
+          supplier_id: string | null;
+          receipt_ref: string | null;
+          notes: string | null;
+          issue_date: string;
+          largo_cm: number | null;
+          ancho_cm: number | null;
+          espesor_cm: number | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          material_id: string;
+          qty_kg_remaining: number;
+          qty_kg_initial: number;
+          purchase_uom?: string;
+          supplier_id?: string | null;
+          receipt_ref?: string | null;
+          notes?: string | null;
+          issue_date?: string;
+          largo_cm?: number | null;
+          ancho_cm?: number | null;
+          espesor_cm?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          material_id?: string;
+          qty_kg_remaining?: number;
+          qty_kg_initial?: number;
+          purchase_uom?: string;
+          supplier_id?: string | null;
+          receipt_ref?: string | null;
+          notes?: string | null;
+          issue_date?: string;
+          largo_cm?: number | null;
+          ancho_cm?: number | null;
+          espesor_cm?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lotes_cantera_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lotes_cantera_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lotes_cantera_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      conversiones_materiales: {
+        Row: {
+          id: string;
+          parent_material_id: string;
+          child_material_id: string;
+          kg_parent_per_m2_child: number;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          parent_material_id: string;
+          child_material_id: string;
+          kg_parent_per_m2_child: number;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          parent_material_id?: string;
+          child_material_id?: string;
+          kg_parent_per_m2_child?: number;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "conversiones_materiales_parent_material_id_fkey";
+            columns: ["parent_material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "conversiones_materiales_child_material_id_fkey";
+            columns: ["child_material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      chapas_inventario: {
         Row: {
           id: string;
           remito_line_id: string | null;
@@ -448,14 +576,14 @@ export interface Database {
         };
         Relationships: [
           {
-            foreignKeyName: "inventory_slabs_material_id_fkey";
+            foreignKeyName: "chapas_inventario_material_id_fkey";
             columns: ["material_id"];
             isOneToOne: false;
             referencedRelation: "materials";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "inventory_slabs_remito_line_id_fkey";
+            foreignKeyName: "chapas_inventario_remito_line_id_fkey";
             columns: ["remito_line_id"];
             isOneToOne: false;
             referencedRelation: "remito_lines";
@@ -524,6 +652,10 @@ export interface Database {
         Args: { p_payload: Json };
         Returns: string;
       };
+      register_cantera_ingreso: {
+        Args: { p_payload: Json };
+        Returns: undefined;
+      };
     };
     Enums: {
       quote_status: QuoteStatus;
@@ -531,6 +663,7 @@ export interface Database {
       invoice_status: InvoiceStatus;
       profile_role: ProfileRole;
       inventory_slab_estado: InventorySlabEstado;
+      material_kind: MaterialKindDb;
     };
   };
 }
