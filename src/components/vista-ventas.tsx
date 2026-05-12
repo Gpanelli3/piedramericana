@@ -14,7 +14,7 @@ export function VistaVentas() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-8 [scrollbar-gutter:stable]">
+      <main className="min-h-0 flex-1 overflow-hidden">
         <PresupuestoWizard />
       </main>
     </div>
