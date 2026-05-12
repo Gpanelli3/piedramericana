@@ -1,0 +1,187 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus } from "lucide-react";
+import { LISTAS_PRECIO_MOCK } from "@/data/presupuesto-articulos-mock";
+import {
+  ORIGEN_VENTA_OPCIONES,
+  type ClientePresupuestoMock,
+} from "@/data/presupuesto-clientes-mock";
+import { PickCliente, SectionPresupuesto } from "./fields";
+
+type StepClienteProps = {
+  clientesLocales: ClientePresupuestoMock[];
+  clienteSeleccionadoId: string | null;
+  aplicarCliente: (c: ClientePresupuestoMock) => void;
+  abrirNuevoCliente: (prefillNombre?: string) => void;
+  listaPrecioId: string;
+  setListaPrecioId: (id: string) => void;
+  monedaPresupuesto: "ars" | "usd";
+  setMonedaPresupuesto: (m: "ars" | "usd") => void;
+  origenVentas: string;
+  setOrigenVentas: (v: string) => void;
+  contacto: string;
+  setContacto: (v: string) => void;
+  tel: string;
+  setTel: (v: string) => void;
+  email: string;
+  setEmail: (v: string) => void;
+  direccion: string;
+  setDireccion: (v: string) => void;
+  obsCabecera: string;
+  setObsCabecera: (v: string) => void;
+};
+
+export function StepCliente({
+  clientesLocales,
+  clienteSeleccionadoId,
+  aplicarCliente,
+  abrirNuevoCliente,
+  listaPrecioId,
+  setListaPrecioId,
+  monedaPresupuesto,
+  setMonedaPresupuesto,
+  origenVentas,
+  setOrigenVentas,
+  contacto,
+  setContacto,
+  tel,
+  setTel,
+  email,
+  setEmail,
+  direccion,
+  setDireccion,
+  obsCabecera,
+  setObsCabecera,
+}: StepClienteProps) {
+  return (
+    <SectionPresupuesto borderAccentClass="border-t-4 border-t-red-500">
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label className="text-xs font-medium text-foreground">Cliente</Label>
+            <PickCliente
+              clientes={clientesLocales}
+              value={clienteSeleccionadoId}
+              onChange={aplicarCliente}
+              onNuevoCliente={abrirNuevoCliente}
+            />
+          </div>
+          <div className="flex shrink-0 justify-end sm:justify-start sm:pb-px">
+            <Button
+              type="button"
+              size="icon"
+              className="h-9 w-9 shrink-0 bg-sky-600 hover:bg-sky-700 text-white"
+              onClick={() => abrirNuevoCliente()}
+              title="Nuevo cliente (si no aparece en el buscador)"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Lista de precio</Label>
+            <select
+              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+              value={listaPrecioId}
+              onChange={(e) => setListaPrecioId(e.target.value)}
+            >
+              {LISTAS_PRECIO_MOCK.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Moneda</Label>
+            <select
+              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+              value={monedaPresupuesto}
+              onChange={(e) => setMonedaPresupuesto(e.target.value as "ars" | "usd")}
+            >
+              <option value="usd">Dólares (USD)</option>
+              <option value="ars">Pesos (ARS)</option>
+            </select>
+          </div>
+          <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+            <Label className="text-xs font-medium">
+              Origen <span className="text-destructive">*</span>
+            </Label>
+            <select
+              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
+              value={origenVentas}
+              onChange={(e) => setOrigenVentas(e.target.value)}
+            >
+              {ORIGEN_VENTA_OPCIONES.map((o) => (
+                <option
+                  key={o.value === "" ? "_sin_origen" : o.value}
+                  value={o.value}
+                >
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Contacto</Label>
+            <Input
+              className="h-8 text-sm px-2.5"
+              value={contacto}
+              onChange={(e) => setContacto(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Tel. / Celular</Label>
+            <Input
+              className="h-8 text-sm px-2.5"
+              value={tel}
+              onChange={(e) => setTel(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Email</Label>
+            <Input
+              type="email"
+              className="h-8 text-sm px-2.5"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 xl:items-start">
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Dirección de entrega</Label>
+            <Input
+              className="h-8 text-sm px-2.5"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Observaciones grales.</Label>
+            <Textarea
+              className="min-h-[52px] max-h-32 resize-y py-1.5 text-sm px-2.5"
+              placeholder="Observaciones Grales - Max. 500 caracteres"
+              maxLength={500}
+              value={obsCabecera}
+              onChange={(e) => setObsCabecera(e.target.value)}
+            />
+            <p className="text-[10px] text-muted-foreground text-right leading-none pt-0.5">
+              {obsCabecera.length}/500
+            </p>
+          </div>
+        </div>
+      </div>
+    </SectionPresupuesto>
+  );
+}

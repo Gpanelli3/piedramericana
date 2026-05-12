@@ -110,8 +110,11 @@ export function computeLineaPresupuesto(
       const m2 = qty;
       return { m2Linea: m2, subtotal: m2 * pu };
     }
-    if (qty > 0 && alto > 0 && ancho > 0) {
-      const m2 = qty * alto * ancho * f;
+    /** Cantidad vacía = una pieza (1× alto × ancho). "0" explícito sigue siendo 0. */
+    const qtyPiezas =
+      line.cantidad.trim() === "" ? 1 : qty;
+    if (qtyPiezas > 0 && alto > 0 && ancho > 0) {
+      const m2 = qtyPiezas * alto * ancho * f;
       return { m2Linea: m2, subtotal: m2 * pu };
     }
     return { m2Linea: 0, subtotal: 0 };

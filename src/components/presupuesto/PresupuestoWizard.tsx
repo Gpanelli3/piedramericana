@@ -1,47 +1,10 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Dialog,
   DialogClose,
@@ -54,23 +17,13 @@ import {
 import { cn } from "@/lib/utils";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
-  Plus,
   Minus,
-  Check,
-  ChevronsUpDown,
-  Trash2,
-  Ruler,
-  ChevronDown,
   Save,
   Printer,
-  Search,
-  HelpCircle,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
-import {
-  ARTICULOS_MOCK,
-  LISTAS_PRECIO_MOCK,
-  getArticuloById,
-} from "@/data/presupuesto-articulos-mock";
+import { LISTAS_PRECIO_MOCK, getArticuloById } from "@/data/presupuesto-articulos-mock";
 import {
   CLIENTES_PRESUPUESTO_MOCK,
   ORIGEN_VENTA_OPCIONES,
@@ -89,25 +42,29 @@ import {
   PresupuestoResumenInterior,
   type LineaResumenMoneda,
 } from "@/components/presupuesto/PresupuestoResumenInterior";
+import { PresupuestoStepper } from "@/components/presupuesto/PresupuestoStepper";
+import { StepCliente } from "@/components/presupuesto/wizard/StepCliente";
+import { StepLogistica } from "@/components/presupuesto/wizard/StepLogistica";
+import { StepOrdenes } from "@/components/presupuesto/wizard/StepOrdenes";
+import { StepConfirmacion } from "@/components/presupuesto/wizard/StepConfirmacion";
+import { PickArticulo } from "@/components/presupuesto/wizard/fields";
+import {
+  newEmptyLineaItem,
+  newOrdenTrabajo,
+  type LogisticaPresupuesto,
+  type LineaItemOT,
+  type OrdenTrabajoWizard,
+} from "@/components/presupuesto/wizard/types";
+import {
+  parseMoneyInput,
+  validarPresupuestoCompleto,
+  validateClienteYOrigen,
+  validateMecRequisitos,
+  mecAlgunoActivo,
+} from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
-import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 
-const MSG_MEC_INCORRECTO =
-  "El costo del servicio MEC es incorrecto. Si tenés tildada medición, entrega o colocación, cargá un importe mayor a cero o destildá los servicios que no correspondan.";
-
-const TIPOS_COLOCACION = [
-  { value: "bajo", label: "Bajo mesada" },
-  { value: "sobre", label: "Sobre mesada" },
-  { value: "ras", label: "Al ras" },
-] as const;
-
-const MODELOS_BACHA = [
-  { value: "johnson-ss", label: "Johnson — Acero Premium" },
-  { value: "mi-pileta", label: "Mi Pileta — Linea Cocina" },
-  { value: "franke", label: "Franke — Orion 70" },
-  { value: "rohe", label: "Rohé — Oval 60" },
-  { value: "sin", label: "Sin especificar / a definir" },
-] as const;
+export type { LineaItemOT } from "./wizard/types";
 
 const MATERIALES_MOCK_FALLBACK: MaterialWizardRow[] = [
   {
@@ -144,48 +101,6 @@ const MATERIALES_MOCK_FALLBACK: MaterialWizardRow[] = [
   },
 ];
 
-type LogisticaPresupuesto = {
-  fechaCoord: string;
-  fechaEntrega: string;
-  observacion: string;
-};
-
-export type LineaItemOT = {
-  key: string;
-  articuloId: string;
-  modoIngreso: ModoIngresoM2;
-  cantidad: string;
-  precioUnitario: string;
-  altoCm: string;
-  anchoCm: string;
-  desperdicioPct: string;
-};
-
-type OrdenTrabajoWizard = {
-  key: string;
-  titulo: string;
-  fecha: string;
-  tecnicoId: string;
-  fechaMedicion: string;
-  fechaEntrega: string;
-  materialId: string;
-  tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
-  bachaId: string;
-  items: LineaItemOT[];
-  mMedicion: boolean;
-  mEntrega: boolean;
-  mColocacion: boolean;
-  totalMec: string;
-  /** Panel de detalle de la OT (ítems, etc.); nuevas OT empiezan cerradas. */
-  panelExpandido: boolean;
-};
-
-function parseMoneyInput(v: string): number {
-  const t = v.trim().replace(/\s/g, "").replace(",", ".");
-  const n = parseFloat(t);
-  return Number.isFinite(n) ? n : 0;
-}
-
 function formatUsd(n: number): string {
   return n.toLocaleString("es-AR", {
     minimumFractionDigits: 2,
@@ -193,18 +108,19 @@ function formatUsd(n: number): string {
   });
 }
 
-function mecAlgunoActivo(m: boolean, e: boolean, c: boolean): boolean {
-  return m || e || c;
-}
-
-function validarTotalMecSiAplica(
-  m: boolean,
-  e: boolean,
-  c: boolean,
-  totalStr: string,
-): boolean {
-  if (!mecAlgunoActivo(m, e, c)) return true;
-  return parseMoneyInput(totalStr) > 0;
+function abbrRubroFooter(id: string): string {
+  switch (id) {
+    case "piedra":
+      return "Piedra";
+    case "mo":
+      return "M.O.";
+    case "perf":
+      return "Perf.";
+    case "flete":
+      return "Flete";
+    default:
+      return id;
+  }
 }
 
 function nuevoNumeroPresupuestoMock(): string {
@@ -213,503 +129,11 @@ function nuevoNumeroPresupuestoMock(): string {
   return `PR-${y}-${n} · v1`;
 }
 
-function newEmptyLineaItem(): LineaItemOT {
-  return {
-    key: crypto.randomUUID(),
-    articuloId: "",
-    modoIngreso: "dimensiones",
-    cantidad: "",
-    precioUnitario: "",
-    altoCm: "",
-    anchoCm: "",
-    desperdicioPct: "",
-  };
-}
-
-function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
-  return {
-    key: crypto.randomUUID(),
-    titulo: "",
-    fecha: "",
-    tecnicoId: "",
-    fechaMedicion: "",
-    fechaEntrega: "",
-    materialId: materialIdDefault,
-    tipoColocacion: "bajo",
-    bachaId: MODELOS_BACHA[0]!.value,
-    items: [],
-    mMedicion: true,
-    mEntrega: true,
-    mColocacion: true,
-    totalMec: "1",
-    panelExpandido: false,
-  };
-}
-
-function SectionPresupuesto({
-  title,
-  borderAccentClass,
-  children,
-}: {
-  title: string;
-  borderAccentClass: string;
-  children: ReactNode;
-}) {
-  return (
-    <section
-      className={cn(
-        "rounded-lg border border-border bg-white overflow-hidden shadow-sm scroll-mt-4",
-        borderAccentClass,
-      )}
-    >
-      <div className="border-b border-border bg-muted/35 px-5 py-3">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      <div className="px-5 py-4">{children}</div>
-    </section>
-  );
-}
-
-function PickCliente({
-  clientes,
-  value,
-  onChange,
-  onNuevoCliente,
-}: {
-  clientes: ClientePresupuestoMock[];
-  value: string | null;
-  onChange: (c: ClientePresupuestoMock) => void;
-  /** Abre el alta de cliente; recibe el texto buscado para precargar nombre si no hubo coincidencias. */
-  onNuevoCliente: (textoBuscado: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
-
-  const query = search.trim();
-  const filtered = useMemo(() => {
-    if (!query) return [];
-    const q = query.toLowerCase();
-    return clientes.filter(
-      (c) =>
-        c.nombre.toLowerCase().includes(q) ||
-        c.contacto.toLowerCase().includes(q),
-    );
-  }, [clientes, query]);
-
-  useEffect(() => {
-    const sel = value ? clientes.find((c) => c.id === value) : undefined;
-    setSearch(sel?.nombre ?? "");
-  }, [value, clientes]);
-
-  useEffect(() => {
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setShowSuggestions(false);
-        const sel = value ? clientes.find((c) => c.id === value) : undefined;
-        setSearch(sel?.nombre ?? "");
-      }
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [value, clientes]);
-
-  const handleAbrirAlta = () => {
-    onNuevoCliente(query);
-    setShowSuggestions(false);
-  };
-
-  const panelOpen = showSuggestions && query.length > 0;
-
-  return (
-    <div ref={rootRef} className="relative w-full">
-      <Search
-        className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-      <Input
-        type="search"
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={panelOpen}
-        aria-controls={panelOpen ? listboxId : undefined}
-        aria-haspopup="listbox"
-        aria-autocomplete="list"
-        aria-label="Buscar cliente o profesional"
-        placeholder="Nombre o firma…"
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setShowSuggestions(true);
-        }}
-        onFocus={() => {
-          if (search.trim().length > 0) setShowSuggestions(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setShowSuggestions(false);
-            const sel = value
-              ? clientes.find((c) => c.id === value)
-              : undefined;
-            setSearch(sel?.nombre ?? "");
-            e.preventDefault();
-          }
-        }}
-        className={cn(
-          "h-9 w-full border-cyan-600 bg-background pl-8 pr-2.5 text-sm shadow-sm md:text-sm",
-          "text-foreground placeholder:text-muted-foreground",
-          "focus-visible:border-cyan-600 focus-visible:ring-[3px] focus-visible:ring-cyan-500/40",
-        )}
-      />
-
-      {panelOpen ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(18rem,50vh)] overflow-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
-        >
-          {filtered.length > 0 ? (
-            <ul className="p-0 m-0 list-none">
-              {filtered.map((c) => (
-                <li key={c.id} role="none">
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={value === c.id}
-                    className={cn(
-                      "flex w-full items-start gap-2 px-3 py-2 text-left text-sm",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      value === c.id &&
-                        "bg-cyan-600 text-primary-foreground hover:bg-cyan-700 hover:text-primary-foreground",
-                    )}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      onChange(c);
-                      setSearch(c.nombre);
-                      setShowSuggestions(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0",
-                        value === c.id ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <div className="flex min-w-0 flex-col gap-0">
-                      <span className="truncate font-medium">{c.nombre}</span>
-                      <span className="truncate text-[10px] opacity-80">
-                        {c.contacto}
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="space-y-3 px-3 py-3">
-              <p className="text-sm text-muted-foreground">
-                No hay ningún cliente que coincida
-                {query ? ` con «${query}»` : ""}.
-              </p>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Podés dar de alta uno nuevo con el botón de abajo o el{" "}
-                <span className="font-medium text-foreground">+</span> al
-                costado.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="w-full gap-1.5 bg-sky-600 text-white hover:bg-sky-700"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleAbrirAlta}
-              >
-                <Plus className="h-4 w-4 shrink-0" />
-                Agregar nuevo cliente
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function PickMaterial({
-  materials,
-  value,
-  onChange,
-  disabled,
-  triggerClassName,
-}: {
-  materials: { id: string; name: string; unit: string }[];
-  value: string;
-  onChange: (id: string) => void;
-  disabled?: boolean;
-  triggerClassName?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = materials.find((m) => m.id === value);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            "h-9 w-full justify-between px-3 text-sm font-normal",
-            triggerClassName,
-          )}
-        >
-          <span className="truncate">
-            {selected
-              ? `${selected.name}${selected.unit ? ` (${selected.unit})` : ""}`
-              : "Elegir material…"}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,26rem)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar material…" />
-          <CommandList>
-            <CommandEmpty>
-              {materials.length ? "Sin coincidencias." : "Sin materiales."}
-            </CommandEmpty>
-            <CommandGroup>
-              {materials.map((m) => (
-                <CommandItem
-                  key={m.id}
-                  value={`${m.name} ${m.id}`}
-                  onSelect={() => {
-                    onChange(m.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === m.id ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  {m.name}
-                  {m.unit ? ` (${m.unit})` : ""}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function PickTecnico({
-  tecnicos,
-  value,
-  onChange,
-}: {
-  tecnicos: { id: string; full_name: string | null }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = tecnicos.find((t) => t.id === value);
-  if (tecnicos.length === 0) {
-    return (
-      <Input
-        readOnly
-        disabled
-        className="h-9 text-sm"
-        placeholder="Sin técnicos (tabla usuarios)"
-      />
-    );
-  }
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          className="h-9 w-full justify-between px-3 text-sm font-normal"
-        >
-          <span className="truncate">
-            {selected
-              ? selected.full_name?.trim() || selected.id.slice(0, 8)
-              : "Elegir técnico…"}
-          </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,22rem)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar técnico…" />
-          <CommandList>
-            <CommandEmpty>Sin coincidencias.</CommandEmpty>
-            <CommandGroup>
-              {tecnicos.map((t) => (
-                <CommandItem
-                  key={t.id}
-                  value={`${t.full_name ?? ""} ${t.id}`}
-                  onSelect={() => {
-                    onChange(t.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === t.id ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  {t.full_name?.trim() || t.id.slice(0, 8)}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function PickBacha({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = MODELOS_BACHA.find((b) => b.value === value);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          className="h-9 w-full justify-between px-3 text-sm font-normal"
-        >
-          <span className="truncate">{selected?.label ?? "Elegir bacha…"}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,24rem)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar modelo…" />
-          <CommandList>
-            <CommandEmpty>Sin coincidencias.</CommandEmpty>
-            <CommandGroup>
-              {MODELOS_BACHA.map((b) => (
-                <CommandItem
-                  key={b.value}
-                  value={b.label}
-                  onSelect={() => {
-                    onChange(b.value);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === b.value ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  {b.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function PickArticulo({
-  value,
-  onChange,
-  compact,
-}: {
-  value: string;
-  onChange: (id: string) => void;
-  compact?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = getArticuloById(value);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "w-full justify-between text-xs font-normal shadow-sm border-border/90 bg-background hover:bg-muted/30",
-            compact ? "h-8 min-w-[8rem] px-2" : "h-9 min-w-[12rem] px-2.5",
-          )}
-        >
-          <span
-            className={cn(
-              "truncate text-left",
-              !selected && "text-muted-foreground",
-            )}
-          >
-            {selected?.descripcion ?? "Seleccionar"}
-          </span>
-          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,28rem)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar artículo…" />
-          <CommandList>
-            <CommandEmpty>Sin resultados.</CommandEmpty>
-            <CommandGroup>
-              {ARTICULOS_MOCK.map((a) => (
-                <CommandItem
-                  key={a.id}
-                  value={`${a.descripcion} ${a.codigo}`}
-                  onSelect={() => {
-                    onChange(a.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === a.id ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <span className="flex flex-col gap-0">
-                    <span>{a.descripcion}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {a.codigo} · {labelUnidad(a.unidad)}
-                      {!a.calculaMaterial
-                        ? " · sin m²"
-                        : a.medidaEstandarM2
-                          ? ` · std ${a.medidaEstandarM2} m²`
-                          : ""}
-                    </span>
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 export function PresupuestoWizard() {
   const dolarHoy = 1250.5;
 
-  const [mecScope, setMecScope] = useState<"global" | "por_ot">("global");
+  /** Solo MEC único para todo el presupuesto (no hay modo por OT en UI). */
+  const mecScope = "global" as const;
   const [mMedicionGlobal, setMMedicionGlobal] = useState(true);
   const [mEntregaGlobal, setMEntregaGlobal] = useState(true);
   const [mColocacionGlobal, setMColocacionGlobal] = useState(true);
@@ -790,8 +214,6 @@ export function PresupuestoWizard() {
 
   const [grabarError, setGrabarError] = useState<string | null>(null);
   const [grabarExito, setGrabarExito] = useState<string | null>(null);
-  const [guiaItemsOpen, setGuiaItemsOpen] = useState(false);
-
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setCatalogoCargando(false);
@@ -1055,27 +477,10 @@ export function PresupuestoWizard() {
   }, [ordenes, descuentoGlobalPct, materials]);
 
   const totalMecImporte = useMemo(() => {
-    if (mecScope === "global") {
-      return mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal)
-        ? parseMoneyInput(totalMecGlobal)
-        : 0;
-    }
-    return ordenes.reduce((sum, ot) => {
-      return (
-        sum +
-        (mecAlgunoActivo(ot.mMedicion, ot.mEntrega, ot.mColocacion)
-          ? parseMoneyInput(ot.totalMec)
-          : 0)
-      );
-    }, 0);
-  }, [
-    mecScope,
-    mMedicionGlobal,
-    mEntregaGlobal,
-    mColocacionGlobal,
-    totalMecGlobal,
-    ordenes,
-  ]);
+    return mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal)
+      ? parseMoneyInput(totalMecGlobal)
+      : 0;
+  }, [mMedicionGlobal, mEntregaGlobal, mColocacionGlobal, totalMecGlobal]);
 
   const totalPresupuesto = totalesItems.totalConDesc + totalMecImporte;
 
@@ -1094,36 +499,18 @@ export function PresupuestoWizard() {
   }, [lineasResumen, dolarHoy]);
 
   const validarAntesGrabar = useCallback((): string | null => {
-    if (!clienteSeleccionadoId)
-      return "Seleccioná un cliente de la lista o cargá uno nuevo con +.";
-    if (!origenVentas)
-      return "El origen de la venta es obligatorio (dato estadístico).";
-    if (mecScope === "global") {
-      if (
-        !validarTotalMecSiAplica(
-          mMedicionGlobal,
-          mEntregaGlobal,
-          mColocacionGlobal,
-          totalMecGlobal,
-        )
-      ) {
-        return MSG_MEC_INCORRECTO;
-      }
-    } else {
-      for (const ot of ordenes) {
-        if (
-          !validarTotalMecSiAplica(
-            ot.mMedicion,
-            ot.mEntrega,
-            ot.mColocacion,
-            ot.totalMec,
-          )
-        ) {
-          return MSG_MEC_INCORRECTO;
-        }
-      }
-    }
-    return null;
+    return validarPresupuestoCompleto(
+      clienteSeleccionadoId,
+      origenVentas,
+      mecScope,
+      {
+        mMedicionGlobal,
+        mEntregaGlobal,
+        mColocacionGlobal,
+        totalMecGlobal,
+        ordenes,
+      },
+    );
   }, [
     clienteSeleccionadoId,
     origenVentas,
@@ -1147,6 +534,63 @@ export function PresupuestoWizard() {
   const handleImprimir = () => {
     setResumenAbierto(true);
   };
+
+  const [wizardStep, setWizardStep] = useState(0);
+  const wizardLastIndex = 3;
+
+  const origenLabelDisplay = useMemo(
+    () =>
+      ORIGEN_VENTA_OPCIONES.find((o) => o.value === origenVentas)?.label ??
+      (origenVentas.trim() ? origenVentas : "—"),
+    [origenVentas],
+  );
+
+  const totalLineasOt = useMemo(
+    () => totalesItems.porOt.reduce((acc, p) => acc + p.cantLineas, 0),
+    [totalesItems.porOt],
+  );
+
+  const formatArsEntero = useCallback((n: number) => {
+    try {
+      return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(
+        Math.round(n),
+      );
+    } catch {
+      return String(Math.round(n));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [wizardStep]);
+
+  const handleWizardSiguiente = () => {
+    const errCliente =
+      wizardStep === 0
+        ? validateClienteYOrigen(clienteSeleccionadoId, origenVentas)
+        : null;
+    if (errCliente) {
+      setGrabarError(errCliente);
+      return;
+    }
+    const errMec =
+      wizardStep === 1
+        ? validateMecRequisitos("global", {
+            mMedicionGlobal,
+            mEntregaGlobal,
+            mColocacionGlobal,
+            totalMecGlobal,
+            ordenes,
+          })
+        : null;
+    if (errMec) {
+      setGrabarError(errMec);
+      return;
+    }
+    if (wizardStep < wizardLastIndex) setWizardStep((s) => s + 1);
+  };
+
+  const handleWizardAnterior = () => setWizardStep((s) => Math.max(0, s - 1));
 
   const renderLineaCells = (ot: OrdenTrabajoWizard, line: LineaItemOT) => {
     const art = line.articuloId ? getArticuloById(line.articuloId) : undefined;
@@ -1370,979 +814,91 @@ export function PresupuestoWizard() {
   };
 
   return (
-    <div className="w-full max-w-none space-y-6 pb-36">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-        <Label
-          id="mec-scope-label"
-          className="text-xs font-semibold sm:shrink-0 sm:pt-2"
-        >
-          Ámbito del servicio MEC
-        </Label>
-        <div
-          role="radiogroup"
-          aria-labelledby="mec-scope-label"
-          className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-3xl sm:flex-row"
-        >
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mecScope === "global"}
-            onClick={() => setMecScope("global")}
-            className={cn(
-              "rounded-md border px-3 py-2 text-left text-xs font-medium shadow-sm transition-colors sm:text-sm",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2",
-              mecScope === "global"
-                ? "border-cyan-600 bg-cyan-600 text-primary-foreground hover:bg-cyan-700"
-                : "border-border bg-card text-foreground hover:bg-muted/70",
-            )}
-          >
-            MEC único para todo el presupuesto (habitual)
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mecScope === "por_ot"}
-            onClick={() => setMecScope("por_ot")}
-            className={cn(
-              "rounded-md border px-3 py-2 text-left text-xs font-medium shadow-sm transition-colors sm:text-sm",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2",
-              mecScope === "por_ot"
-                ? "border-cyan-600 bg-cyan-600 text-primary-foreground hover:bg-cyan-700"
-                : "border-border bg-card text-foreground hover:bg-muted/70",
-            )}
-          >
-            MEC por cada orden de trabajo
-          </button>
+    <div className="w-full max-w-none pb-44">
+      <div className="mx-auto max-w-6xl space-y-6 px-3 sm:px-4 lg:px-0 pb-8">
+        <PresupuestoStepper step={wizardStep} />
+
+        <div className="min-h-[260px]">
+          {wizardStep === 0 ? (
+            <StepCliente
+              clientesLocales={clientesLocales}
+              clienteSeleccionadoId={clienteSeleccionadoId}
+              aplicarCliente={aplicarCliente}
+              abrirNuevoCliente={abrirNuevoCliente}
+              listaPrecioId={listaPrecioId}
+              setListaPrecioId={setListaPrecioId}
+              monedaPresupuesto={monedaPresupuesto}
+              setMonedaPresupuesto={setMonedaPresupuesto}
+              origenVentas={origenVentas}
+              setOrigenVentas={setOrigenVentas}
+              contacto={contacto}
+              setContacto={setContacto}
+              tel={tel}
+              setTel={setTel}
+              email={email}
+              setEmail={setEmail}
+              direccion={direccion}
+              setDireccion={setDireccion}
+              obsCabecera={obsCabecera}
+              setObsCabecera={setObsCabecera}
+            />
+          ) : null}
+
+          {wizardStep === 1 ? (
+            <StepOrdenes
+              catalogoCargando={catalogoCargando}
+              ordenes={ordenes}
+              materials={materials}
+              tecnicos={tecnicos}
+              totalesItems={totalesItems}
+              patchOrden={patchOrden}
+              addOrdenTrabajo={addOrdenTrabajo}
+              removeOrdenTrabajo={removeOrdenTrabajo}
+              addItem={addItem}
+              renderLineaCells={renderLineaCells}
+            />
+          ) : null}
+
+          {wizardStep === 2 ? (
+            <StepLogistica logistica={logistica} setLogistica={setLogistica} />
+          ) : null}
+
+          {wizardStep === 3 ? (
+            <StepConfirmacion
+              clienteNombre={clienteSeleccionado?.nombre ?? "—"}
+              listaPrecioLabel={
+                LISTAS_PRECIO_MOCK.find((l) => l.id === listaPrecioId)?.label ?? "—"
+              }
+              origenLabel={origenLabelDisplay}
+              monedaPresupuesto={monedaPresupuesto}
+              ordenesCount={ordenes.length}
+              lineItemsCount={totalLineasOt}
+              logistica={logistica}
+              faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
+              totalesPorOt={totalesItems.porOt}
+              mMedicionGlobal={mMedicionGlobal}
+              setMMedicionGlobal={setMMedicionGlobal}
+              mEntregaGlobal={mEntregaGlobal}
+              setMEntregaGlobal={setMEntregaGlobal}
+              mColocacionGlobal={mColocacionGlobal}
+              setMColocacionGlobal={setMColocacionGlobal}
+              totalMecGlobal={totalMecGlobal}
+              setTotalMecGlobal={setTotalMecGlobal}
+              obsServiciosMec={obsServiciosMec}
+              setObsServiciosMec={setObsServiciosMec}
+              totalesItemsSubtotal={totalesItems.subtotal}
+              descuentoGlobalPct={descuentoGlobalPct}
+              setDescuentoGlobalPct={setDescuentoGlobalPct}
+              totalesItemsTotalConDesc={totalesItems.totalConDesc}
+              totalMecImporte={totalMecImporte}
+              totalPresupuesto={totalPresupuesto}
+              totalesTotalM2={totalesItems.totalM2}
+              totalesTotalTon={totalesItems.totalTon}
+            />
+          ) : null}
         </div>
       </div>
 
-      {catalogoCargando ? (
-        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3">
-          Cargando materiales y técnicos…
-        </p>
-      ) : null}
-
-      <SectionPresupuesto
-        title="Cliente / Profesional"
-        borderAccentClass="border-t-4 border-t-red-500"
-      >
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-1">
-              <Label className="text-xs font-medium text-foreground">
-                Cliente / Profesional
-              </Label>
-              <PickCliente
-                clientes={clientesLocales}
-                value={clienteSeleccionadoId}
-                onChange={aplicarCliente}
-                onNuevoCliente={abrirNuevoCliente}
-              />
-            </div>
-            <div className="flex shrink-0 justify-end sm:justify-start sm:pb-px">
-              <Button
-                type="button"
-                size="icon"
-                className="h-9 w-9 shrink-0 bg-sky-600 hover:bg-sky-700 text-white"
-                onClick={() => abrirNuevoCliente()}
-                title="Nuevo cliente (si no aparece en el buscador)"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Lista de precio</Label>
-              <select
-                className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-                value={listaPrecioId}
-                onChange={(e) => setListaPrecioId(e.target.value)}
-              >
-                {LISTAS_PRECIO_MOCK.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Moneda</Label>
-              <select
-                className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-                value={monedaPresupuesto}
-                onChange={(e) =>
-                  setMonedaPresupuesto(e.target.value as "ars" | "usd")
-                }
-              >
-                <option value="usd">Dólares (USD)</option>
-                <option value="ars">Pesos (ARS)</option>
-              </select>
-            </div>
-            <div className="space-y-1 sm:col-span-2 lg:col-span-1">
-              <Label className="text-xs font-medium">
-                Origen <span className="text-destructive">*</span>
-              </Label>
-              <select
-                className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-                value={origenVentas}
-                onChange={(e) => setOrigenVentas(e.target.value)}
-              >
-                {ORIGEN_VENTA_OPCIONES.map((o) => (
-                  <option
-                    key={o.value === "" ? "_sin_origen" : o.value}
-                    value={o.value}
-                  >
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Contacto</Label>
-              <Input
-                className="h-8 text-sm px-2.5"
-                value={contacto}
-                onChange={(e) => setContacto(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Tel. / Celular</Label>
-              <Input
-                className="h-8 text-sm px-2.5"
-                value={tel}
-                onChange={(e) => setTel(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Email</Label>
-              <Input
-                type="email"
-                className="h-8 text-sm px-2.5"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 xl:items-start">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">
-                Dirección de entrega
-              </Label>
-              <Input
-                className="h-8 text-sm px-2.5"
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">
-                Observaciones grales.
-              </Label>
-              <Textarea
-                className="min-h-[52px] max-h-32 resize-y py-1.5 text-sm px-2.5"
-                placeholder="Observaciones Grales - Max. 500 caracteres"
-                maxLength={500}
-                value={obsCabecera}
-                onChange={(e) => setObsCabecera(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground text-right leading-none pt-0.5">
-                {obsCabecera.length}/500
-              </p>
-            </div>
-          </div>
-        </div>
-      </SectionPresupuesto>
-
-      <SectionPresupuesto
-        title="Órdenes de trabajo"
-        borderAccentClass="border-t-4 border-t-sky-500"
-      >
-        <div className="space-y-3">
-          {totalesItems.faltaPesoNonMarmol ? (
-            <p className="rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-              Alguna OT tiene material <span className="font-semibold">no mármol</span> pero sin{" "}
-              <span className="font-semibold">peso (kg/m²)</span> cargado en el maestro (menú lateral →{" "}
-              <span className="font-semibold">Cantera</span>). El total en toneladas puede quedar incompleto.
-            </p>
-          ) : null}
-          {ordenes.map((ot, idx) => {
-            const materialRow = materials.find((m) => m.id === ot.materialId);
-            const materialNombre = materialRow
-              ? `${materialRow.name}${materialRow.unit ? ` (${materialRow.unit})` : ""}`
-              : "Material";
-
-            return (
-              <div key={ot.key} className="flex items-start gap-2">
-                <section className="min-w-0 flex-1 rounded-lg border border-border bg-white border-t-4 border-t-sky-500 shadow-sm overflow-hidden">
-                  <Collapsible
-                    open={ot.panelExpandido}
-                    onOpenChange={(open) =>
-                      patchOrden(ot.key, { panelExpandido: open })
-                    }
-                  >
-                    <div className="flex flex-wrap items-stretch gap-0 border-b border-border bg-muted/30">
-                      <span className="inline-flex items-center self-center rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white shrink-0 m-2">
-                        OT Nro. {idx}
-                      </span>
-                      <CollapsibleTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-1 pr-2 text-left rounded-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <ChevronDown
-                            className={cn(
-                              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                              ot.panelExpandido && "rotate-180",
-                            )}
-                            aria-hidden
-                          />
-                          <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                            <span className="truncate text-sm font-semibold text-foreground">
-                              {ot.titulo.trim() || "Sin título"}
-                            </span>
-                            <span className="truncate text-xs text-muted-foreground">
-                              {materialNombre}
-                            </span>
-                          </div>
-                        </button>
-                      </CollapsibleTrigger>
-                      {ordenes.length > 1 ? (
-                        <div className="flex items-center shrink-0 pr-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => removeOrdenTrabajo(ot.key)}
-                            aria-label="Quitar orden de trabajo"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <CollapsibleContent>
-                      <div className="p-3 sm:p-4 space-y-3">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end">
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs">Título</Label>
-                            <Input
-                              className="h-9 text-sm"
-                              placeholder="titulo"
-                              value={ot.titulo}
-                              onChange={(e) =>
-                                patchOrden(ot.key, { titulo: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs">Material (chapa)</Label>
-                            <PickMaterial
-                              materials={materials}
-                              value={ot.materialId}
-                              onChange={(id) =>
-                                patchOrden(ot.key, { materialId: id })
-                              }
-                            />
-                            <ConversionesMaestroHints parentMaterialId={ot.materialId} />
-                          </div>
-                        </div>
-
-                        <Collapsible>
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 text-muted-foreground px-0 text-xs"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                              Más datos de la OT (bacha, fechas, técnico,
-                              colocación)
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-dashed border-border mt-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Bacha</Label>
-                                <PickBacha
-                                  value={ot.bachaId}
-                                  onChange={(id) =>
-                                    patchOrden(ot.key, { bachaId: id })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha OT</Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fecha}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, {
-                                      fecha: e.target.value,
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">
-                                  Técnico a medir
-                                </Label>
-                                <PickTecnico
-                                  tecnicos={tecnicos}
-                                  value={ot.tecnicoId}
-                                  onChange={(id) =>
-                                    patchOrden(ot.key, { tecnicoId: id })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">
-                                  Fecha medición
-                                </Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fechaMedicion}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, {
-                                      fechaMedicion: e.target.value,
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">
-                                  Fecha entrega estimada
-                                </Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fechaEntrega}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, {
-                                      fechaEntrega: e.target.value,
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 sm:col-span-2">
-                                <Label className="text-xs">
-                                  Colocación en obra (referencia)
-                                </Label>
-                                <RadioGroup
-                                  value={ot.tipoColocacion}
-                                  onValueChange={(v) =>
-                                    patchOrden(ot.key, {
-                                      tipoColocacion:
-                                        v as (typeof TIPOS_COLOCACION)[number]["value"],
-                                    })
-                                  }
-                                  className="flex flex-wrap gap-4"
-                                >
-                                  {TIPOS_COLOCACION.map((opt) => (
-                                    <div
-                                      key={opt.value}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <RadioGroupItem
-                                        value={opt.value}
-                                        id={`${ot.key}-${opt.value}`}
-                                      />
-                                      <Label
-                                        htmlFor={`${ot.key}-${opt.value}`}
-                                        className="text-sm font-normal"
-                                      >
-                                        {opt.label}
-                                      </Label>
-                                    </div>
-                                  ))}
-                                </RadioGroup>
-                              </div>
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-
-                        <Separator className="my-1" />
-
-                        <div className="rounded-xl border border-border/90 bg-card shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
-                          <div className="flex flex-col gap-2 border-b border-border/70 bg-muted/30 px-3 py-3 sm:px-4 sm:py-3.5">
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                                  <Ruler className="h-3.5 w-3.5" />
-                                </span>
-                                <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                                  Ítems
-                                </span>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1.5 border-dashed px-3 text-xs font-normal text-muted-foreground hover:text-foreground"
-                                onClick={() => setGuiaItemsOpen(true)}
-                              >
-                                <HelpCircle className="h-3.5 w-3.5" />
-                                Guía rápida (m², medidas, desperdicio)
-                              </Button>
-                            </div>
-                            <p className="text-[11px] leading-relaxed text-muted-foreground max-w-4xl">
-                              Solo artículos que{" "}
-                              <span className="font-medium text-foreground">
-                                calculan material
-                              </span>{" "}
-                              usan alto, ancho y desperdicio y suman m². El
-                              resto va por cantidad y unidad; la guía resume
-                              ejemplos (mesada, m² manual, ml, medida estándar).
-                            </p>
-                          </div>
-                          <div className="overflow-x-auto bg-muted/10">
-                              <Table className="text-xs min-w-[58rem]">
-                                <TableHeader>
-                                  <TableRow className="border-b border-border/80 bg-muted/50 hover:bg-muted/50 [&_th]:h-10 [&_th]:py-2 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-foreground [&_th]:tracking-wide first:[&_th]:pl-3 last:[&_th]:pr-3">
-                                    <TableHead className="whitespace-nowrap">
-                                      Cód.
-                                    </TableHead>
-                                    <TableHead className="min-w-[8.5rem]">
-                                      Descripción
-                                    </TableHead>
-                                    <TableHead>Unidad</TableHead>
-                                    <TableHead>Cant.</TableHead>
-                                    <TableHead>P. unit.</TableHead>
-                                    <TableHead className="text-right">
-                                      Total $
-                                    </TableHead>
-                                    <TableHead
-                                      className="whitespace-nowrap"
-                                      title="m² por dimensiones: centímetros. Metro lineal: metros."
-                                    >
-                                      Alto
-                                    </TableHead>
-                                    <TableHead
-                                      className="whitespace-nowrap"
-                                      title="Solo m² por dimensiones (centímetros)."
-                                    >
-                                      Ancho
-                                    </TableHead>
-                                    <TableHead
-                                      title="Desperdicio: % extra de material. Vacío = 0%. Aplica a m² por dimensiones y a metro lineal."
-                                    >
-                                      Desp.%
-                                    </TableHead>
-                                    <TableHead
-                                      className="text-right"
-                                      title="Superficie de material calculada según artículo, cantidad, medidas y desperdicio."
-                                    >
-                                      m²
-                                    </TableHead>
-                                    <TableHead className="w-12 p-1.5 text-center">
-                                      <span className="sr-only">Quitar</span>
-                                    </TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {ot.items.length === 0 ? (
-                                    <TableRow className="hover:bg-transparent">
-                                      <TableCell
-                                        colSpan={11}
-                                        className="py-10 text-center text-sm text-muted-foreground"
-                                      >
-                                        <span className="mb-1 block font-medium text-foreground/85">
-                                          Todavía no hay ítems en esta OT
-                                        </span>
-                                        Tocá{" "}
-                                        <button
-                                          type="button"
-                                          className="font-medium text-primary underline-offset-2 hover:underline"
-                                          onClick={() => addItem(ot.key)}
-                                        >
-                                          agregar ítem
-                                        </button>{" "}
-                                        abajo para cargar la primera línea.
-                                      </TableCell>
-                                    </TableRow>
-                                  ) : (
-                                    ot.items.map((line) =>
-                                      renderLineaCells(ot, line),
-                                    )
-                                  )}
-                                </TableBody>
-                              </Table>
-                          </div>
-                          <div className="flex justify-center border-t border-border/60 bg-muted/15 px-3 py-3">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-9 gap-2 rounded-lg px-4 shadow-sm bg-emerald-600 text-white hover:bg-emerald-700"
-                              onClick={() => addItem(ot.key)}
-                            >
-                              <Plus className="h-4 w-4" />
-                              Agregar ítem
-                            </Button>
-                          </div>
-                        </div>
-
-                        {mecScope === "por_ot" ? (
-                          <>
-                            <div className="flex flex-wrap items-center gap-5 border-t border-border pt-3">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`m-${ot.key}`}
-                                  checked={ot.mMedicion}
-                                  onCheckedChange={(c) =>
-                                    patchOrden(ot.key, {
-                                      mMedicion: Boolean(c),
-                                    })
-                                  }
-                                />
-                                <Label
-                                  htmlFor={`m-${ot.key}`}
-                                  className="text-xs font-medium"
-                                >
-                                  M Medición
-                                </Label>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`e-${ot.key}`}
-                                  checked={ot.mEntrega}
-                                  onCheckedChange={(c) =>
-                                    patchOrden(ot.key, { mEntrega: Boolean(c) })
-                                  }
-                                />
-                                <Label
-                                  htmlFor={`e-${ot.key}`}
-                                  className="text-xs font-medium"
-                                >
-                                  E Entrega
-                                </Label>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  id={`c-${ot.key}`}
-                                  checked={ot.mColocacion}
-                                  onCheckedChange={(c) =>
-                                    patchOrden(ot.key, {
-                                      mColocacion: Boolean(c),
-                                    })
-                                  }
-                                />
-                                <Label
-                                  htmlFor={`c-${ot.key}`}
-                                  className="text-xs font-medium"
-                                >
-                                  C Colocación
-                                </Label>
-                              </div>
-                              <div className="space-y-1 w-full max-w-[11rem] sm:ml-auto">
-                                <Label className="text-xs">
-                                  Total (M/E/C) $
-                                </Label>
-                                <Input
-                                  className="h-8 text-sm tabular-nums"
-                                  inputMode="decimal"
-                                  value={ot.totalMec}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, {
-                                      totalMec: e.target.value,
-                                    })
-                                  }
-                                  disabled={
-                                    !mecAlgunoActivo(
-                                      ot.mMedicion,
-                                      ot.mEntrega,
-                                      ot.mColocacion,
-                                    )
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
-                            Con MEC{" "}
-                            <span className="font-medium">
-                              único para todo el presupuesto
-                            </span>
-                            , medición / entrega / colocación se cargan al
-                            final, en{" "}
-                            <span className="font-medium">
-                              Totales y descuento
-                            </span>
-                            .
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-6 text-xs border-t border-border pt-3 justify-between sm:justify-start">
-                          <div>
-                            <p className="text-[10px] text-muted-foreground">
-                              Cantidad
-                            </p>
-                            <p className="font-semibold tabular-nums">
-                              {totalesItems.porOt.find((p) => p.key === ot.key)
-                                ?.cantLineas ?? 0}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-muted-foreground">
-                              Subtotal ($)
-                            </p>
-                            <p className="font-semibold tabular-nums">
-                              {totalesItems.porOt
-                                .find((p) => p.key === ot.key)
-                                ?.subtotal.toLocaleString("es-AR", {
-                                  minimumFractionDigits: 2,
-                                }) ?? "0"}
-                            </p>
-                          </div>
-                          <div className="sm:ml-auto">
-                            <p className="text-[10px] text-muted-foreground">
-                              Total m²
-                            </p>
-                            <p className="font-semibold tabular-nums text-primary">
-                              {totalesItems.porOt
-                                .find((p) => p.key === ot.key)
-                                ?.m2.toLocaleString("es-AR", {
-                                  minimumFractionDigits: 3,
-                                }) ?? "0"}
-                            </p>
-                          </div>
-                          {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0) > 0 ? (
-                            <div>
-                              <p className="text-[10px] text-muted-foreground">Ton piedra (~)</p>
-                              <p className="font-semibold tabular-nums text-sky-800 dark:text-sky-100">
-                                {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0).toLocaleString(
-                                  "es-AR",
-                                  { minimumFractionDigits: 3, maximumFractionDigits: 3 },
-                                )}
-                              </p>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </section>
-                {idx === ordenes.length - 1 ? (
-                  <div className="shrink-0 pt-2">
-                    <Button
-                      type="button"
-                      size="icon"
-                      className="h-9 w-9 shrink-0 bg-sky-600 hover:bg-sky-700 text-white shadow-sm"
-                      onClick={addOrdenTrabajo}
-                      title="Agregar orden de trabajo"
-                      aria-label="Agregar orden de trabajo"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      </SectionPresupuesto>
-
-      <SectionPresupuesto
-        title="Logística"
-        borderAccentClass="border-t-4 border-t-amber-500"
-      >
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Coordinación de visita y entrega.
-          </p>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="text-xs min-w-[9rem]">
-                    Fecha coordinación
-                  </TableHead>
-                  <TableHead className="text-xs min-w-[9rem]">
-                    Fecha entrega pactada
-                  </TableHead>
-                  <TableHead className="text-xs min-w-[240px]">
-                    Observación
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="p-2">
-                    <Input
-                      type="date"
-                      className="h-8 text-xs w-36"
-                      value={logistica.fechaCoord}
-                      onChange={(e) =>
-                        setLogistica((l) => ({
-                          ...l,
-                          fechaCoord: e.target.value,
-                        }))
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="p-2">
-                    <Input
-                      type="date"
-                      className="h-8 text-xs w-36"
-                      value={logistica.fechaEntrega}
-                      onChange={(e) =>
-                        setLogistica((l) => ({
-                          ...l,
-                          fechaEntrega: e.target.value,
-                        }))
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="p-2">
-                    <Input
-                      className="h-8 text-xs"
-                      value={logistica.observacion}
-                      onChange={(e) =>
-                        setLogistica((l) => ({
-                          ...l,
-                          observacion: e.target.value,
-                        }))
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </SectionPresupuesto>
-
-      <SectionPresupuesto
-        title="Totales y descuento"
-        borderAccentClass="border-t-4 border-t-violet-500"
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-sm">
-          <div>
-            <p className="text-xs text-muted-foreground">Cliente</p>
-            <p className="font-medium">{clienteSeleccionado?.nombre ?? "—"}</p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Lista de precio
-            </p>
-            <p>
-              {LISTAS_PRECIO_MOCK.find((l) => l.id === listaPrecioId)?.label}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Moneda</p>
-            <p className="font-medium uppercase">{monedaPresupuesto}</p>
-            <p className="text-xs text-muted-foreground mt-2">MEC</p>
-            <p className="text-xs">
-              {mecScope === "global"
-                ? "Global — abajo en esta sección"
-                : "Por orden de trabajo (en cada OT)"}
-            </p>
-          </div>
-        </div>
-
-        {mecScope === "global" ? (
-          <div className="mb-4 space-y-3 rounded-md border border-emerald-600/30 bg-emerald-50/50 px-3 py-3 dark:bg-emerald-950/20">
-            <p className="text-xs font-medium text-foreground">
-              Servicios MEC en el total
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Marcá medición, entrega y/o colocación si se cobran en este
-              presupuesto. Si alguno está activo, el importe es obligatorio.
-              Desmarcá todo para no sumar MEC al total.
-            </p>
-            <div className="flex flex-wrap items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="mg-m"
-                  checked={mMedicionGlobal}
-                  onCheckedChange={(c) => setMMedicionGlobal(Boolean(c))}
-                />
-                <Label htmlFor="mg-m" className="text-xs font-medium">
-                  M Medición
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="mg-e"
-                  checked={mEntregaGlobal}
-                  onCheckedChange={(c) => setMEntregaGlobal(Boolean(c))}
-                />
-                <Label htmlFor="mg-e" className="text-xs font-medium">
-                  E Entrega
-                </Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="mg-c"
-                  checked={mColocacionGlobal}
-                  onCheckedChange={(c) => setMColocacionGlobal(Boolean(c))}
-                />
-                <Label htmlFor="mg-c" className="text-xs font-medium">
-                  C Colocación
-                </Label>
-              </div>
-            </div>
-            <div className="space-y-1 max-w-xs">
-              <Label className="text-xs">Importe total MEC ($)</Label>
-              <Input
-                className="h-9 text-sm tabular-nums"
-                inputMode="decimal"
-                value={totalMecGlobal}
-                onChange={(e) => setTotalMecGlobal(e.target.value)}
-                disabled={
-                  !mecAlgunoActivo(
-                    mMedicionGlobal,
-                    mEntregaGlobal,
-                    mColocacionGlobal,
-                  )
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Observaciones MEC</Label>
-              <Textarea
-                className="min-h-[56px] max-h-32 resize-y py-1.5 text-sm"
-                placeholder="Notas sobre medición, entrega o colocación…"
-                maxLength={500}
-                value={obsServiciosMec}
-                onChange={(e) => setObsServiciosMec(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground text-right">
-                {obsServiciosMec.length}/500
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="mb-4 space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Los importes MEC de cada orden se suman al total del presupuesto
-              (campos en cada OT).
-            </p>
-            <div className="space-y-1 rounded-md border border-border bg-muted/20 px-3 py-2">
-              <Label className="text-xs">Observaciones MEC (presupuesto)</Label>
-              <Textarea
-                className="min-h-[56px] max-h-32 resize-y py-1.5 text-sm bg-background"
-                placeholder="Notas generales sobre servicios MEC…"
-                maxLength={500}
-                value={obsServiciosMec}
-                onChange={(e) => setObsServiciosMec(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground text-right">
-                {obsServiciosMec.length}/500
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-4 items-end mb-4">
-          <div className="space-y-1">
-            <Label className="text-xs">Subtotal ítems ($)</Label>
-            <Input
-              readOnly
-              className="h-9 text-sm font-semibold tabular-nums"
-              value={totalesItems.subtotal.toFixed(2)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Descuento (%)</Label>
-            <Input
-              className="h-9 text-sm w-28"
-              inputMode="decimal"
-              placeholder="%"
-              value={descuentoGlobalPct}
-              onChange={(e) => setDescuentoGlobalPct(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label
-              className="text-xs"
-              title="Suma de ítems después de aplicar el descuento (sin MEC)."
-            >
-              Neto ítems ($)
-            </Label>
-            <Input
-              readOnly
-              className="h-9 text-sm font-semibold tabular-nums"
-              value={totalesItems.totalConDesc.toFixed(2)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">MEC ($)</Label>
-            <Input
-              readOnly
-              className="h-9 text-sm tabular-nums text-emerald-900 dark:text-emerald-100"
-              value={totalMecImporte.toFixed(2)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Total ($)</Label>
-            <Input
-              readOnly
-              className="h-9 text-sm font-bold tabular-nums"
-              value={totalPresupuesto.toFixed(2)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Total (m²)</Label>
-            <Input
-              readOnly
-              className="h-9 text-sm font-bold tabular-nums text-primary"
-              value={totalesItems.totalM2.toLocaleString("es-AR", {
-                minimumFractionDigits: 3,
-              })}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs" title="Solo piedra no mármol con peso cargado en maestro">
-              Total ton (~)
-            </Label>
-            <Input
-              readOnly
-              className="h-9 text-sm font-semibold tabular-nums text-sky-900 dark:text-sky-50"
-              value={
-                totalesItems.totalTon > 0
-                  ? totalesItems.totalTon.toLocaleString("es-AR", {
-                      minimumFractionDigits: 3,
-                      maximumFractionDigits: 4,
-                    })
-                  : "—"
-              }
-            />
-          </div>
-        </div>
-        <p className="text-xs font-semibold mb-2">Desglose por OT</p>
-        <ul className="space-y-1 text-sm">
-          {totalesItems.porOt.map((p, i) => (
-            <li
-              key={p.key}
-              className="flex justify-between border-b border-border/60 py-1 gap-2"
-            >
-              <span className="min-w-0 truncate">
-                OT {i}: {p.titulo}
-              </span>
-              <span className="tabular-nums text-muted-foreground shrink-0">
-                {p.m2.toLocaleString("es-AR", { minimumFractionDigits: 3 })} m²
-                {p.ton > 0 ? (
-                  <>
-                    {" "}
-                    · {p.ton.toLocaleString("es-AR", { minimumFractionDigits: 3 })} ton ~{" "}
-                  </>
-                ) : null}
-                · ${p.subtotal.toFixed(2)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </SectionPresupuesto>
 
       <Dialog
         open={dialogClienteAbierto}
@@ -2482,62 +1038,6 @@ export function PresupuestoWizard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={guiaItemsOpen} onOpenChange={setGuiaItemsOpen}>
-        <DialogContent
-          className="sm:max-w-lg max-h-[85vh] overflow-y-auto"
-          showCloseButton
-        >
-          <DialogHeader>
-            <DialogTitle>Ítems: m², alto, ancho y desperdicio</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <p>
-              La columna <strong className="text-foreground">m²</strong> y los
-              campos de medida aplican solo a artículos que{" "}
-              <strong className="text-foreground">calculan material</strong>.
-              Los demás se cotizan por cantidad y unidad; no suman al total de
-              m² del presupuesto.
-            </p>
-            <ul className="list-disc space-y-2 pl-4">
-              <li>
-                <strong className="text-foreground">m² por dimensiones:</strong>{" "}
-                cantidad × alto (cm) × ancho (cm) pasados a metros, con factor
-                (1 + desperdicio%). El desperdicio es opcional; vacío o 0 = sin
-                extra (ej. 1% multiplica el área por 1,01).
-              </li>
-              <li>
-                <strong className="text-foreground">m² totales (manual):</strong>{" "}
-                en artículos m² que lo permitan, el enlace bajo{" "}
-                <em>Cant.</em> cambia a “Por m² totales”: la cantidad es
-                directamente la superficie en m² (ej. mesada de asador).
-              </li>
-              <li>
-                <strong className="text-foreground">Metro lineal:</strong> se
-                ingresa solo el{" "}
-                <strong className="text-foreground">alto en metros</strong> y la
-                cantidad en ml; m² = cantidad × alto × (1 + desperdicio%).
-                Ancho no aplica.
-              </li>
-              <li>
-                <strong className="text-foreground">Medida estándar:</strong> si
-                el artículo trae m² fijos por unidad, los m² se calculan como
-                cantidad × esa medida, sin alto ni ancho en la grilla.
-              </li>
-            </ul>
-            <p>
-              Cada OT muestra subtotal y m² propios; en la barra inferior se
-              acumulan ítems y m² de{" "}
-              <strong className="text-foreground">todo el presupuesto</strong>.
-            </p>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button">Cerrar</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={resumenAbierto} onOpenChange={setResumenAbierto}>
         <DialogContent
           className="gap-0 p-0 sm:max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
@@ -2590,53 +1090,179 @@ export function PresupuestoWizard() {
           "fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:left-56",
         )}
       >
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs sm:text-sm min-w-0 tabular-nums">
-            <span className="text-muted-foreground">Ítems</span>{" "}
-            <strong>${totalesItems.subtotal.toFixed(2)}</strong>
-            <span className="mx-2 text-border">|</span>
-            <span className="text-muted-foreground">m²</span>{" "}
-            <strong>
-              {totalesItems.totalM2.toLocaleString("es-AR", {
-                maximumFractionDigits: 3,
-              })}
-            </strong>
-            {totalesItems.totalTon > 0 ? (
-              <>
-                <span className="mx-2 text-border">|</span>
-                <span className="text-muted-foreground">ton (~)</span>{" "}
-                <strong>
-                  {totalesItems.totalTon.toLocaleString("es-AR", {
-                    minimumFractionDigits: 3,
-                    maximumFractionDigits: 4,
-                  })}
-                </strong>
-              </>
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          {wizardStep < 3 ? (
+            <div className="text-[11px] sm:text-xs min-w-0 flex-1 tabular-nums space-y-1">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                {lineasResumen.map((ln, idx) => (
+                  <span key={ln.id}>
+                    {idx > 0 ? (
+                      <span className="text-border mx-1.5 hidden sm:inline">|</span>
+                    ) : null}
+                    <span className="text-muted-foreground">
+                      {abbrRubroFooter(ln.id)}
+                    </span>{" "}
+                    <strong>
+                      {ln.moneda === "usd"
+                        ? `US$${formatUsd(parseMoneyInput(ln.monto))}`
+                        : `$${formatArsEntero(parseMoneyInput(ln.monto))}`}
+                    </strong>
+                  </span>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground">
+                <span>
+                  Ítems{" "}
+                  <strong className="text-foreground">
+                    $
+                    {monedaPresupuesto === "usd"
+                      ? formatUsd(totalesItems.totalConDesc)
+                      : formatArsEntero(totalesItems.totalConDesc)}
+                  </strong>
+                </span>
+                <span className="hidden sm:inline text-border">|</span>
+                <span>
+                  m²{" "}
+                  <strong className="text-foreground">
+                    {totalesItems.totalM2.toLocaleString("es-AR", {
+                      maximumFractionDigits: 3,
+                    })}
+                  </strong>
+                </span>
+                {totalesItems.totalTon > 0 ? (
+                  <>
+                    <span className="hidden sm:inline text-border">|</span>
+                    <span>
+                      ton (~){" "}
+                      <strong className="text-foreground">
+                        {totalesItems.totalTon.toLocaleString("es-AR", {
+                          minimumFractionDigits: 3,
+                          maximumFractionDigits: 4,
+                        })}
+                      </strong>
+                    </span>
+                  </>
+                ) : null}
+                <span className="hidden sm:inline text-border">|</span>
+                <span>
+                  TOTAL equiv. USD{" "}
+                  <strong className="text-foreground">
+                    US${formatUsd(totalUsdEquivalente)}
+                  </strong>
+                </span>
+                <span className="text-border mx-1 sm:inline">·</span>
+                <span>
+                  ARS{" "}
+                  <strong className="text-foreground">
+                    ${formatArsEntero(totalArsEquivalente)}
+                  </strong>
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs sm:text-sm min-w-0 flex-1 tabular-nums">
+              <span className="text-muted-foreground">Ítems c/ dto.</span>{" "}
+              <strong>
+                $
+                {monedaPresupuesto === "usd"
+                  ? formatUsd(totalesItems.totalConDesc)
+                  : formatArsEntero(totalesItems.totalConDesc)}
+              </strong>
+              <span className="mx-2 text-border">|</span>
+              <span className="text-muted-foreground">MEC</span>{" "}
+              <strong>
+                $
+                {monedaPresupuesto === "usd"
+                  ? formatUsd(totalMecImporte)
+                  : formatArsEntero(totalMecImporte)}
+              </strong>
+              <span className="mx-2 text-border">|</span>
+              <span className="text-muted-foreground">m²</span>{" "}
+              <strong>
+                {totalesItems.totalM2.toLocaleString("es-AR", {
+                  maximumFractionDigits: 3,
+                })}
+              </strong>
+              {totalesItems.totalTon > 0 ? (
+                <>
+                  <span className="mx-2 text-border">|</span>
+                  <span className="text-muted-foreground">ton (~)</span>{" "}
+                  <strong>
+                    {totalesItems.totalTon.toLocaleString("es-AR", {
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 4,
+                    })}
+                  </strong>
+                </>
+              ) : null}
+              <span className="mx-2 text-border">|</span>
+              <span className="text-muted-foreground">Total</span>{" "}
+              <strong>
+                $
+                {monedaPresupuesto === "usd"
+                  ? formatUsd(totalPresupuesto)
+                  : formatArsEntero(totalPresupuesto)}
+              </strong>
+            </div>
+          )}
+          <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+            {wizardStep > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={handleWizardAnterior}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Atrás
+              </Button>
             ) : null}
-            <span className="mx-2 text-border">|</span>
-            <span className="text-muted-foreground">Total</span>{" "}
-            <strong>${totalPresupuesto.toFixed(2)}</strong>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              className="gap-1 bg-green-700 hover:bg-green-800 text-white"
-              onClick={handleGrabar}
-            >
-              <Save className="h-4 w-4" />
-              Guardar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="gap-1"
-              onClick={handleImprimir}
-            >
-              <Printer className="h-4 w-4" />
-              Imprimir
-            </Button>
+            {wizardStep < 3 ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1 text-muted-foreground"
+                  onClick={handleImprimir}
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleWizardSiguiente}
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={handleImprimir}
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1 bg-green-700 text-white hover:bg-green-800"
+                  onClick={handleGrabar}
+                >
+                  <Save className="h-4 w-4" />
+                  Guardar
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
