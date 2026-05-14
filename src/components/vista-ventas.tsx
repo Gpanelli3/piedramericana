@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Printer, ArrowLeft } from "lucide-react";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { PresupuestoWizard } from "@/components/presupuesto/PresupuestoWizard";
 import {
@@ -157,18 +157,6 @@ export function VistaVentas() {
     limpiarRid();
   }, [limpiarRid]);
 
-  const volverListado = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        n.set("pv", "list");
-        if (!n.get("ft")) n.set("ft", "pendientes");
-        return n;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
-
   const persistidoDesdeWizard = useCallback(
     async ({ id, numero: _numero }: { id: string; numero: string }) => {
       void _numero;
@@ -258,7 +246,7 @@ export function VistaVentas() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b border-border bg-white">
-        <div className="px-8 pt-5 pb-5 flex items-end justify-between gap-3">
+        <div className="px-8 pt-5 pb-5">
           <div>
             <p className="text-xs text-muted-foreground mb-1">Home &rsaquo; Presupuestos</p>
             <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
@@ -267,12 +255,6 @@ export function VistaVentas() {
               <span className="font-medium text-foreground">Ventas</span> en el menú lateral.
             </p>
           </div>
-          {vista === "wizard" ? (
-            <Button type="button" variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={volverListado}>
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Volver al listado
-            </Button>
-          ) : null}
         </div>
       </header>
 

@@ -141,7 +141,7 @@ export function AppSidebar() {
   /** Misma acción para la flecha y el título «Presupuestos»: abrir al entrar / alternar ya en ventas. */
   const onPresupuestosEncabezado = useCallback(() => {
     if (activeTab !== "ventas") {
-      gotoVentasQuery("lista", "pendientes");
+      gotoVentasQuery("nuevo");
       setPresupuestosMenuAbierto(true);
       return;
     }
