@@ -16,6 +16,13 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { insertPresupuestoRow } from "@/lib/presupuestos-api";
+import {
+  PRESUPUESTO_PAYLOAD_VERSION,
+  type PresupuestoPayloadV1,
+} from "@/types/presupuesto-payload";
 import {
   Minus,
   Save,
@@ -25,7 +32,6 @@ import {
 } from "lucide-react";
 import { LISTAS_PRECIO_MOCK, getArticuloById } from "@/data/presupuesto-articulos-mock";
 import {
-  CLIENTES_PRESUPUESTO_MOCK,
   ORIGEN_VENTA_OPCIONES,
   type ClientePresupuestoMock,
 } from "@/data/presupuesto-clientes-mock";
@@ -123,26 +129,94 @@ function abbrRubroFooter(id: string): string {
   }
 }
 
-function nuevoNumeroPresupuestoMock(): string {
+export type PresupuestoWizardProps = {
+  /** Tras INSERT en Supabase: vuelta al listado y apertura de resumen desde el padre. */
+  onPersisted?: (result: { id: string; numero: string }) => void | Promise<void>;
+};
+
+function generarNumeroPresupuesto(): string {
   const y = new Date().getFullYear();
   const n = Math.floor(1000 + Math.random() * 9000);
-  return `PR-${y}-${n} · v1`;
+  return `PR-${y}-${n}`;
 }
 
-export function PresupuestoWizard() {
+function buildPresupuestoPayloadV1(opts: {
+  dolarHoy: number;
+  clienteSeleccionadoId: string | null;
+  clienteNombre: string;
+  contacto: string;
+  origenVentas: string;
+  tel: string;
+  email: string;
+  direccion: string;
+  obsCabecera: string;
+  listaPrecioId: string;
+  monedaPresupuesto: "ars" | "usd";
+  ordenes: OrdenTrabajoWizard[];
+  descuentoGlobalPct: string;
+  logistica: LogisticaPresupuesto;
+  mMedicionGlobal: boolean;
+  mEntregaGlobal: boolean;
+  mColocacionGlobal: boolean;
+  totalMecGlobal: string;
+  obsServiciosMec: string;
+  lineasResumen: LineaResumenMoneda[];
+  cotizacionMixtaActiva: boolean;
+  monedaFinal: string;
+  totalUsdEquivalente: number;
+  totalArsEquivalente: number;
+  materialM2: number;
+  materialTon: number | null;
+  totalPresupuesto: number;
+}): PresupuestoPayloadV1 {
+  return {
+    version: PRESUPUESTO_PAYLOAD_VERSION,
+    dolarHoy: opts.dolarHoy,
+    clienteId: opts.clienteSeleccionadoId,
+    clienteNombre: opts.clienteNombre,
+    contacto: opts.contacto,
+    origenVentas: opts.origenVentas,
+    tel: opts.tel,
+    email: opts.email,
+    direccion: opts.direccion,
+    obsCabecera: opts.obsCabecera,
+    listaPrecioId: opts.listaPrecioId,
+    monedaPresupuesto: opts.monedaPresupuesto,
+    ordenes: opts.ordenes,
+    descuentoGlobalPct: opts.descuentoGlobalPct,
+    logistica: opts.logistica,
+    mMedicionGlobal: opts.mMedicionGlobal,
+    mEntregaGlobal: opts.mEntregaGlobal,
+    mColocacionGlobal: opts.mColocacionGlobal,
+    totalMecGlobal: opts.totalMecGlobal,
+    obsServiciosMec: opts.obsServiciosMec,
+    lineasResumen: opts.lineasResumen.map((ln) => ({ ...ln })),
+    cotizacionMixtaActiva: opts.cotizacionMixtaActiva,
+    monedaFinal: opts.monedaFinal,
+    totalUsdEquivalente: opts.totalUsdEquivalente,
+    totalArsEquivalente: opts.totalArsEquivalente,
+    materialM2Presupuesto: opts.materialM2,
+    materialTonEstimadoPresupuesto: opts.materialTon,
+    totalPresupuesto: opts.totalPresupuesto,
+  };
+}
+
+export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
+  const { onPersisted } = props;
+  const { user } = useAuth();
   const dolarHoy = 1250.5;
 
   /** Solo MEC único para todo el presupuesto (no hay modo por OT en UI). */
   const mecScope = "global" as const;
-  const [mMedicionGlobal, setMMedicionGlobal] = useState(true);
-  const [mEntregaGlobal, setMEntregaGlobal] = useState(true);
-  const [mColocacionGlobal, setMColocacionGlobal] = useState(true);
-  const [totalMecGlobal, setTotalMecGlobal] = useState("1");
+  const [mMedicionGlobal, setMMedicionGlobal] = useState(false);
+  const [mEntregaGlobal, setMEntregaGlobal] = useState(false);
+  const [mColocacionGlobal, setMColocacionGlobal] = useState(false);
+  const [totalMecGlobal, setTotalMecGlobal] = useState("0");
   const [obsServiciosMec, setObsServiciosMec] = useState("");
 
   const [clientesLocales, setClientesLocales] = useState<
     ClientePresupuestoMock[]
-  >(() => [...CLIENTES_PRESUPUESTO_MOCK]);
+  >(() => []);
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<
     string | null
   >(null);
@@ -175,31 +249,31 @@ export function PresupuestoWizard() {
   const [logistica, setLogistica] = useState<LogisticaPresupuesto>(() => ({
     fechaCoord: "",
     fechaEntrega: "",
-    observacion: "Entregar de 12:00 a 15:00 hs",
+    observacion: "",
   }));
 
-  const [cotizacionMixtaActiva, setCotizacionMixtaActiva] = useState(true);
+  const [cotizacionMixtaActiva, setCotizacionMixtaActiva] = useState(false);
   const [monedaFinal, setMonedaFinal] = useState("pesos");
   const [lineasResumen, setLineasResumen] = useState<LineaResumenMoneda[]>([
     {
       id: "piedra",
       label: "Piedra / chapa del material",
-      monto: "850",
+      monto: "0",
       moneda: "usd",
     },
     {
       id: "mo",
       label: "Mano de obra y pulido",
-      monto: "400000",
+      monto: "0",
       moneda: "ars",
     },
     {
       id: "perf",
       label: "Perforaciones (trasforos)",
-      monto: "118750",
+      monto: "0",
       moneda: "ars",
     },
-    { id: "flete", label: "Fletes e insumos", monto: "93750", moneda: "ars" },
+    { id: "flete", label: "Fletes e insumos", monto: "0", moneda: "ars" },
   ]);
   const [resumenAbierto, setResumenAbierto] = useState(false);
 
@@ -213,7 +287,7 @@ export function PresupuestoWizard() {
   });
 
   const [grabarError, setGrabarError] = useState<string | null>(null);
-  const [grabarExito, setGrabarExito] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setCatalogoCargando(false);
@@ -476,6 +550,16 @@ export function PresupuestoWizard() {
     };
   }, [ordenes, descuentoGlobalPct, materials]);
 
+  useEffect(() => {
+    const v = totalesItems.totalConDesc;
+    const montoStr = typeof v === "number" && Number.isFinite(v) ? String(v) : "0";
+    setLineasResumen((prev) =>
+      prev.map((row) =>
+        row.id === "piedra" ? { ...row, moneda: monedaPresupuesto, monto: montoStr } : row,
+      ),
+    );
+  }, [totalesItems.totalConDesc, monedaPresupuesto]);
+
   const totalMecImporte = useMemo(() => {
     return mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal)
       ? parseMoneyInput(totalMecGlobal)
@@ -485,9 +569,16 @@ export function PresupuestoWizard() {
   const totalPresupuesto = totalesItems.totalConDesc + totalMecImporte;
 
   const { totalUsdEquivalente, totalArsEquivalente } = useMemo(() => {
+    const items = totalesItems.totalConDesc;
     let sumUsd = 0;
     let sumArs = 0;
+    if (monedaPresupuesto === "usd") {
+      sumUsd += items;
+    } else {
+      sumArs += items;
+    }
     for (const ln of lineasResumen) {
+      if (ln.id === "piedra") continue;
       const v = parseMoneyInput(ln.monto);
       if (ln.moneda === "usd") sumUsd += v;
       else sumArs += v;
@@ -496,7 +587,7 @@ export function PresupuestoWizard() {
       totalUsdEquivalente: sumUsd + sumArs / dolarHoy,
       totalArsEquivalente: sumArs + sumUsd * dolarHoy,
     };
-  }, [lineasResumen, dolarHoy]);
+  }, [lineasResumen, dolarHoy, totalesItems.totalConDesc, monedaPresupuesto]);
 
   const validarAntesGrabar = useCallback((): string | null => {
     return validarPresupuestoCompleto(
@@ -522,13 +613,92 @@ export function PresupuestoWizard() {
     ordenes,
   ]);
 
-  const handleGrabar = () => {
+  const handleGrabar = async () => {
     const err = validarAntesGrabar();
     if (err) {
       setGrabarError(err);
       return;
     }
-    setGrabarExito(nuevoNumeroPresupuestoMock());
+    if (!isSupabaseConfigured) {
+      setGrabarError("Supabase no está configurado; no se puede guardar.");
+      return;
+    }
+    const payload = buildPresupuestoPayloadV1({
+      dolarHoy,
+      clienteSeleccionadoId,
+      clienteNombre: clienteSeleccionado?.nombre ?? "",
+      contacto,
+      origenVentas,
+      tel,
+      email,
+      direccion,
+      obsCabecera,
+      listaPrecioId,
+      monedaPresupuesto,
+      ordenes,
+      descuentoGlobalPct,
+      logistica,
+      mMedicionGlobal,
+      mEntregaGlobal,
+      mColocacionGlobal,
+      totalMecGlobal,
+      obsServiciosMec,
+      lineasResumen,
+      cotizacionMixtaActiva,
+      monedaFinal,
+      totalUsdEquivalente,
+      totalArsEquivalente,
+      materialM2: totalesItems.totalM2,
+      materialTon:
+        totalesItems.totalTon > 0 ? totalesItems.totalTon : null,
+      totalPresupuesto,
+    });
+    const nombreCliente = clienteSeleccionado?.nombre?.trim() || "Sin cliente";
+    setGuardando(true);
+    let lastMsg: string | null = null;
+    for (let i = 0; i < 15; i++) {
+      const numero = generarNumeroPresupuesto();
+      let { data, error } = await insertPresupuestoRow({
+        numero,
+        cliente: nombreCliente,
+        total: totalPresupuesto,
+        moneda: monedaPresupuesto,
+        status: "pendiente",
+        payload,
+        created_by: user?.id ?? null,
+      });
+      if (error?.code === "23503") {
+        ({ data, error } = await insertPresupuestoRow({
+          numero,
+          cliente: nombreCliente,
+          total: totalPresupuesto,
+          moneda: monedaPresupuesto,
+          status: "pendiente",
+          payload,
+          created_by: null,
+        }));
+      }
+      if (!error && data) {
+        toast.success(`Presupuesto ${data.numero} guardado como pendiente.`);
+        setGuardando(false);
+        if (onPersisted) await Promise.resolve(onPersisted({ id: data.id, numero: data.numero }));
+        return;
+      }
+      lastMsg = error?.message ?? "Error desconocido.";
+      const code = error && "code" in error ? String((error as { code?: string }).code) : "";
+      const dup = code === "23505";
+      if (!dup) {
+        toast.error(lastMsg);
+        setGuardando(false);
+        setGrabarError(lastMsg);
+        return;
+      }
+    }
+    setGuardando(false);
+    setGrabarError(
+      lastMsg ?? "No se pudo obtener un número de presupuesto único.",
+    );
+    toast.error("No se pudo guardar después de varios intentos.");
   };
 
   const handleImprimir = () => {
@@ -1001,43 +1171,6 @@ export function PresupuestoWizard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={!!grabarExito}
-        onOpenChange={(o) => !o && setGrabarExito(null)}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Presupuesto guardado</DialogTitle>
-            <DialogDescription>
-              Registro generado correctamente. Número y versión:{" "}
-              <span className="font-semibold text-foreground">
-                {grabarExito}
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              onClick={() => setGrabarExito(null)}
-            >
-              Cerrar
-            </Button>
-            <Button
-              type="button"
-              className="gap-2"
-              onClick={() => {
-                setGrabarExito(null);
-                setResumenAbierto(true);
-              }}
-            >
-              Ir al resumen / imprimir
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={resumenAbierto} onOpenChange={setResumenAbierto}>
         <DialogContent
           className="gap-0 p-0 sm:max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
@@ -1066,6 +1199,7 @@ export function PresupuestoWizard() {
               materialTonEstimadoPresupuesto={
                 totalesItems.totalTon > 0 ? totalesItems.totalTon : null
               }
+              rubrosImportesBloqueados={["piedra"]}
             />
           </div>
           <DialogFooter className="border-t px-6 py-4 gap-2">
@@ -1093,23 +1227,25 @@ export function PresupuestoWizard() {
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           {wizardStep < 3 ? (
             <div className="text-[11px] sm:text-xs min-w-0 flex-1 tabular-nums space-y-1">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                {lineasResumen.map((ln, idx) => (
-                  <span key={ln.id}>
-                    {idx > 0 ? (
-                      <span className="text-border mx-1.5 hidden sm:inline">|</span>
-                    ) : null}
-                    <span className="text-muted-foreground">
-                      {abbrRubroFooter(ln.id)}
-                    </span>{" "}
-                    <strong>
-                      {ln.moneda === "usd"
-                        ? `US$${formatUsd(parseMoneyInput(ln.monto))}`
-                        : `$${formatArsEntero(parseMoneyInput(ln.monto))}`}
-                    </strong>
-                  </span>
-                ))}
-              </div>
+              {lineasResumen.some((ln) => ln.id !== "piedra" && parseMoneyInput(ln.monto) > 0) ? (
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  {lineasResumen
+                    .filter((ln) => ln.id !== "piedra" && parseMoneyInput(ln.monto) > 0)
+                    .map((ln, idx) => (
+                      <span key={ln.id}>
+                        {idx > 0 ? (
+                          <span className="text-border mx-1.5 hidden sm:inline">|</span>
+                        ) : null}
+                        <span className="text-muted-foreground">{abbrRubroFooter(ln.id)}</span>{" "}
+                        <strong>
+                          {ln.moneda === "usd"
+                            ? `US$${formatUsd(parseMoneyInput(ln.monto))}`
+                            : `$${formatArsEntero(parseMoneyInput(ln.monto))}`}
+                        </strong>
+                      </span>
+                    ))}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground">
                 <span>
                   Ítems{" "}
@@ -1256,7 +1392,8 @@ export function PresupuestoWizard() {
                   type="button"
                   size="sm"
                   className="gap-1 bg-green-700 text-white hover:bg-green-800"
-                  onClick={handleGrabar}
+                  disabled={guardando}
+                  onClick={() => void handleGrabar()}
                 >
                   <Save className="h-4 w-4" />
                   Guardar

@@ -28,11 +28,17 @@ import { MODELOS_BACHA } from "./types";
 export function SectionPresupuesto({
   title,
   borderAccentClass,
+  className,
+  contentClassName,
   children,
 }: {
   /** Si se omite, no se muestra barra de título (p. ej. wizard con stepper arriba). */
   title?: string;
   borderAccentClass: string;
+  /** Clases extra del contenedor (p. ej. sombra o radio por paso). */
+  className?: string;
+  /** Clases del área de contenido (padding). */
+  contentClassName?: string;
   children: ReactNode;
 }) {
   return (
@@ -40,6 +46,7 @@ export function SectionPresupuesto({
       className={cn(
         "rounded-lg border border-border bg-white overflow-hidden shadow-sm scroll-mt-4",
         borderAccentClass,
+        className,
       )}
     >
       {title ? (
@@ -47,7 +54,7 @@ export function SectionPresupuesto({
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         </div>
       ) : null}
-      <div className="px-5 py-4">{children}</div>
+      <div className={cn("px-5 py-4", contentClassName)}>{children}</div>
     </section>
   );
 }

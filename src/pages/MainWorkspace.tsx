@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfigWarning } from "@/components/ConfigWarning";
 import { Toaster } from "@/components/ui/sonner";
@@ -11,8 +12,24 @@ import { StockProvider } from "@/contexts/StockContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { WorkspaceTab } from "@/types/workspace";
 
+const KNOWN_WS = new Set<WorkspaceTab>([
+  "ventas",
+  "administracion",
+  "produccion",
+  "cantera",
+  "stock",
+]);
+
+function workspaceDesdeSearchParams(ws: string | null): WorkspaceTab {
+  return ws && KNOWN_WS.has(ws as WorkspaceTab) ? (ws as WorkspaceTab) : "ventas";
+}
+
 export function MainWorkspace() {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("ventas");
+  const [searchParams] = useSearchParams();
+  const activeTab = useMemo(
+    () => workspaceDesdeSearchParams(searchParams.get("ws")),
+    [searchParams],
+  );
 
   return (
     <StockProvider>
@@ -20,7 +37,7 @@ export function MainWorkspace() {
         <Toaster richColors position="top-center" />
         {!isSupabaseConfigured && <ConfigWarning />}
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <AppSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          <AppSidebar />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "ventas" && <VistaVentas />}
             {activeTab === "produccion" && <VistaProduccion />}

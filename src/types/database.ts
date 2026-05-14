@@ -12,6 +12,14 @@ export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
 export type InventorySlabEstado = "Disponible" | "Reservada";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
+export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
+export type VentaEstado =
+  | "aprobado_sin_sena"
+  | "senado"
+  | "en_produccion"
+  | "finalizado"
+  | "entregado";
+export type EtapaOtKanban = "medicion" | "corte" | "produccion" | "despacho";
 
 export interface Database {
   public: {
@@ -167,35 +175,44 @@ export interface Database {
         Row: {
           id: string;
           quote_id: string | null;
-          client_id: string;
+          client_id: string | null;
           title: string;
           status: JobStatus;
           scheduled_for: string | null;
           notes: string | null;
           created_at: string;
           updated_at: string;
+          venta_id: string | null;
+          etapa_ot: EtapaOtKanban | string;
+          pausada: boolean;
         };
         Insert: {
           id?: string;
           quote_id?: string | null;
-          client_id: string;
+          client_id?: string | null;
           title: string;
           status?: JobStatus;
           scheduled_for?: string | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
+          venta_id?: string | null;
+          etapa_ot?: EtapaOtKanban | string;
+          pausada?: boolean;
         };
         Update: {
           id?: string;
           quote_id?: string | null;
-          client_id?: string;
+          client_id?: string | null;
           title?: string;
           status?: JobStatus;
           scheduled_for?: string | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
+          venta_id?: string | null;
+          etapa_ot?: EtapaOtKanban | string;
+          pausada?: boolean;
         };
         Relationships: [
           {
@@ -210,6 +227,13 @@ export interface Database {
             columns: ["quote_id"];
             isOneToOne: false;
             referencedRelation: "quotes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "jobs_venta_id_fkey";
+            columns: ["venta_id"];
+            isOneToOne: false;
+            referencedRelation: "ventas";
             referencedColumns: ["id"];
           },
         ];
@@ -591,6 +615,136 @@ export interface Database {
           },
         ];
       };
+      presupuestos: {
+        Row: {
+          id: string;
+          numero: string;
+          cliente: string;
+          total: number;
+          moneda: "ars" | "usd";
+          status: PresupuestoEstado;
+          payload: Json;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          numero: string;
+          cliente?: string;
+          total?: number;
+          moneda: "ars" | "usd";
+          status?: PresupuestoEstado;
+          payload?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          numero?: string;
+          cliente?: string;
+          total?: number;
+          moneda?: "ars" | "usd";
+          status?: PresupuestoEstado;
+          payload?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "presupuestos_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ventas: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+          estado: VentaEstado;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+          estado?: VentaEstado;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+          estado?: VentaEstado;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ventas_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: true;
+            referencedRelation: "presupuestos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ventas_pagos: {
+        Row: {
+          id: string;
+          venta_id: string;
+          monto: string;
+          moneda: "ars" | "usd";
+          fecha: string;
+          metodo: string;
+          nota: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          venta_id: string;
+          monto: string | number;
+          moneda: "ars" | "usd";
+          fecha: string;
+          metodo: string;
+          nota?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          venta_id?: string;
+          monto?: string | number;
+          moneda?: "ars" | "usd";
+          fecha?: string;
+          metodo?: string;
+          nota?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ventas_pagos_venta_id_fkey";
+            columns: ["venta_id"];
+            isOneToOne: false;
+            referencedRelation: "ventas";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ventas_pagos_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stock_scraps: {
         Row: {
           id: string;
@@ -664,6 +818,8 @@ export interface Database {
       profile_role: ProfileRole;
       inventory_slab_estado: InventorySlabEstado;
       material_kind: MaterialKindDb;
+      presupuesto_estado: PresupuestoEstado;
+      venta_estado: VentaEstado;
     };
   };
 }

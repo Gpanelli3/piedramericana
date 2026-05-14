@@ -92,21 +92,22 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
     <SectionPresupuesto borderAccentClass="border-t-4 border-t-violet-500">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm mb-4">
           <div className="rounded-md border border-border/80 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Cliente</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">Cliente</p>
             <p className="font-medium truncate" title={clienteNombre}>{clienteNombre || "—"}</p>
           </div>
           <div className="rounded-md border border-border/80 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Lista / moneda</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">Lista / moneda</p>
             <p className="font-medium truncate">
-              {listaPrecioLabel} · <span className="uppercase">{monedaPresupuesto}</span>
+              {listaPrecioLabel} ·{" "}
+              <span>{monedaPresupuesto === "usd" ? "USD" : "ARS"}</span>
             </p>
           </div>
           <div className="rounded-md border border-border/80 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">Origen</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">Origen</p>
             <p className="font-medium truncate" title={origenLabel}>{origenLabel}</p>
           </div>
           <div className="rounded-md border border-border/80 bg-muted/20 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase text-muted-foreground">OT / líneas</p>
+            <p className="text-[10px] font-semibold text-muted-foreground">OT / líneas</p>
             <p className="font-medium tabular-nums">{ordenesCount} OT · {lineItemsCount} líneas</p>
           </div>
         </div>

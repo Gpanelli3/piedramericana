@@ -5,8 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Button } from "@/components/ui/button";
-import { Save, FileText } from "lucide-react";
 
 export type LineaResumenMoneda = {
   id: string;
@@ -41,6 +39,10 @@ type PresupuestoResumenInteriorProps = {
   materialM2Presupuesto?: number;
   /** Toneladas equivalentes (piedra no mármol con peso cargado). */
   materialTonEstimadoPresupuesto?: number | null;
+  /** Solo lectura: impresión o resumen guardado. */
+  readOnly?: boolean;
+  /** Rubros cuyo importe y moneda vienen del cálculo (no editables aquí). */
+  rubrosImportesBloqueados?: readonly string[];
 };
 
 export function PresupuestoResumenInterior({
@@ -55,6 +57,8 @@ export function PresupuestoResumenInterior({
   totalArsEquivalente,
   materialM2Presupuesto = 0,
   materialTonEstimadoPresupuesto = null,
+  readOnly = false,
+  rubrosImportesBloqueados,
 }: PresupuestoResumenInteriorProps) {
   return (
     <div className="space-y-5">
@@ -67,67 +71,93 @@ export function PresupuestoResumenInterior({
             Activa consejos cortos sobre cómo cargar rubros en distintas monedas.
           </p>
         </div>
-        <Switch
-          id="cot-mixta-dialog"
-          className="shrink-0 mt-0.5"
-          checked={cotizacionMixtaActiva}
-          onCheckedChange={setCotizacionMixtaActiva}
-        />
+        {readOnly ? (
+          <span className="text-sm text-muted-foreground shrink-0">
+            {cotizacionMixtaActiva ? "Activada" : "Desactivada"}
+          </span>
+        ) : (
+          <Switch
+            id="cot-mixta-dialog"
+            className="shrink-0 mt-0.5"
+            checked={cotizacionMixtaActiva}
+            onCheckedChange={setCotizacionMixtaActiva}
+          />
+        )}
       </div>
 
       <div className="space-y-4">
         <p className="text-sm font-semibold text-foreground">Rubros</p>
-        {lineasResumen.map((ln) => (
+        {lineasResumen.map((ln) => {
+          const importeNoEditable =
+            readOnly || Boolean(rubrosImportesBloqueados?.includes(ln.id));
+          return (
           <div
             key={ln.id}
             className="rounded-xl border border-border bg-card px-4 py-4 shadow-sm space-y-3"
           >
             <p className="text-sm font-semibold text-foreground leading-snug">{ln.label}</p>
-            <div className="grid grid-cols-1 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Importe
-                </Label>
-                <Input
-                  className="h-11 text-base font-semibold tabular-nums text-right px-3"
-                  value={ln.monto}
-                  onChange={(e) => setLineaResumen(ln.id, { monto: e.target.value })}
-                  inputMode="decimal"
-                  placeholder={ln.moneda === "usd" ? "850" : "400000"}
-                />
+            {ln.id === "piedra" && !readOnly ? (
+              <p className="text-xs text-muted-foreground leading-snug">
+                Monto igual al subtotal de ítems con descuento (se actualiza al cargar las líneas OT).
+              </p>
+            ) : null}
+            {importeNoEditable ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">Importe</p>
+                  <p className="font-semibold tabular-nums">
+                    {ln.moneda === "usd" ? `USD ${formatUsd(Number(ln.monto) || 0)}` : `$ ${formatArs(Number(ln.monto) || 0)}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">Moneda del rubro</p>
+                  <p className="font-medium">{ln.moneda === "usd" ? "USD" : "ARS"}</p>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Moneda del rubro
-                </Label>
-                <ToggleGroup
-                  type="single"
-                  value={ln.moneda}
-                  onValueChange={(v) => {
-                    if (v === "usd" || v === "ars") setLineaResumen(ln.id, { moneda: v });
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="flex w-full justify-stretch rounded-md"
-                >
-                  <ToggleGroupItem value="usd" className="flex-1 text-xs sm:text-sm">
-                    USD
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="ars" className="flex-1 text-xs sm:text-sm">
-                    ARS
-                  </ToggleGroupItem>
-                </ToggleGroup>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Importe</Label>
+                  <Input
+                    className="h-11 text-base font-semibold tabular-nums text-right px-3"
+                    value={ln.monto}
+                    onChange={(e) => setLineaResumen(ln.id, { monto: e.target.value })}
+                    inputMode="decimal"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">Moneda del rubro</Label>
+                  <ToggleGroup
+                    type="single"
+                    value={ln.moneda}
+                    onValueChange={(v) => {
+                      if (v === "usd" || v === "ars") setLineaResumen(ln.id, { moneda: v });
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="flex w-full justify-stretch rounded-md"
+                  >
+                    <ToggleGroupItem value="usd" className="flex-1 text-xs sm:text-sm">
+                      USD
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="ars" className="flex-1 text-xs sm:text-sm">
+                      ARS
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
               </div>
-            </div>
+            )}
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {cotizacionMixtaActiva && (
         <p className="text-xs text-muted-foreground leading-relaxed rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 dark:border-sky-900/50 dark:bg-sky-950/30">
           Podés tener la <span className="font-semibold text-foreground">piedra / chapa</span> en USD y{" "}
-          <span className="font-semibold text-foreground">mano de obra, perforaciones y fletes</span> en
-          pesos; el total inferior unifica todo con{" "}
+          <span className="font-semibold text-foreground">mano de obra, perforaciones y fletes</span> en pesos; el
+          total inferior unifica todo con{" "}
           <span className="font-semibold">Dólar hoy ({formatUsd(dolarHoy)})</span>.
         </p>
       )}
@@ -136,26 +166,32 @@ export function PresupuestoResumenInterior({
 
       <div className="space-y-2">
         <Label className="text-sm font-semibold">¿Cómo lo ve el cliente?</Label>
-        <ToggleGroup
-          type="single"
-          value={monedaFinal}
-          onValueChange={(v) => {
-            if (v === "pesos" || v === "dolares") setMonedaFinal(v);
-          }}
-          variant="outline"
-          className="flex w-full justify-stretch"
-        >
-          <ToggleGroupItem value="pesos" className="flex-1 text-sm">
-            Total en pesos (ARS)
-          </ToggleGroupItem>
-          <ToggleGroupItem value="dolares" className="flex-1 text-sm">
-            Total en dólares (USD)
-          </ToggleGroupItem>
-        </ToggleGroup>
+        {readOnly ? (
+          <p className="text-sm text-foreground">
+            {monedaFinal === "pesos" ? "Total en pesos (ARS)" : "Total en dólares (USD)"}
+          </p>
+        ) : (
+          <ToggleGroup
+            type="single"
+            value={monedaFinal}
+            onValueChange={(v) => {
+              if (v === "pesos" || v === "dolares") setMonedaFinal(v);
+            }}
+            variant="outline"
+            className="flex w-full justify-stretch"
+          >
+            <ToggleGroupItem value="pesos" className="flex-1 text-sm">
+              Total en pesos (ARS)
+            </ToggleGroupItem>
+            <ToggleGroupItem value="dolares" className="flex-1 text-sm">
+              Total en dólares (USD)
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
       </div>
 
       <div className="rounded-xl border-2 border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 p-5 space-y-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-primary">Total unificado</p>
+        <p className="text-xs font-semibold text-primary">Total unificado</p>
         <p className="text-3xl font-extrabold text-primary tracking-tight break-all leading-none">
           {monedaFinal === "pesos"
             ? `$ ${formatArs(totalArsEquivalente)}`
@@ -192,20 +228,6 @@ export function PresupuestoResumenInterior({
           </p>
         </div>
       ) : null}
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap pt-1">
-        <Button
-          type="button"
-          className="flex-1 min-h-11 bg-primary hover:bg-primary/90 text-primary-foreground text-base font-semibold"
-        >
-          <Save className="h-4 w-4 mr-2 shrink-0" />
-          Guardar presupuesto
-        </Button>
-        <Button type="button" className="flex-1 min-h-11 text-sm font-medium" variant="outline">
-          <FileText className="h-4 w-4 mr-2 shrink-0" />
-          Generar PDF
-        </Button>
-      </div>
     </div>
   );
 }

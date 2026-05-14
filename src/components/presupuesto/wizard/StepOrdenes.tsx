@@ -31,6 +31,12 @@ import {
 } from "./fields";
 import { TIPOS_COLOCACION, type LineaItemOT, type OrdenTrabajoWizard } from "./types";
 
+function FieldHint({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{children}</p>
+  );
+}
+
 type PorOtRes = {
   key: string;
   titulo: string;
@@ -71,104 +77,123 @@ export function StepOrdenes({
   return (
     <div className="space-y-6">
       {catalogoCargando ? (
-        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3">
+        <p className="text-sm text-muted-foreground border-b border-dashed border-border/80 pb-3">
           Cargando materiales y técnicos…
         </p>
       ) : null}
 
-      <SectionPresupuesto borderAccentClass="border-t-4 border-t-sky-500">
-        <div className="space-y-3">
+      <SectionPresupuesto
+        borderAccentClass="border-t-2 border-t-sky-500/90"
+        className="rounded-md border-border bg-muted/30 shadow-sm dark:bg-muted/20"
+        contentClassName="px-4 py-4 sm:px-5"
+      >
+        <div className="space-y-0">
           {totalesItems.faltaPesoNonMarmol ? (
-            <p className="rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="mb-3 rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
               Alguna OT tiene material <span className="font-semibold">no mármol</span> pero sin{" "}
-              <span className="font-semibold">peso (kg/m²)</span> cargado en el maestro (menú lateral →{" "}
+              <span className="font-semibold">peso (kg/m²)</span> en el maestro (menú lateral →{" "}
               <span className="font-semibold">Cantera</span>). El total en toneladas puede quedar incompleto.
             </p>
           ) : null}
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 rounded-lg border border-border/70 bg-card/90 px-3 py-3 shadow-sm backdrop-blur-sm dark:bg-card/75">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-foreground tracking-tight">
+                Órdenes de trabajo
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Cada fila se expande para cargar datos e ítems.
+              </p>
+            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 shrink-0 border-dashed border-border bg-background/80 text-muted-foreground hover:text-foreground"
               onClick={addOrdenTrabajo}
             >
               <Plus className="h-4 w-4 shrink-0" aria-hidden />
               Agregar OT
             </Button>
           </div>
-          {ordenes.map((ot, idx) => {
-            const materialRow = materials.find((m) => m.id === ot.materialId);
-            const materialNombre = materialRow
-              ? `${materialRow.name}${materialRow.unit ? ` (${materialRow.unit})` : ""}`
-              : "Material";
 
-            return (
-              <section
-                key={ot.key}
-                className="min-w-0 rounded-lg border border-border bg-card shadow-sm overflow-hidden border-l-4 border-l-sky-500"
-              >
-                <Collapsible
-                  open={ot.panelExpandido}
-                  onOpenChange={(open) => patchOrden(ot.key, { panelExpandido: open })}
+          <div className="space-y-3">
+            {ordenes.map((ot, idx) => {
+              const materialRow = materials.find((m) => m.id === ot.materialId);
+              const materialNombre = materialRow
+                ? `${materialRow.name}${materialRow.unit ? ` (${materialRow.unit})` : ""}`
+                : "Sin material";
+
+              return (
+                <section
+                  key={ot.key}
+                  className="min-w-0 scroll-mt-2 overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
                 >
-                  <div className="flex items-stretch gap-0 border-b border-border bg-muted/30">
-                    <CollapsibleTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 pr-2 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      >
-                        <span className="inline-flex shrink-0 items-center rounded-md bg-sky-600 px-2 py-1 text-[11px] font-semibold text-white">
-                          OT Nro. {idx + 1}
-                        </span>
-                        <div className="min-w-0 flex flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-                          <span className="truncate text-sm font-semibold text-foreground">
-                            {ot.titulo.trim() || "Sin título"}
-                          </span>
-                          <span className="truncate text-xs text-muted-foreground">{materialNombre}</span>
-                        </div>
-                        <ChevronDown
-                          className={cn(
-                            "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                            ot.panelExpandido && "rotate-180",
-                          )}
-                          aria-hidden
-                        />
-                      </button>
-                    </CollapsibleTrigger>
-                    {ordenes.length > 1 ? (
-                      <div className="flex shrink-0 items-center border-l border-border/80 bg-muted/20 pr-2 pl-1">
-                        <Button
+                  <Collapsible
+                    open={ot.panelExpandido}
+                    onOpenChange={(open) => patchOrden(ot.key, { panelExpandido: open })}
+                  >
+                    <div className="flex min-w-0 items-stretch gap-0 border-b border-border/70 bg-muted/35 pl-3">
+                      <CollapsibleTrigger asChild>
+                        <button
                           type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeOrdenTrabajo(ot.key);
-                          }}
-                          aria-label="Quitar orden de trabajo"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 border-l-2 border-l-sky-500/70 py-2.5 pl-2.5 pr-1 text-left -ml-px hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200",
+                              ot.panelExpandido && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                          <span className="inline-flex shrink-0 items-center rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:text-sky-200">
+                            OT {idx + 1}
+                          </span>
+                          <div className="min-w-0 flex flex-1 flex-col gap-0 sm:flex-row sm:items-baseline sm:gap-x-2 sm:gap-y-0">
+                            <span className="truncate text-sm font-medium text-foreground">
+                              {ot.titulo.trim() || "Sin título"}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">{materialNombre}</span>
+                          </div>
+                        </button>
+                      </CollapsibleTrigger>
+                      {ordenes.length > 1 ? (
+                        <div className="flex shrink-0 items-center pl-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeOrdenTrabajo(ot.key);
+                            }}
+                            aria-label="Quitar orden de trabajo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <CollapsibleContent>
-                      <div className="p-3 sm:p-4 space-y-3">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-end">
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs">Título</Label>
+                      <div className="space-y-4 bg-muted/20 px-3 py-4 sm:px-4 sm:py-5 dark:bg-muted/10">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-md border border-border/55 bg-background/90 p-3 sm:p-4 shadow-sm dark:bg-background/80">
+                          <div className="space-y-1.5 min-w-0">
+                            <Label htmlFor={`${ot.key}-titulo`} className="text-xs font-medium">
+                              Título
+                            </Label>
+                            <FieldHint>Cómo identificás esta obra dentro del presupuesto.</FieldHint>
                             <Input
+                              id={`${ot.key}-titulo`}
                               className="h-9 text-sm"
-                              placeholder="titulo"
+                              placeholder="Ej. Cocina — mesada principal"
                               value={ot.titulo}
                               onChange={(e) => patchOrden(ot.key, { titulo: e.target.value })}
                             />
                           </div>
-                          <div className="space-y-1 min-w-0">
-                            <Label className="text-xs">Material (chapa)</Label>
+                          <div className="space-y-1.5 min-w-0">
+                            <Label className="text-xs font-medium">Material (chapa)</Label>
+                            <FieldHint>Define precio base y conversiones para toda la OT.</FieldHint>
                             <PickMaterial
                               materials={materials}
                               value={ot.materialId}
@@ -178,181 +203,200 @@ export function StepOrdenes({
                           </div>
                         </div>
 
-                        <Collapsible>
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 text-muted-foreground px-0 text-xs"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                              Más datos de la OT (bacha, fechas, técnico, colocación)
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-dashed border-border mt-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Bacha</Label>
-                                <PickBacha
-                                  value={ot.bachaId}
-                                  onChange={(id) => patchOrden(ot.key, { bachaId: id })}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha OT</Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fecha}
-                                  onChange={(e) => patchOrden(ot.key, { fecha: e.target.value })}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Técnico a medir</Label>
-                                <PickTecnico
-                                  tecnicos={tecnicos}
-                                  value={ot.tecnicoId}
-                                  onChange={(id) => patchOrden(ot.key, { tecnicoId: id })}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha medición</Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fechaMedicion}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, { fechaMedicion: e.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha entrega estimada</Label>
-                                <Input
-                                  type="date"
-                                  className="h-9 text-sm"
-                                  value={ot.fechaEntrega}
-                                  onChange={(e) =>
-                                    patchOrden(ot.key, { fechaEntrega: e.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 sm:col-span-2">
-                                <Label className="text-xs">Colocación en obra (referencia)</Label>
-                                <RadioGroup
-                                  value={ot.tipoColocacion}
-                                  onValueChange={(v) =>
-                                    patchOrden(ot.key, {
-                                      tipoColocacion:
-                                        v as (typeof TIPOS_COLOCACION)[number]["value"],
-                                    })
-                                  }
-                                  className="flex flex-wrap gap-4"
-                                >
-                                  {TIPOS_COLOCACION.map((opt) => (
-                                    <div key={opt.value} className="flex items-center gap-2">
-                                      <RadioGroupItem value={opt.value} id={`${ot.key}-${opt.value}-step`} />
-                                      <Label htmlFor={`${ot.key}-${opt.value}-step`} className="text-sm font-normal">
-                                        {opt.label}
-                                      </Label>
-                                    </div>
-                                  ))}
-                                </RadioGroup>
-                              </div>
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-
-                        <Separator className="my-1" />
-
-                        <div className="rounded-xl border border-border/90 bg-card shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
-                          <div className="overflow-x-auto bg-muted/10">
-                            <Table className="text-xs min-w-[58rem]">
-                              <TableHeader>
-                                <TableRow className="border-b border-border/80 bg-muted/50 hover:bg-muted/50 [&_th]:h-10 [&_th]:py-2 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-foreground [&_th]:tracking-wide first:[&_th]:pl-3 last:[&_th]:pr-3">
-                                  <TableHead className="whitespace-nowrap">Cód.</TableHead>
-                                  <TableHead className="min-w-[8.5rem]">Descripción</TableHead>
-                                  <TableHead>Unidad</TableHead>
-                                  <TableHead>Cant.</TableHead>
-                                  <TableHead>P. unit.</TableHead>
-                                  <TableHead className="text-right">Total $</TableHead>
-                                  <TableHead
-                                    className="whitespace-nowrap"
-                                    title="m² por dimensiones: centímetros. Metro lineal: metros."
+                        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-3 sm:px-4 dark:bg-muted/25">
+                          <Collapsible>
+                            <CollapsibleTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 text-left text-xs font-medium text-foreground py-0.5 [&[data-state=open]>svg]:rotate-180"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200" />
+                                <span>Más datos</span>
+                                <span className="font-normal text-muted-foreground">
+                                  · bacha, fechas, técnico, colocación
+                                </span>
+                              </button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 pt-4 mt-3 border-t border-border/40">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-medium">Bacha</Label>
+                                  <FieldHint>Opcional. Modelo de referencia para la OT.</FieldHint>
+                                  <PickBacha
+                                    value={ot.bachaId}
+                                    onChange={(id) => patchOrden(ot.key, { bachaId: id })}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-medium">Fecha OT</Label>
+                                  <FieldHint>Fecha de la orden si aplica.</FieldHint>
+                                  <Input
+                                    type="date"
+                                    className="h-9 text-sm"
+                                    value={ot.fecha}
+                                    onChange={(e) => patchOrden(ot.key, { fecha: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-medium">Técnico a medir</Label>
+                                  <FieldHint>Quién releva en obra.</FieldHint>
+                                  <PickTecnico
+                                    tecnicos={tecnicos}
+                                    value={ot.tecnicoId}
+                                    onChange={(id) => patchOrden(ot.key, { tecnicoId: id })}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-medium">Fecha medición</Label>
+                                  <FieldHint>Planificado o realizado.</FieldHint>
+                                  <Input
+                                    type="date"
+                                    className="h-9 text-sm"
+                                    value={ot.fechaMedicion}
+                                    onChange={(e) =>
+                                      patchOrden(ot.key, { fechaMedicion: e.target.value })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs font-medium">Fecha entrega estimada</Label>
+                                  <FieldHint>Referencia para logística.</FieldHint>
+                                  <Input
+                                    type="date"
+                                    className="h-9 text-sm"
+                                    value={ot.fechaEntrega}
+                                    onChange={(e) =>
+                                      patchOrden(ot.key, { fechaEntrega: e.target.value })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-2 sm:col-span-2">
+                                  <Label className="text-xs font-medium">Colocación en obra</Label>
+                                  <FieldHint>Referencia interna; el detalle puede ir en totales si MEC único.</FieldHint>
+                                  <RadioGroup
+                                    value={ot.tipoColocacion}
+                                    onValueChange={(v) =>
+                                      patchOrden(ot.key, {
+                                        tipoColocacion:
+                                          v as (typeof TIPOS_COLOCACION)[number]["value"],
+                                      })
+                                    }
+                                    className="flex flex-wrap gap-4"
                                   >
-                                    Alto
-                                  </TableHead>
-                                  <TableHead
-                                    className="whitespace-nowrap"
-                                    title="Solo m² por dimensiones (centímetros)."
-                                  >
-                                    Ancho
-                                  </TableHead>
-                                  <TableHead title="Desperdicio: % extra de material. Vacío = 0%.">
-                                    Desp.%
-                                  </TableHead>
-                                  <TableHead className="text-right" title="Superficie de material calculada.">
-                                    m²
-                                  </TableHead>
-                                  <TableHead className="w-12 p-1.5 text-center">
-                                    <span className="sr-only">Quitar</span>
-                                  </TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {ot.items.length === 0 ? (
-                                  <TableRow className="hover:bg-transparent">
-                                    <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
-                                      <span className="mb-1 block font-medium text-foreground/85">
-                                        Todavía no hay ítems en esta OT
-                                      </span>
-                                      Tocá{" "}
-                                      <button
-                                        type="button"
-                                        className="font-medium text-primary underline-offset-2 hover:underline"
-                                        onClick={() => addItem(ot.key)}
-                                      >
-                                        agregar ítem
-                                      </button>{" "}
-                                      abajo para cargar la primera línea.
-                                    </TableCell>
-                                  </TableRow>
-                                ) : (
-                                  ot.items.map((line) => renderLineaCells(ot, line))
-                                )}
-                              </TableBody>
-                            </Table>
+                                    {TIPOS_COLOCACION.map((opt) => (
+                                      <div key={opt.value} className="flex items-center gap-2">
+                                        <RadioGroupItem value={opt.value} id={`${ot.key}-${opt.value}-step`} />
+                                        <Label htmlFor={`${ot.key}-${opt.value}-step`} className="text-sm font-normal">
+                                          {opt.label}
+                                        </Label>
+                                      </div>
+                                    ))}
+                                  </RadioGroup>
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        </div>
+
+                        <Separator className="bg-border/60" />
+
+                        <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">
+                          <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
+                            <p className="text-xs font-medium text-foreground">Ítems de la OT</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Deslizá en pantallas chicas para ver todas las columnas.
+                            </p>
                           </div>
-                          <div className="flex justify-center border-t border-border/60 bg-muted/15 px-3 py-3">
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-9 gap-2 rounded-lg px-4 shadow-sm bg-emerald-600 text-white hover:bg-emerald-700"
-                              onClick={() => addItem(ot.key)}
-                            >
-                              <Plus className="h-4 w-4" />
-                              Agregar ítem
-                            </Button>
+                          <div className="overflow-hidden rounded-md border border-border/60 bg-card">
+                            <div className="overflow-x-auto bg-muted/20">
+                              <Table className="text-xs min-w-[58rem]">
+                                <TableHeader>
+                                  <TableRow className="border-b border-border/60 bg-muted/45 hover:bg-muted/45 [&_th]:h-8 [&_th]:py-1.5 [&_th]:text-[10px] [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:uppercase [&_th]:tracking-wide first:[&_th]:pl-3 last:[&_th]:pr-3">
+                                    <TableHead className="whitespace-nowrap">Cód.</TableHead>
+                                    <TableHead className="min-w-[8.5rem]">Descripción</TableHead>
+                                    <TableHead>Unidad</TableHead>
+                                    <TableHead>Cant.</TableHead>
+                                    <TableHead>P. unit.</TableHead>
+                                    <TableHead className="text-right">Total $</TableHead>
+                                    <TableHead
+                                      className="whitespace-nowrap"
+                                      title="m² por dimensiones: centímetros. Metro lineal: metros."
+                                    >
+                                      Alto
+                                    </TableHead>
+                                    <TableHead
+                                      className="whitespace-nowrap"
+                                      title="Solo m² por dimensiones (centímetros)."
+                                    >
+                                      Ancho
+                                    </TableHead>
+                                    <TableHead title="Desperdicio: % extra de material. Vacío = 0%.">
+                                      Desp.%
+                                    </TableHead>
+                                    <TableHead className="text-right" title="Superficie de material calculada.">
+                                      m²
+                                    </TableHead>
+                                    <TableHead className="w-12 p-1.5 text-center">
+                                      <span className="sr-only">Quitar</span>
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {ot.items.length === 0 ? (
+                                    <TableRow className="hover:bg-transparent bg-muted/10">
+                                      <TableCell colSpan={11} className="py-6 px-4 text-center">
+                                        <p className="text-sm text-foreground/90">Todavía no hay ítems</p>
+                                        <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
+                                          Usá <span className="font-medium text-foreground/80">Agregar ítem</span> abajo
+                                          para cargar la primera línea de esta OT.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+                                          onClick={() => addItem(ot.key)}
+                                        >
+                                          Agregar ítem ahora
+                                        </button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : (
+                                    ot.items.map((line) => renderLineaCells(ot, line))
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                            <div className="flex justify-center border-t border-border/40 px-3 py-2 bg-muted/[0.06]">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1.5 border-dashed text-muted-foreground hover:text-foreground"
+                                onClick={() => addItem(ot.key)}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Agregar ítem
+                              </Button>
+                            </div>
                           </div>
                         </div>
 
-                        <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+                        <p className="text-[11px] text-muted-foreground rounded-md border border-border/45 bg-muted/20 px-3 py-2.5 dark:bg-muted/15">
                           Con MEC <span className="font-medium">único para todo el presupuesto</span>, medición /
                           entrega / colocación se cargan al final, en{" "}
                           <span className="font-medium">Totales y descuento</span>.
                         </p>
 
-                        <div className="flex flex-wrap gap-6 text-xs border-t border-border pt-3 justify-between sm:justify-start">
+                        <div className="flex flex-wrap gap-6 text-xs rounded-md border border-border/55 bg-muted/25 px-3 py-2.5 dark:bg-muted/20 justify-between sm:justify-start">
                           <div>
-                            <p className="text-[10px] text-muted-foreground">Cantidad</p>
-                            <p className="font-semibold tabular-nums">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Líneas</p>
+                            <p className="font-medium tabular-nums text-foreground">
                               {totalesItems.porOt.find((p) => p.key === ot.key)?.cantLineas ?? 0}
                             </p>
                           </div>
                           <div>
-                            <p className="text-[10px] text-muted-foreground">Subtotal ($)</p>
-                            <p className="font-semibold tabular-nums">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Subtotal</p>
+                            <p className="font-medium tabular-nums text-foreground">
+                              $
                               {totalesItems.porOt
                                 .find((p) => p.key === ot.key)
                                 ?.subtotal.toLocaleString("es-AR", {
@@ -361,8 +405,8 @@ export function StepOrdenes({
                             </p>
                           </div>
                           <div className="sm:ml-auto">
-                            <p className="text-[10px] text-muted-foreground">Total m²</p>
-                            <p className="font-semibold tabular-nums text-primary">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">m²</p>
+                            <p className="font-medium tabular-nums text-primary">
                               {totalesItems.porOt
                                 .find((p) => p.key === ot.key)
                                 ?.m2.toLocaleString("es-AR", {
@@ -372,8 +416,8 @@ export function StepOrdenes({
                           </div>
                           {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0) > 0 ? (
                             <div>
-                              <p className="text-[10px] text-muted-foreground">Ton piedra (~)</p>
-                              <p className="font-semibold tabular-nums text-sky-800 dark:text-sky-100">
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ton (~)</p>
+                              <p className="font-medium tabular-nums text-sky-800 dark:text-sky-200">
                                 {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0).toLocaleString("es-AR", {
                                   minimumFractionDigits: 3,
                                   maximumFractionDigits: 3,
@@ -385,9 +429,10 @@ export function StepOrdenes({
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
-              </section>
-            );
-          })}
+                </section>
+              );
+            })}
+          </div>
         </div>
       </SectionPresupuesto>
     </div>

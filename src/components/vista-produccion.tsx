@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +35,14 @@ import {
 import { cn } from "@/lib/utils";
 import { useStock } from "@/contexts/StockContext";
 import { toast } from "sonner";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  loadOtKanbanView,
+  persistJobOtProduccion,
+  textoDesdeOtPayloadClienteMaterial,
+  type OtTarjeta,
+} from "@/lib/ventas-api";
+import type { JobStatus } from "@/types/database";
 
 const ETAPAS_ORDEN = ["medicion", "corte", "produccion", "despacho"] as const;
 type EtapaId = (typeof ETAPAS_ORDEN)[number];
@@ -48,62 +56,31 @@ interface OT {
   vendedor: string;
   columna: EtapaId;
   prioridad: "alta" | "normal" | "baja";
-  /** Pausada por rotura / reproceso — no avanza ni arrastra hasta reanudar */
   pausada?: boolean;
+  status: JobStatus;
 }
 
-const OT_INICIAL: OT[] = [
-  {
-    id: "1",
-    numero: "OT #1042",
-    cliente: "Familia Pérez",
-    material: "Granito Negro Brasil",
-    m2: "3.50 m²",
-    vendedor: "tgorosito",
-    columna: "corte",
-    prioridad: "alta",
-  },
-  {
-    id: "2",
-    numero: "OT #1038",
-    cliente: "Arq. Cecilia Ortega",
-    material: "Silestone Blanco Norte",
-    m2: "2.10 m²",
-    vendedor: "acottini",
-    columna: "medicion",
+function coalesceEtapa(raw: unknown): EtapaId {
+  return ETAPAS_ORDEN.includes(raw as EtapaId) ? (raw as EtapaId) : "medicion";
+}
+
+function tarjetaToOtUi(t: OtTarjeta): OT {
+  const { materialLabel, m2Display, vendedorLabel } = textoDesdeOtPayloadClienteMaterial(t.presupuestoFuente);
+  return {
+    id: t.job.id,
+    numero:
+      t.job.title?.trim()
+        || (t.presupuestoFuente ? `OT · ${t.presupuestoFuente.numero}` : "OT"),
+    cliente: t.presupuestoFuente?.cliente?.trim() || "—",
+    material: materialLabel,
+    m2: m2Display,
+    vendedor: vendedorLabel,
+    columna: coalesceEtapa(t.job.etapa_ot),
     prioridad: "normal",
-  },
-  {
-    id: "3",
-    numero: "OT #1035",
-    cliente: "Victoria Torres",
-    material: "Dekton TRILIUM 12mm",
-    m2: "4.20 m²",
-    vendedor: "rcampillo",
-    columna: "produccion",
-    prioridad: "normal",
-  },
-  {
-    id: "4",
-    numero: "OT #1031",
-    cliente: "Daniel Natale",
-    material: "Cuarcita Black Taurus",
-    m2: "1.80 m²",
-    vendedor: "operelna",
-    columna: "produccion",
-    prioridad: "baja",
-  },
-  {
-    id: "5",
-    numero: "OT #1028",
-    cliente: "Yanina Salvini",
-    material: "Granito Negro Boreal",
-    m2: "2.90 m²",
-    vendedor: "tgorosito",
-    columna: "despacho",
-    prioridad: "alta",
-  },
-];
+    pausada: Boolean(t.job.pausada),
+    status: (t.job.status as JobStatus) ?? "pending",
+  };
+}
 
 const columnas: { id: EtapaId; label: string; color: string }[] = [
   { id: "medicion", label: "Medición", color: "border-t-blue-400" },
@@ -122,9 +99,25 @@ function etapaIndex(e: EtapaId): number {
   return ETAPAS_ORDEN.indexOf(e);
 }
 
+function jobStatusEtiqueta(s: JobStatus): string {
+  switch (s) {
+    case "pending":
+      return "En espera";
+    case "in_progress":
+      return "En curso";
+    case "done":
+      return "Finalizada";
+    case "cancelled":
+      return "Cancelada";
+    default:
+      return s;
+  }
+}
+
 export function VistaProduccion() {
   const { tryDeducirChapaPorRotura } = useStock();
-  const [ots, setOts] = useState<OT[]>(OT_INICIAL);
+  const [ots, setOts] = useState<OT[]>([]);
+  const [boardLoading, setBoardLoading] = useState(false);
   const [modalRoturaOpen, setModalRoturaOpen] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [selectedOT, setSelectedOT] = useState<OT | null>(null);
@@ -139,47 +132,107 @@ export function VistaProduccion() {
     setSelectedOT((prev) => (prev ? lista.find((o) => o.id === prev.id) ?? null : null));
   }, []);
 
+  const refreshBoard = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setOts([]);
+      return;
+    }
+    setBoardLoading(true);
+    const { data, error } = await loadOtKanbanView();
+    setBoardLoading(false);
+    if (error) {
+      toast.error(error.message);
+      setOts([]);
+      return;
+    }
+    const mapped = (data ?? []).map(tarjetaToOtUi);
+    setOts(mapped);
+    refrescarSeleccion(mapped);
+  }, [refrescarSeleccion]);
+
+  useEffect(() => {
+    void refreshBoard();
+  }, [refreshBoard]);
+
   const moverAEtapa = useCallback(
-    (otId: string, nueva: EtapaId) => {
+    async (otId: string, nueva: EtapaId) => {
+      const ot = ots.find((o) => o.id === otId);
+      if (!ot || ot.pausada || ot.columna === nueva || ot.status === "done") return;
+
+      let nextStatus: JobStatus = ot.status;
+      if (ot.status === "pending" && nueva !== "medicion") nextStatus = "in_progress";
+
       setOts((prev) => {
         const next = prev.map((o) => {
           if (o.id !== otId) return o;
-          if (o.pausada) return o;
-          if (o.columna === nueva) return o;
-          return { ...o, columna: nueva };
+          return { ...o, columna: nueva, status: nextStatus };
         });
         refrescarSeleccion(next);
         return next;
       });
+
+      const res = await persistJobOtProduccion({
+        jobId: otId,
+        patch: { etapa_ot: nueva, status: nextStatus },
+      });
+
+      if (res.error) {
+        toast.error(res.error.message);
+        await refreshBoard();
+        return;
+      }
+      await refreshBoard();
     },
-    [refrescarSeleccion]
+    [ots, refrescarSeleccion, refreshBoard],
   );
 
   const avanzarEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
-      moverAEtapa(ot.id, ETAPAS_ORDEN[i + 1]!);
+      if (ot.pausada || ot.status === "done" || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
+      void moverAEtapa(ot.id, ETAPAS_ORDEN[i + 1]!);
     },
-    [moverAEtapa]
+    [moverAEtapa],
   );
 
   const retrocederEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || i <= 0) return;
-      moverAEtapa(ot.id, ETAPAS_ORDEN[i - 1]!);
+      if (ot.pausada || ot.status === "done" || i <= 0) return;
+      void moverAEtapa(ot.id, ETAPAS_ORDEN[i - 1]!);
     },
-    [moverAEtapa]
+    [moverAEtapa],
   );
 
-  const reanudarOT = useCallback((otId: string) => {
-    setOts((prev) => {
-      const next = prev.map((o) => (o.id === otId ? { ...o, pausada: false } : o));
-      refrescarSeleccion(next);
-      return next;
-    });
-  }, [refrescarSeleccion]);
+  const reanudarOT = useCallback(
+    async (otId: string) => {
+      const r = await persistJobOtProduccion({ jobId: otId, patch: { pausada: false } });
+      if (r.error) {
+        toast.error(r.error.message);
+        return;
+      }
+      toast.success("OT reanudada.");
+      await refreshBoard();
+    },
+    [refreshBoard],
+  );
+
+  const finalizarOtEnDb = useCallback(
+    async (otId: string) => {
+      const r = await persistJobOtProduccion({
+        jobId: otId,
+        patch: { status: "done" },
+      });
+      if (r.error) {
+        toast.error(r.error.message);
+        return;
+      }
+      toast.success("Obra marcada como finalizada.");
+      await refreshBoard();
+      setDetalleOpen(false);
+    },
+    [refreshBoard],
+  );
 
   const handleRotura = (ot: OT) => {
     setSelectedOT(ot);
@@ -196,13 +249,15 @@ export function VistaProduccion() {
         "No había chapa disponible de ese material en stock; la OT queda pausada igual."
       );
     }
-    setOts((prev) => {
-      const next = prev.map((o) =>
-        o.id === selectedOT.id ? { ...o, pausada: true } : o
-      );
-      refrescarSeleccion(next);
-      return next;
+    const r = await persistJobOtProduccion({
+      jobId: selectedOT.id,
+      patch: { pausada: true },
     });
+    if (r.error) {
+      toast.error(r.error.message);
+    } else {
+      await refreshBoard();
+    }
     setModalRoturaOpen(false);
     setMotivo("");
     setMaterialDescuento("");
@@ -213,7 +268,18 @@ export function VistaProduccion() {
     setDetalleOpen(true);
   };
 
-  const otDetalle = selectedOT ? ots.find((o) => o.id === selectedOT.id) ?? selectedOT : null;
+  const otDetalle = selectedOT ? (ots.find((o) => o.id === selectedOT.id) ?? selectedOT) : null;
+
+  const hoyFmt = useMemo(
+    () =>
+      new Date().toLocaleDateString("es-AR", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+    [],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -231,7 +297,7 @@ export function VistaProduccion() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 shrink-0" />
-              <span>Hoy, 06 May 2026</span>
+              <span className="capitalize">{hoyFmt}</span>
             </div>
             <Badge variant="outline" className="text-sm font-medium">
               {otsActivas} OTs en tablero
@@ -241,7 +307,17 @@ export function VistaProduccion() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6">
-        <div className="flex min-w-max gap-4">
+        {boardLoading ? (
+          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+            Cargando órdenes de trabajo…
+          </div>
+        ) : ots.length === 0 ? (
+          <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm text-muted-foreground leading-relaxed">
+            No hay órdenes activas en taller. Se generan cuando registrás la primera seña sobre un presupuesto
+            aprobado en Ventas.
+          </div>
+        ) : (
+          <div className="flex min-w-max gap-4">
           {columnas.map((col) => {
             const lista = ots.filter((o) => o.columna === col.id);
             return (
@@ -275,7 +351,7 @@ export function VistaProduccion() {
                     e.preventDefault();
                     setDropTarget(null);
                     const id = e.dataTransfer.getData("application/x-ot-id");
-                    if (id) moverAEtapa(id, col.id);
+                    if (id) void moverAEtapa(id, col.id);
                   }}
                 >
                   {lista.map((ot) => (
@@ -303,7 +379,8 @@ export function VistaProduccion() {
               </div>
             );
           })}
-        </div>
+          </div>
+        )}
       </main>
 
       <Dialog open={detalleOpen} onOpenChange={setDetalleOpen}>
@@ -331,7 +408,7 @@ export function VistaProduccion() {
                       variant="outline"
                       size="sm"
                       className="mt-2 h-8 gap-1 border-amber-400 bg-white text-xs dark:bg-background"
-                      onClick={() => reanudarOT(otDetalle.id)}
+                      onClick={() => void reanudarOT(otDetalle.id)}
                     >
                       <PlayCircle className="h-3.5 w-3.5" />
                       Reanudar obra
@@ -347,6 +424,10 @@ export function VistaProduccion() {
                   <span>{otDetalle.m2}</span>
                   <span>·</span>
                   <span>{otDetalle.vendedor}</span>
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Estado trabajo:{" "}
+                  <span className="font-medium text-foreground">{jobStatusEtiqueta(otDetalle.status)}</span>
                 </p>
               </div>
 
@@ -377,7 +458,9 @@ export function VistaProduccion() {
                   variant="outline"
                   className="flex-1 gap-1"
                   disabled={
-                    otDetalle.pausada || etapaIndex(otDetalle.columna) <= 0
+                    otDetalle.pausada ||
+                    otDetalle.status === "done" ||
+                    etapaIndex(otDetalle.columna) <= 0
                   }
                   onClick={() => retrocederEtapa(otDetalle)}
                 >
@@ -389,6 +472,7 @@ export function VistaProduccion() {
                   className="flex-1 gap-1"
                   disabled={
                     otDetalle.pausada ||
+                    otDetalle.status === "done" ||
                     etapaIndex(otDetalle.columna) >= ETAPAS_ORDEN.length - 1
                   }
                   onClick={() => avanzarEtapa(otDetalle)}
@@ -402,8 +486,8 @@ export function VistaProduccion() {
                 <Label className="text-xs">Mover directamente a</Label>
                 <Select
                   value={otDetalle.columna}
-                  disabled={otDetalle.pausada}
-                  onValueChange={(v) => moverAEtapa(otDetalle.id, v as EtapaId)}
+                  disabled={otDetalle.pausada || otDetalle.status === "done"}
+                  onValueChange={(v) => void moverAEtapa(otDetalle.id, v as EtapaId)}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -417,6 +501,25 @@ export function VistaProduccion() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {otDetalle.columna === "despacho" &&
+              otDetalle.status !== "done" &&
+              !otDetalle.pausada ?
+                <Button
+                  type="button"
+                  className="w-full"
+                  variant="secondary"
+                  onClick={() => void finalizarOtEnDb(otDetalle.id)}
+                >
+                  Finalizar obra y archivar OT
+                </Button>
+              : null}
+
+              {otDetalle.status === "done" ?
+                <p className="text-xs text-muted-foreground">
+                  Esta OT ya está finalizada en sistema y fue retirada del tablero.
+                </p>
+              : null}
             </div>
           )}
 
@@ -534,7 +637,7 @@ function OTCard({
   showRotura: boolean;
 }) {
   const prioridad = prioridadConfig[ot.prioridad];
-  const puedeArrastrar = !ot.pausada;
+  const puedeArrastrar = !ot.pausada && ot.status !== "done";
 
   return (
     <div
