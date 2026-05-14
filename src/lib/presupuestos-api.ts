@@ -7,7 +7,7 @@ import {
 } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
 
-export type PresupuestoRowList = {
+export type PresupuestoRowLista = {
   id: string;
   numero: string;
   cliente: string;
@@ -16,7 +16,21 @@ export type PresupuestoRowList = {
   status: PresupuestoEstado;
   created_at: string;
   updated_at: string;
-} & VentaResumenMerged;
+};
+
+export async function listPresupuestosLista(): Promise<{
+  data: PresupuestoRowLista[] | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("presupuestos")
+    .select("id, numero, cliente, total, moneda, status, created_at, updated_at")
+    .order("created_at", { ascending: false });
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: data as PresupuestoRowLista[], error: null };
+}
+
+export type PresupuestoRowList = PresupuestoRowLista & VentaResumenMerged;
 
 export async function listPresupuestosResumen(): Promise<{
   data: PresupuestoRowList[] | null;

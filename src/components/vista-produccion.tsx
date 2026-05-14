@@ -67,18 +67,18 @@ function coalesceEtapa(raw: unknown): EtapaId {
 function tarjetaToOtUi(t: OtTarjeta): OT {
   const { materialLabel, m2Display, vendedorLabel } = textoDesdeOtPayloadClienteMaterial(t.presupuestoFuente);
   return {
-    id: t.job.id,
+    id: t.orden.id,
     numero:
-      t.job.title?.trim()
+      t.orden.titulo?.trim()
         || (t.presupuestoFuente ? `OT · ${t.presupuestoFuente.numero}` : "OT"),
     cliente: t.presupuestoFuente?.cliente?.trim() || "—",
     material: materialLabel,
     m2: m2Display,
     vendedor: vendedorLabel,
-    columna: coalesceEtapa(t.job.etapa_ot),
+    columna: coalesceEtapa(t.orden.etapa),
     prioridad: "normal",
-    pausada: Boolean(t.job.pausada),
-    status: (t.job.status as JobStatus) ?? "pending",
+    pausada: Boolean(t.orden.pausada),
+    status: (t.orden.estado as JobStatus) ?? "pending",
   };
 }
 
@@ -172,8 +172,8 @@ export function VistaProduccion() {
       });
 
       const res = await persistJobOtProduccion({
-        jobId: otId,
-        patch: { etapa_ot: nueva, status: nextStatus },
+        ordenTrabajoId: otId,
+        patch: { etapa: nueva, status: nextStatus },
       });
 
       if (res.error) {
@@ -206,7 +206,7 @@ export function VistaProduccion() {
 
   const reanudarOT = useCallback(
     async (otId: string) => {
-      const r = await persistJobOtProduccion({ jobId: otId, patch: { pausada: false } });
+      const r = await persistJobOtProduccion({ ordenTrabajoId: otId, patch: { pausada: false } });
       if (r.error) {
         toast.error(r.error.message);
         return;
@@ -220,7 +220,7 @@ export function VistaProduccion() {
   const finalizarOtEnDb = useCallback(
     async (otId: string) => {
       const r = await persistJobOtProduccion({
-        jobId: otId,
+        ordenTrabajoId: otId,
         patch: { status: "done" },
       });
       if (r.error) {
@@ -250,7 +250,7 @@ export function VistaProduccion() {
       );
     }
     const r = await persistJobOtProduccion({
-      jobId: selectedOT.id,
+      ordenTrabajoId: selectedOT.id,
       patch: { pausada: true },
     });
     if (r.error) {

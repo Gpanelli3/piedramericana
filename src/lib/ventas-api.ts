@@ -9,7 +9,7 @@ import type {
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 import { isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 
-type JobRow = Database["public"]["Tables"]["jobs"]["Row"];
+type OrdenTrabajoRow = Database["public"]["Tables"]["ordenes_trabajo"]["Row"];
 type VentaRow = Database["public"]["Tables"]["ventas"]["Row"];
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -38,13 +38,67 @@ export async function getVentaPorPresupuesto(
   };
 }
 
+/**
+ * Aprueba el presupuesto (actualiza total), crea venta base y, si hay seña &gt; 0, registra el primer pago
+ * (misma lógica que primer cobro en Ventas).
+ */
+export async function aprobarPresupuestoConVentaInicial(opts: {
+  presupuestoId: string;
+  totalAprobado: number;
+  montoSenia: number;
+  fecha: string;
+  metodo: string;
+  nota?: string;
+  created_by?: string | null;
+}): Promise<{ error: Error | null }> {
+  const presRes = await supabase.from("presupuestos").select("*").eq("id", opts.presupuestoId).maybeSingle();
+  if (presRes.error) return { error: new Error(presRes.error.message) };
+  const pres = presRes.data as PresupuestoRow | null;
+  if (!pres) return { error: new Error("Presupuesto no encontrado.") };
+  if (pres.status !== "pendiente") {
+    return { error: new Error("Solo se pueden aprobar presupuestos en estado pendiente.") };
+  }
+
+  if (!Number.isFinite(opts.totalAprobado) || opts.totalAprobado < 0) {
+    return { error: new Error("Total inválido.") };
+  }
+  if (!Number.isFinite(opts.montoSenia) || opts.montoSenia < 0) {
+    return { error: new Error("Monto de seña inválido.") };
+  }
+  if (opts.montoSenia > opts.totalAprobado) {
+    return { error: new Error("La seña no puede superar el total aprobado.") };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: uErr } = await supabase
+    .from("presupuestos")
+    .update({ status: "aprobado", total: opts.totalAprobado, updated_at: nowIso })
+    .eq("id", opts.presupuestoId);
+  if (uErr) return { error: new Error(uErr.message) };
+
+  const ev = await ensureVentaForPresupuestoAprobado(opts.presupuestoId);
+  if (ev.error) return ev;
+
+  if (opts.montoSenia <= 0) return { error: null };
+
+  return registrarPagoSena({
+    presupuestoId: opts.presupuestoId,
+    monto: opts.montoSenia,
+    moneda: pres.moneda,
+    fecha: opts.fecha,
+    metodo: opts.metodo,
+    nota: opts.nota,
+    created_by: opts.created_by ?? null,
+  });
+}
+
 export type VentaResumenMerged = {
   venta_id: string | null;
   venta_estado: VentaEstado | null;
   total_pagado_misma_moneda: number | null;
   saldo_misma_moneda: number | null;
   pct_sena_sobre_presupuesto: number | null;
-  job_id: string | null;
+  orden_trabajo_id: string | null;
 };
 
 export async function mergeVentasResumenIntoPresupuestos<
@@ -78,18 +132,27 @@ export async function mergeVentasResumenIntoPresupuestos<
       total_pagado_misma_moneda: null,
       saldo_misma_moneda: null,
       pct_sena_sobre_presupuesto: null,
-      job_id: null,
+      orden_trabajo_id: null,
     }));
   }
 
-  const [{ data: pagos }, { data: jobs }] = await Promise.all([
-    supabase.from("ventas_pagos").select("venta_id,monto,moneda").in("venta_id", ventaIds),
-    supabase.from("jobs").select("id,venta_id").not("venta_id", "is", null),
-  ]);
+  const pagosRes = await supabase
+    .from("ventas_pagos")
+    .select("venta_id,monto,moneda")
+    .in("venta_id", ventaIds);
+  if (pagosRes.error) throw new Error(pagosRes.error.message);
+  const pagos = pagosRes.data ?? [];
 
-  const jobByVenta = new Map<string, string>();
-  (jobs ?? []).forEach((j) => {
-    if (j.venta_id && j.id) jobByVenta.set(j.venta_id, j.id);
+  /** Si la tabla OT aún no existe en el proyecto, el listado no debe fallar. */
+  const otRes = await supabase
+    .from("ordenes_trabajo")
+    .select("id,venta_id")
+    .not("venta_id", "is", null);
+  const filasOt = !otRes.error && otRes.data ? otRes.data : [];
+
+  const otPorVenta = new Map<string, string>();
+  filasOt.forEach((j) => {
+    if (j.venta_id && j.id) otPorVenta.set(j.venta_id, j.id);
   });
 
   return rows.map((r) => {
@@ -102,7 +165,7 @@ export async function mergeVentasResumenIntoPresupuestos<
         total_pagado_misma_moneda: null,
         saldo_misma_moneda: null,
         pct_sena_sobre_presupuesto: null,
-        job_id: null,
+        orden_trabajo_id: null,
       };
     }
     let totalMis = 0;
@@ -121,7 +184,7 @@ export async function mergeVentasResumenIntoPresupuestos<
       total_pagado_misma_moneda: totalMis,
       saldo_misma_moneda: saldoNum !== null ? saldoNum : null,
       pct_sena_sobre_presupuesto: pct,
-      job_id: jobByVenta.get(venta.id) ?? null,
+      orden_trabajo_id: otPorVenta.get(venta.id) ?? null,
     };
   });
 }
@@ -131,9 +194,20 @@ function parsePayload(p: Json): PresupuestoPayloadV1 | null {
   return isPresupuestoPayloadV1(asUnknown) ? asUnknown : null;
 }
 
+/** Postgres `uuid` solo acepta formato estándar; el wizard puede guardar slugs en `clienteId`. */
+function esUuidValido(s: string): boolean {
+  const t = s.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t);
+}
+
 async function resolveClientId(payload: Json, clienteNombre: string): Promise<string | null> {
   const parsed = parsePayload(payload);
-  if (parsed?.clienteId) return parsed.clienteId;
+  const raw = typeof parsed?.clienteId === "string" ? parsed.clienteId.trim() : "";
+  if (raw && esUuidValido(raw)) {
+    const byId = await supabase.from("clients").select("id").eq("id", raw).maybeSingle();
+    if (!byId.error && byId.data?.id) return byId.data.id;
+  }
+
   const name = (clienteNombre ?? "").trim() || "Cliente";
   const found = await supabase.from("clients").select("id").eq("name", name).maybeSingle();
   if (found.error) return null;
@@ -149,26 +223,77 @@ async function crearJobOtSiAusente(opts: {
   clienteNombre: string;
   payload: Json;
 }): Promise<{ error: Error | null }> {
-  const exist = await supabase.from("jobs").select("id").eq("venta_id", opts.ventaId).maybeSingle();
+  const exist = await supabase
+    .from("ordenes_trabajo")
+    .select("id")
+    .eq("venta_id", opts.ventaId)
+    .maybeSingle();
   if (exist.error) return { error: new Error(exist.error.message) };
   if (exist.data?.id) return { error: null };
 
-  const client_id = await resolveClientId(opts.payload, opts.clienteNombre);
-  const title = `OT · ${opts.presupuestoNumero}`;
+  const id_cliente = await resolveClientId(opts.payload, opts.clienteNombre);
+  const titulo = `OT · ${opts.presupuestoNumero}`;
   const now = new Date().toISOString();
-  const ins = await supabase.from("jobs").insert({
-    title,
-    quote_id: null,
+  const ins = await supabase.from("ordenes_trabajo").insert({
+    titulo,
+    id_cotizacion: null,
     venta_id: opts.ventaId,
-    client_id,
-    status: "pending",
-    scheduled_for: null,
-    notes: `OT desde venta (${opts.presupuestoNumero}).`,
-    updated_at: now,
-    etapa_ot: "medicion",
+    id_cliente,
+    estado: "pending",
+    fecha_programada: null,
+    notas: `OT desde venta (${opts.presupuestoNumero}).`,
+    actualizado_en: now,
+    etapa: "medicion",
     pausada: false,
   });
   if (ins.error) return { error: new Error(ins.error.message) };
+  return { error: null };
+}
+
+/**
+ * Repara casos donde ya hay pagos en `ventas_pagos` pero nunca se creó la fila en `ordenes_trabajo`
+ * (p. ej. falló el insert cuando aún no existía la tabla).
+ */
+async function repairOrdenesTrabajoFaltantes(): Promise<{ error: Error | null }> {
+  const { data: pagos, error: pErr } = await supabase.from("ventas_pagos").select("venta_id");
+  if (pErr) return { error: new Error(pErr.message) };
+  const ventaIdsConPago = [
+    ...new Set((pagos ?? []).map((p) => p.venta_id).filter(Boolean)),
+  ] as string[];
+  if (ventaIdsConPago.length === 0) return { error: null };
+
+  const { data: ots, error: oErr } = await supabase
+    .from("ordenes_trabajo")
+    .select("venta_id")
+    .in("venta_id", ventaIdsConPago);
+  if (oErr) return { error: new Error(oErr.message) };
+  const conOt = new Set((ots ?? []).map((o) => o.venta_id).filter(Boolean));
+
+  const faltantes = ventaIdsConPago.filter((v) => !conOt.has(v));
+  for (const ventaId of faltantes) {
+    const { data: venta, error: vE } = await supabase
+      .from("ventas")
+      .select("presupuesto_id")
+      .eq("id", ventaId)
+      .maybeSingle();
+    if (vE || !venta?.presupuesto_id) continue;
+
+    const { data: pres, error: prE } = await supabase
+      .from("presupuestos")
+      .select("numero,cliente,payload")
+      .eq("id", venta.presupuesto_id)
+      .maybeSingle();
+    if (prE || !pres) continue;
+
+    const row = pres as Pick<PresupuestoRow, "numero" | "cliente" | "payload">;
+    const r = await crearJobOtSiAusente({
+      ventaId,
+      presupuestoNumero: row.numero,
+      clienteNombre: row.cliente,
+      payload: row.payload as Json,
+    });
+    if (r.error) return r;
+  }
   return { error: null };
 }
 
@@ -201,13 +326,6 @@ export async function registrarPagoSena(opts: {
   const venta = ventaRaw as VentaRow | null;
   if (!venta) return { error: new Error("No se pudo obtener la venta.") };
 
-  const { count, error: cErr } = await supabase
-    .from("ventas_pagos")
-    .select("id", { count: "exact", head: true })
-    .eq("venta_id", venta.id);
-  const prevCount = !cErr && typeof count === "number" ? count : undefined;
-  const esPrimeraSenia = prevCount === 0;
-
   const pIns = await supabase.from("ventas_pagos").insert({
     venta_id: venta.id,
     monto: opts.monto,
@@ -229,16 +347,12 @@ export async function registrarPagoSena(opts: {
     .eq("id", venta.id);
   if (updV.error) return { error: new Error(updV.error.message) };
 
-  if (esPrimeraSenia) {
-    return crearJobOtSiAusente({
-      ventaId: venta.id,
-      presupuestoNumero: presCast.numero,
-      clienteNombre: presCast.cliente,
-      payload: presCast.payload as Json,
-    });
-  }
-
-  return { error: null };
+  return crearJobOtSiAusente({
+    ventaId: venta.id,
+    presupuestoNumero: presCast.numero,
+    clienteNombre: presCast.cliente,
+    payload: presCast.payload as Json,
+  });
 }
 
 function etapaOtValida(raw: unknown): EtapaOtKanban {
@@ -247,41 +361,45 @@ function etapaOtValida(raw: unknown): EtapaOtKanban {
 }
 
 export async function persistJobOtProduccion(opts: {
-  jobId: string;
+  ordenTrabajoId: string;
   patch: {
-    etapa_ot?: EtapaOtKanban;
+    etapa?: EtapaOtKanban;
     pausada?: boolean;
     status?: JobStatus;
   };
 }): Promise<{ error: Error | null }> {
-  const prev = await supabase.from("jobs").select("*").eq("id", opts.jobId).maybeSingle();
+  const prev = await supabase
+    .from("ordenes_trabajo")
+    .select("*")
+    .eq("id", opts.ordenTrabajoId)
+    .maybeSingle();
   if (prev.error) return { error: new Error(prev.error.message) };
-  const job = prev.data as JobRow | undefined;
-  if (!job) return { error: new Error("Job no encontrado.") };
+  const ot = prev.data as OrdenTrabajoRow | undefined;
+  if (!ot) return { error: new Error("Orden de trabajo no encontrada.") };
 
-  const nextEtapa = opts.patch.etapa_ot ?? etapaOtValida(job.etapa_ot);
+  const nextEtapa = opts.patch.etapa ?? etapaOtValida(ot.etapa);
   const nextPausada =
-    typeof opts.patch.pausada === "boolean" ? opts.patch.pausada : Boolean(job.pausada);
-  const nextStatus: JobStatus = opts.patch.status ?? (job.status as JobStatus);
+    typeof opts.patch.pausada === "boolean" ? opts.patch.pausada : Boolean(ot.pausada);
+  const nextStatus: JobStatus = opts.patch.status ?? (ot.estado as JobStatus);
 
   const now = new Date().toISOString();
   const up = await supabase
-    .from("jobs")
+    .from("ordenes_trabajo")
     .update({
-      etapa_ot: nextEtapa,
+      etapa: nextEtapa,
       pausada: nextPausada,
-      status: nextStatus,
-      updated_at: now,
+      estado: nextStatus,
+      actualizado_en: now,
     })
-    .eq("id", opts.jobId);
+    .eq("id", opts.ordenTrabajoId);
   if (up.error) return { error: new Error(up.error.message) };
 
-  if (!job.venta_id) return { error: null };
+  if (!ot.venta_id) return { error: null };
 
   const { data: ventaRow, error: vErr } = await supabase
     .from("ventas")
     .select("estado")
-    .eq("id", job.venta_id)
+    .eq("id", ot.venta_id)
     .maybeSingle();
   if (vErr || !ventaRow) return { error: null };
 
@@ -296,7 +414,7 @@ export async function persistJobOtProduccion(opts: {
 
   if (!ventaPatch || ventaPatch === vEst) return { error: null };
 
-  const vUp = await supabase.from("ventas").update({ estado: ventaPatch, updated_at: now }).eq("id", job.venta_id);
+  const vUp = await supabase.from("ventas").update({ estado: ventaPatch, updated_at: now }).eq("id", ot.venta_id);
   if (vUp.error) return { error: new Error(vUp.error.message) };
 
   return { error: null };
@@ -352,31 +470,34 @@ export function textoDesdeOtPayloadClienteMaterial(
 }
 
 export async function listOtJobsKanbanRows(): Promise<{
-  data: JobRow[] | null;
+  data: OrdenTrabajoRow[] | null;
   error: Error | null;
 }> {
   const { data, error } = await supabase
-    .from("jobs")
+    .from("ordenes_trabajo")
     .select("*")
     .not("venta_id", "is", null)
-    .neq("status", "cancelled")
-    .neq("status", "done");
+    .neq("estado", "cancelled")
+    .neq("estado", "done");
 
   return {
-    data: (data as JobRow[] | null) ?? null,
+    data: (data as OrdenTrabajoRow[] | null) ?? null,
     error: error ? new Error(error.message) : null,
   };
 }
 
 export type OtTarjeta = {
-  job: JobRow;
+  orden: OrdenTrabajoRow;
   presupuestoFuente: OtKanbanFuentePayload | null;
 };
 
 export async function loadOtKanbanView(): Promise<{ data: OtTarjeta[]; error: Error | null }> {
-  const { data: jobsList, error: jErr } = await listOtJobsKanbanRows();
+  const rep = await repairOrdenesTrabajoFaltantes();
+  if (rep.error) return { data: [], error: rep.error };
+
+  const { data: otsList, error: jErr } = await listOtJobsKanbanRows();
   if (jErr) return { data: [], error: jErr };
-  const list = jobsList ?? [];
+  const list = otsList ?? [];
   if (list.length === 0) return { data: [], error: null };
 
   const ventaIds = [...new Set(list.map((j) => j.venta_id).filter(Boolean) as string[])];
@@ -395,11 +516,11 @@ export async function loadOtKanbanView(): Promise<{ data: OtTarjeta[]; error: Er
   const fuentePorId = new Map<string, OtKanbanFuentePayload>();
   for (const row of presRes.data) fuentePorId.set(row.id, row);
 
-  const merged: OtTarjeta[] = list.map((job) => {
-    const vid = job.venta_id as string | null;
+  const merged: OtTarjeta[] = list.map((orden) => {
+    const vid = orden.venta_id as string | null;
     const pid = vid ? presupuestoPorVenta.get(vid) : undefined;
     const presupuestoFuente = pid ? fuentePorId.get(pid) ?? null : null;
-    return { job, presupuestoFuente };
+    return { orden, presupuestoFuente };
   });
 
   return { data: merged, error: null };

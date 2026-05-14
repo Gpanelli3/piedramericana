@@ -171,66 +171,66 @@ export interface Database {
           },
         ];
       };
-      jobs: {
+      ordenes_trabajo: {
         Row: {
           id: string;
-          quote_id: string | null;
-          client_id: string | null;
-          title: string;
-          status: JobStatus;
-          scheduled_for: string | null;
-          notes: string | null;
-          created_at: string;
-          updated_at: string;
+          id_cotizacion: string | null;
+          id_cliente: string | null;
+          titulo: string;
+          estado: JobStatus;
+          fecha_programada: string | null;
+          notas: string | null;
+          creado_en: string;
+          actualizado_en: string;
           venta_id: string | null;
-          etapa_ot: EtapaOtKanban | string;
+          etapa: EtapaOtKanban | string;
           pausada: boolean;
         };
         Insert: {
           id?: string;
-          quote_id?: string | null;
-          client_id?: string | null;
-          title: string;
-          status?: JobStatus;
-          scheduled_for?: string | null;
-          notes?: string | null;
-          created_at?: string;
-          updated_at?: string;
+          id_cotizacion?: string | null;
+          id_cliente?: string | null;
+          titulo: string;
+          estado?: JobStatus;
+          fecha_programada?: string | null;
+          notas?: string | null;
+          creado_en?: string;
+          actualizado_en?: string;
           venta_id?: string | null;
-          etapa_ot?: EtapaOtKanban | string;
+          etapa?: EtapaOtKanban | string;
           pausada?: boolean;
         };
         Update: {
           id?: string;
-          quote_id?: string | null;
-          client_id?: string | null;
-          title?: string;
-          status?: JobStatus;
-          scheduled_for?: string | null;
-          notes?: string | null;
-          created_at?: string;
-          updated_at?: string;
+          id_cotizacion?: string | null;
+          id_cliente?: string | null;
+          titulo?: string;
+          estado?: JobStatus;
+          fecha_programada?: string | null;
+          notas?: string | null;
+          creado_en?: string;
+          actualizado_en?: string;
           venta_id?: string | null;
-          etapa_ot?: EtapaOtKanban | string;
+          etapa?: EtapaOtKanban | string;
           pausada?: boolean;
         };
         Relationships: [
           {
-            foreignKeyName: "jobs_client_id_fkey";
-            columns: ["client_id"];
+            foreignKeyName: "ordenes_trabajo_id_cliente_fkey";
+            columns: ["id_cliente"];
             isOneToOne: false;
             referencedRelation: "clients";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "jobs_quote_id_fkey";
-            columns: ["quote_id"];
+            foreignKeyName: "ordenes_trabajo_id_cotizacion_fkey";
+            columns: ["id_cotizacion"];
             isOneToOne: false;
             referencedRelation: "quotes";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "jobs_venta_id_fkey";
+            foreignKeyName: "ordenes_trabajo_venta_id_fkey";
             columns: ["venta_id"];
             isOneToOne: false;
             referencedRelation: "ventas";
@@ -296,7 +296,7 @@ export interface Database {
             foreignKeyName: "invoices_job_id_fkey";
             columns: ["job_id"];
             isOneToOne: false;
-            referencedRelation: "jobs";
+            referencedRelation: "ordenes_trabajo";
             referencedColumns: ["id"];
           },
           {

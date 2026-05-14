@@ -1,20 +1,20 @@
 import { supabase } from "./supabase";
 
 export async function fetchDashboardCounts() {
-  const [clients, quotes, jobs, invoices] = await Promise.all([
+  const [clients, quotes, ordenesTrabajo, invoices] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("quotes").select("*", { count: "exact", head: true }),
-    supabase.from("jobs").select("*", { count: "exact", head: true }),
+    supabase.from("ordenes_trabajo").select("*", { count: "exact", head: true }),
     supabase.from("invoices").select("*", { count: "exact", head: true }),
   ]);
 
   return {
     clients: clients.count ?? 0,
     quotes: quotes.count ?? 0,
-    jobs: jobs.count ?? 0,
+    ordenesTrabajo: ordenesTrabajo.count ?? 0,
     invoices: invoices.count ?? 0,
     error:
-      clients.error ?? quotes.error ?? jobs.error ?? invoices.error ?? null,
+      clients.error ?? quotes.error ?? ordenesTrabajo.error ?? invoices.error ?? null,
   };
 }
 
@@ -42,11 +42,11 @@ export function listQuotesWithClients(pageSize = 50) {
     .limit(pageSize);
 }
 
-export function listJobsWithClients(pageSize = 50) {
+export function listOrdenesTrabajoWithClients(pageSize = 50) {
   return supabase
-    .from("jobs")
+    .from("ordenes_trabajo")
     .select("*, clients ( id, name )")
-    .order("created_at", { ascending: false })
+    .order("creado_en", { ascending: false })
     .limit(pageSize);
 }
 

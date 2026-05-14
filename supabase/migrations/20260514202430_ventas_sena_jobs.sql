@@ -1,4 +1,4 @@
--- Ventas 1:1 con presupuesto aprobado, pagos de seña N:1 y extensión de jobs como OT desde la primera seña.
+-- Ventas 1:1 con presupuesto aprobado, pagos de seña N:1. La tabla OT está en `ordenes_trabajo` (migración siguiente).
 
 -- Literales ASCII (sin ñ): deben coincidir con VentaEstado en la app (`aprobado_sin_sena`, `senado`).
 DO $$
@@ -51,32 +51,3 @@ DROP POLICY IF EXISTS "ventas_pagos_acceso_app" ON public.ventas_pagos;
 CREATE POLICY "ventas_pagos_acceso_app"
   ON public.ventas_pagos FOR ALL
   USING (true) WITH CHECK (true);
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'jobs'
-  ) THEN
-    ALTER TABLE public.jobs ALTER COLUMN client_id DROP NOT NULL;
-    ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS venta_id uuid;
-    ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS etapa_ot text;
-    ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS pausada boolean NOT NULL DEFAULT false;
-
-    UPDATE public.jobs SET etapa_ot = 'medicion' WHERE etapa_ot IS NULL;
-    ALTER TABLE public.jobs ALTER COLUMN etapa_ot SET DEFAULT 'medicion';
-    ALTER TABLE public.jobs ALTER COLUMN etapa_ot SET NOT NULL;
-
-    ALTER TABLE public.jobs DROP CONSTRAINT IF EXISTS jobs_etapa_ot_check;
-    ALTER TABLE public.jobs ADD CONSTRAINT jobs_etapa_ot_check
-      CHECK (etapa_ot IN ('medicion', 'corte', 'produccion', 'despacho'));
-
-    DROP INDEX IF EXISTS idx_jobs_venta_id_unique;
-    CREATE UNIQUE INDEX idx_jobs_venta_id_unique ON public.jobs (venta_id)
-      WHERE venta_id IS NOT NULL;
-
-    ALTER TABLE public.jobs DROP CONSTRAINT IF EXISTS jobs_venta_id_fkey;
-    ALTER TABLE public.jobs ADD CONSTRAINT jobs_venta_id_fkey
-      FOREIGN KEY (venta_id) REFERENCES public.ventas(id) ON DELETE SET NULL;
-  END IF;
-END $$;

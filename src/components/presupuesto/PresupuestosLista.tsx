@@ -12,8 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import type { PresupuestoEstado, VentaEstado } from "@/types/database";
-import type { PresupuestoRowList } from "@/lib/presupuestos-api";
+import type { PresupuestoEstado } from "@/types/database";
+import type { PresupuestoRowLista } from "@/lib/presupuestos-api";
 import { cn } from "@/lib/utils";
 import type { NavigateFunction } from "react-router-dom";
 
@@ -46,7 +46,7 @@ function formatArs(n: number): string {
   }
 }
 
-function formatoTotal(row: Pick<PresupuestoRowList, "total" | "moneda">): string {
+function formatoTotal(row: Pick<PresupuestoRowLista, "total" | "moneda">): string {
   return row.moneda === "usd" ? `${formatUsd(row.total)} USD` : `$ ${formatArs(row.total)}`;
 }
 
@@ -88,38 +88,15 @@ function badgeTone(s: PresupuestoEstado) {
   return "border-rose-300 bg-rose-50 text-rose-900";
 }
 
-function estadoVentaBadge(e: VentaEstado): { label: string; className: string } {
-  switch (e) {
-    case "aprobado_sin_sena":
-      return { label: "Sin seña", className: "border-sky-300 bg-sky-50 text-sky-950" };
-    case "senado":
-      return { label: "Seña", className: "border-violet-300 bg-violet-50 text-violet-950" };
-    case "en_produccion":
-      return { label: "En producción", className: "border-amber-300 bg-amber-50 text-amber-950" };
-    case "finalizado":
-      return { label: "Finalizado", className: "border-emerald-300 bg-emerald-50 text-emerald-950" };
-    case "entregado":
-      return { label: "Entregado", className: "border-slate-300 bg-slate-50 text-slate-900" };
-    default:
-      return { label: e, className: "border-border bg-muted text-foreground" };
-  }
-}
-
-function pctLabel(pct: number | null): string | null {
-  if (pct === null || Number.isNaN(pct)) return null;
-  return `${pct.toFixed(1)} % cobrado (misma moneda)`;
-}
-
 type Props = {
   loading: boolean;
-  rows: PresupuestoRowList[];
+  rows: PresupuestoRowLista[];
   tab: PresupuestoFiltroTab;
   navigate: NavigateFunction;
   onVerResumen: (id: string) => void;
   statusBusyId: string | null;
   onAprobar: (id: string) => Promise<void>;
   onRechazar: (id: string) => Promise<void>;
-  onVentasGestión?: (id: string) => void;
 };
 
 export function PresupuestosLista({
@@ -131,7 +108,6 @@ export function PresupuestosLista({
   statusBusyId,
   onAprobar,
   onRechazar,
-  onVentasGestión,
 }: Props) {
   const estadoFiltro = estadoDesdeTab(tab);
   const visibles = useMemo(
@@ -169,8 +145,7 @@ export function PresupuestosLista({
                 <TableHead className="whitespace-nowrap">Fecha</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="whitespace-nowrap">Estado</TableHead>
-                <TableHead className="whitespace-nowrap">Venta / seña</TableHead>
-                <TableHead className="text-right w-[300px]">Acciones</TableHead>
+                <TableHead className="text-right w-[260px]">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -185,37 +160,9 @@ export function PresupuestosLista({
                     {formatoTotal(r)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="outline" className={cn("font-medium text-[11px] sm:text-xs", badgeTone(r.status))}>
-                        {statusLabel(r.status)}
-                      </Badge>
-                      {r.status === "aprobado" && r.venta_estado ?
-                        <Badge variant="outline" className={cn("font-medium text-[11px] sm:text-xs", estadoVentaBadge(r.venta_estado).className)}>
-                          {estadoVentaBadge(r.venta_estado).label}
-                        </Badge>
-                      : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[12rem]">
-                    {r.status === "aprobado" ?
-                      <>
-                        {pctLabel(r.pct_sena_sobre_presupuesto) ?? "—"}
-                        {r.total_pagado_misma_moneda != null ?
-                          <span className="block tabular-nums text-foreground mt-0.5">
-                            Pagado: {formatoTotal({
-                              total: r.total_pagado_misma_moneda,
-                              moneda: r.moneda,
-                            })}{" "}
-                            · Saldo est.:{" "}
-                            <span className="font-medium">
-                              {typeof r.saldo_misma_moneda === "number"
-                                ? formatoTotal({ total: Math.max(r.saldo_misma_moneda, 0), moneda: r.moneda })
-                                : "—"}
-                            </span>
-                          </span>
-                        : null}
-                      </>
-                    : <span className="text-muted-foreground">—</span>}
+                    <Badge variant="outline" className={cn("font-medium text-[11px] sm:text-xs", badgeTone(r.status))}>
+                      {statusLabel(r.status)}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -239,12 +186,7 @@ export function PresupuestosLista({
                         <Printer className="h-3.5 w-3.5" aria-hidden />
                         Imprimir
                       </Button>
-                      {r.status === "aprobado" && onVentasGestión ?
-                        <Button type="button" variant="secondary" size="sm" className="h-8 gap-1 text-xs" onClick={() => onVentasGestión(r.id)}>
-                          Ventas / seña
-                        </Button>
-                      : null}
-                      {r.status === "pendiente" ?
+                      {r.status === "pendiente" ? (
                         <>
                           <Button
                             type="button"
@@ -266,7 +208,7 @@ export function PresupuestosLista({
                             Rechazar
                           </Button>
                         </>
-                      : null}
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>
