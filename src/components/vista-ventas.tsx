@@ -245,15 +245,19 @@ export function VistaVentas() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border bg-white">
-        <div className="px-8 pt-5 pb-5">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Home &rsaquo; Presupuestos</p>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
-              Al aprobás, definís total y seña inicial; los cobros adicionales están en{" "}
-              <span className="font-medium text-foreground">Ventas</span> en el menú lateral.
-            </p>
+      <header className="shrink-0 border-b border-border bg-card">
+        <div className="px-8 pt-5 pb-4">
+          <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground/60 uppercase">
+            Home › Presupuestos
+          </p>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
+              <p className="mt-1 text-xs text-muted-foreground max-w-lg leading-relaxed">
+                Al aprobar, definís el total y la seña inicial. Los cobros adicionales se gestionan en{" "}
+                <span className="font-medium text-foreground">Ventas</span>.
+              </p>
+            </div>
           </div>
         </div>
       </header>
