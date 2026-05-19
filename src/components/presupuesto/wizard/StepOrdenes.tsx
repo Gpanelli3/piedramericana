@@ -48,6 +48,8 @@ type PorOtRes = {
 
 export type StepOrdenesProps = {
   catalogoCargando: boolean;
+  listaPrecioLabel: string;
+  articulosDisponibles: number;
   ordenes: OrdenTrabajoWizard[];
   materials: MaterialWizardRow[];
   tecnicos: { id: string; full_name: string | null }[];
@@ -64,6 +66,8 @@ export type StepOrdenesProps = {
 
 export function StepOrdenes({
   catalogoCargando,
+  listaPrecioLabel,
+  articulosDisponibles,
   ordenes,
   materials,
   tecnicos,
@@ -80,6 +84,15 @@ export function StepOrdenes({
         <p className="text-sm text-muted-foreground border-b border-dashed border-border/80 pb-3">
           Cargando materiales y técnicos…
         </p>
+      ) : null}
+
+      {!catalogoCargando ? (
+        <div className="rounded-md border border-border/70 bg-card px-3 py-2 text-xs text-muted-foreground">
+          Precios cargados desde <span className="font-medium text-foreground">{listaPrecioLabel || "sin lista"}</span>.
+          {articulosDisponibles > 0 ? (
+            <span className="ml-1">Artículos disponibles: {articulosDisponibles}.</span>
+          ) : null}
+        </div>
       ) : null}
 
       <SectionPresupuesto

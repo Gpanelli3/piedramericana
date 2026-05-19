@@ -5,18 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
-import { LISTAS_PRECIO_MOCK } from "@/data/presupuesto-articulos-mock";
+import type { ListaPrecioRow } from "@/types/articulos";
 import {
   ORIGEN_VENTA_OPCIONES,
   type ClientePresupuestoMock,
 } from "@/data/presupuesto-clientes-mock";
 import { PickCliente, SectionPresupuesto } from "./fields";
+import { ListaPrecioSelector } from "./ListaPrecioSelector";
 
 type StepClienteProps = {
   clientesLocales: ClientePresupuestoMock[];
   clienteSeleccionadoId: string | null;
   aplicarCliente: (c: ClientePresupuestoMock) => void;
   abrirNuevoCliente: (prefillNombre?: string) => void;
+  listasPrecios: ListaPrecioRow[];
   listaPrecioId: string;
   setListaPrecioId: (id: string) => void;
   monedaPresupuesto: "ars" | "usd";
@@ -40,6 +42,7 @@ export function StepCliente({
   clienteSeleccionadoId,
   aplicarCliente,
   abrirNuevoCliente,
+  listasPrecios,
   listaPrecioId,
   setListaPrecioId,
   monedaPresupuesto,
@@ -84,20 +87,11 @@ export function StepCliente({
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-1">
-            <Label className="text-xs font-medium">Lista de precio</Label>
-            <select
-              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-              value={listaPrecioId}
-              onChange={(e) => setListaPrecioId(e.target.value)}
-            >
-              {LISTAS_PRECIO_MOCK.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ListaPrecioSelector
+            listasPrecios={listasPrecios}
+            listaPrecioId={listaPrecioId}
+            onChange={setListaPrecioId}
+          />
           <div className="space-y-1">
             <Label className="text-xs font-medium">Moneda</Label>
             <select

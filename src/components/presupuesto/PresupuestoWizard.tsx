@@ -30,7 +30,8 @@ import {
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
-import { LISTAS_PRECIO_MOCK, getArticuloById } from "@/data/presupuesto-articulos-mock";
+import { useArticulos } from "@/hooks/useArticulos";
+import { articuloConPrecioToMock } from "@/lib/presupuesto-calculos";
 import {
   ORIGEN_VENTA_OPCIONES,
   type ClientePresupuestoMock,
@@ -226,20 +227,39 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [email, setEmail] = useState("");
   const [direccion, setDireccion] = useState("");
   const [obsCabecera, setObsCabecera] = useState("");
-  const [listaPrecioId, setListaPrecioId] = useState<string>(
-    LISTAS_PRECIO_MOCK[0]!.id,
-  );
+  const [listaPrecioId, setListaPrecioId] = useState<string>("");
   const [monedaPresupuesto, setMonedaPresupuesto] = useState<"ars" | "usd">(
     "usd",
   );
+
+  // Hook de artículos dinámicos: se recarga cuando cambia la lista de precio
+  const {
+    listas: listasPrecios,
+    articulos: articulosBd,
+    cargando: articulosCargando,
+  } = useArticulos(listaPrecioId);
+
+  // Cuando llegan las listas reales desde BD, inicializar el ID con la primera
+  useEffect(() => {
+    if (listasPrecios.length === 0) return;
+
+    const listaActualSigueDisponible = listasPrecios.some(
+      (lista) => lista.id === listaPrecioId,
+    );
+
+    if (!listaPrecioId || !listaActualSigueDisponible) {
+      setListaPrecioId(listasPrecios[0]!.id);
+    }
+  }, [listaPrecioId, listasPrecios]);
 
   const defaultMat = MATERIALES_MOCK_FALLBACK[0]!.id;
   const [materials, setMaterials] = useState<MaterialWizardRow[]>(MATERIALES_MOCK_FALLBACK);
   const [tecnicos, setTecnicos] = useState<
     { id: string; full_name: string | null }[]
   >([]);
-  const [catalogoCargando, setCatalogoCargando] =
+  const [materialesCargando, setMateriaesCargando] =
     useState(isSupabaseConfigured);
+  const catalogoCargando = materialesCargando || articulosCargando;
 
   const [ordenes, setOrdenes] = useState<OrdenTrabajoWizard[]>(() => [
     newOrdenTrabajo(defaultMat),
@@ -290,61 +310,107 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [guardando, setGuardando] = useState(false);
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setCatalogoCargando(false);
+      setMateriaesCargando(false);
       return;
     }
     let cancelled = false;
     async function load() {
-      setCatalogoCargando(true);
-      const { data: mats, error: matsErr } = await supabase
-        .from("materials")
-        .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
-        .order("name");
-      if (!cancelled && !matsErr && mats?.length) {
-        setMaterials(mats as MaterialWizardRow[]);
-        setOrdenes((prev) =>
-          prev.map((o) =>
-            mats.some((m) => m.id === o.materialId)
-              ? o
-              : { ...o, materialId: mats[0]!.id },
-          ),
-        );
-      } else if (!cancelled) {
-        const { data: basic, error: basicErr } = await supabase
+      setMateriaesCargando(true);
+      try {
+        const { data: mats, error: matsErr } = await supabase
           .from("materials")
-          .select("id,name,unit")
+          .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
           .order("name");
-        if (!cancelled && !basicErr && basic?.length) {
-          const norm: MaterialWizardRow[] = basic.map((r) => ({
-            id: r.id,
-            name: r.name,
-            unit: r.unit,
-            material_kind: "marmol",
-            peso_por_m2_kg: null,
-            bulk_stock_kg: 0,
-          }));
-          setMaterials(norm);
+        if (!cancelled && !matsErr && mats?.length) {
+          setMaterials(mats as MaterialWizardRow[]);
           setOrdenes((prev) =>
             prev.map((o) =>
-              norm.some((m) => m.id === o.materialId) ? o : { ...o, materialId: norm[0]!.id },
+              mats.some((m) => m.id === o.materialId)
+                ? o
+                : { ...o, materialId: mats[0]!.id },
             ),
           );
         } else if (!cancelled) {
-          setMaterials(MATERIALES_MOCK_FALLBACK);
+          const { data: basic, error: basicErr } = await supabase
+            .from("materials")
+            .select("id,name,unit")
+            .order("name");
+          if (!cancelled && !basicErr && basic?.length) {
+            const norm: MaterialWizardRow[] = basic.map((r) => ({
+              id: r.id,
+              name: r.name,
+              unit: r.unit,
+              material_kind: "marmol",
+              peso_por_m2_kg: null,
+              bulk_stock_kg: 0,
+            }));
+            setMaterials(norm);
+            setOrdenes((prev) =>
+              prev.map((o) =>
+                norm.some((m) => m.id === o.materialId) ? o : { ...o, materialId: norm[0]!.id },
+              ),
+            );
+          } else if (!cancelled) {
+            setMaterials(MATERIALES_MOCK_FALLBACK);
+            if (matsErr || basicErr) {
+              toast.error(
+                `No se pudo cargar el catálogo de materiales: ${matsErr?.message ?? basicErr?.message ?? "error desconocido"}`,
+              );
+            }
+          }
         }
+        const { data: users, error: usersErr } = await supabase
+          .from("usuarios")
+          .select("id, full_name")
+          .order("full_name");
+        if (!cancelled && !usersErr && users?.length) {
+          setTecnicos(users);
+        } else if (!cancelled && usersErr) {
+          toast.error(`No se pudieron cargar los técnicos: ${usersErr.message}`);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "No se pudo cargar el catálogo inicial del presupuesto.",
+          );
+        }
+      } finally {
+        if (!cancelled) setMateriaesCargando(false);
       }
-      const { data: users, error: usersErr } = await supabase
-        .from("usuarios")
-        .select("id, full_name")
-        .order("full_name");
-      if (!cancelled && !usersErr && users?.length) setTecnicos(users);
-      if (!cancelled) setCatalogoCargando(false);
     }
     load();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (articulosBd.length === 0) return;
+
+    setOrdenes((prev) => {
+      let changed = false;
+
+      const next = prev.map((orden) => ({
+        ...orden,
+        items: orden.items.map((linea) => {
+          if (!linea.articuloId) return linea;
+
+          const articulo = articulosBd.find((item) => item.id === linea.articuloId);
+          if (!articulo) return linea;
+
+          const precioUnitario = articulo.precio != null ? String(articulo.precio) : "";
+          if (linea.precioUnitario === precioUnitario) return linea;
+
+          changed = true;
+          return { ...linea, precioUnitario };
+        }),
+      }));
+
+      return changed ? next : prev;
+    });
+  }, [articulosBd]);
 
   const clienteSeleccionado = useMemo(
     () =>
@@ -461,12 +527,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       });
       return;
     }
-    const art = getArticuloById(articuloId);
-    if (!art) return;
+    const artBd = articulosBd.find((a) => a.id === articuloId);
+    if (!artBd) return;
+    const art = articuloConPrecioToMock(artBd);
     patchItem(otKey, lineKey, {
       articuloId,
       modoIngreso: art.preferModoManualM2 ? "manual" : "dimensiones",
-      precioUnitario: String(art.precioUnitario),
+      precioUnitario: artBd.precio != null ? String(artBd.precio) : "",
       cantidad: "",
       altoCm: "",
       anchoCm: "",
@@ -500,7 +567,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       let tonOt = 0;
       let nLineas = 0;
       for (const line of ot.items) {
-        const art = getArticuloById(line.articuloId);
+        const artBd = articulosBd.find((a) => a.id === line.articuloId);
+        const art = artBd ? articuloConPrecioToMock(artBd) : undefined;
         if (!art) continue;
         const calc = buildLineaCalcInput(art, line);
         const { m2Linea, subtotal: subL } = computeLineaPresupuesto(art, calc);
@@ -548,7 +616,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       descuentoPct: dPct,
       faltaPesoNonMarmol,
     };
-  }, [ordenes, descuentoGlobalPct, materials]);
+  }, [ordenes, descuentoGlobalPct, materials, articulosBd]);
 
   useEffect(() => {
     const v = totalesItems.totalConDesc;
@@ -720,6 +788,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [totalesItems.porOt],
   );
 
+  const listaPrecioLabel = useMemo(
+    () => listasPrecios.find((lista) => lista.id === listaPrecioId)?.label ?? "—",
+    [listaPrecioId, listasPrecios],
+  );
+
   const formatArsEntero = useCallback((n: number) => {
     try {
       return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(
@@ -763,7 +836,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const handleWizardAnterior = () => setWizardStep((s) => Math.max(0, s - 1));
 
   const renderLineaCells = (ot: OrdenTrabajoWizard, line: LineaItemOT) => {
-    const art = line.articuloId ? getArticuloById(line.articuloId) : undefined;
+    const artBd = line.articuloId ? articulosBd.find((a) => a.id === line.articuloId) : undefined;
+    const art = artBd ? articuloConPrecioToMock(artBd) : undefined;
     const hasArt = Boolean(art);
 
     let m2Linea = 0;
@@ -819,6 +893,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             compact
             value={line.articuloId}
             onChange={(id) => onArticuloChange(ot.key, line.key, id)}
+            articulos={articulosBd}
           />
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle text-xs font-medium whitespace-nowrap">
@@ -995,6 +1070,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               clienteSeleccionadoId={clienteSeleccionadoId}
               aplicarCliente={aplicarCliente}
               abrirNuevoCliente={abrirNuevoCliente}
+              listasPrecios={listasPrecios}
               listaPrecioId={listaPrecioId}
               setListaPrecioId={setListaPrecioId}
               monedaPresupuesto={monedaPresupuesto}
@@ -1017,6 +1093,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           {wizardStep === 1 ? (
             <StepOrdenes
               catalogoCargando={catalogoCargando}
+              listaPrecioLabel={listaPrecioLabel}
+              articulosDisponibles={articulosBd.length}
               ordenes={ordenes}
               materials={materials}
               tecnicos={tecnicos}
@@ -1036,9 +1114,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           {wizardStep === 3 ? (
             <StepConfirmacion
               clienteNombre={clienteSeleccionado?.nombre ?? "—"}
-              listaPrecioLabel={
-                LISTAS_PRECIO_MOCK.find((l) => l.id === listaPrecioId)?.label ?? "—"
-              }
+              listaPrecioLabel={listaPrecioLabel}
               origenLabel={origenLabelDisplay}
               monedaPresupuesto={monedaPresupuesto}
               ordenesCount={ordenes.length}
@@ -1181,7 +1257,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               Resumen del presupuesto
             </DialogTitle>
             <DialogDescription>
-              Rubros. Dólar hoy {formatUsd(dolarHoy)}.
+              Lista {listaPrecioLabel}. Dólar hoy {formatUsd(dolarHoy)}.
             </DialogDescription>
           </DialogHeader>
           <div className="overflow-y-auto px-6 py-6">

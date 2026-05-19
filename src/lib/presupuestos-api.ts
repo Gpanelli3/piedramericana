@@ -1,8 +1,8 @@
 import type { PresupuestoEstado } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import type { ArticuloConPrecio, ListaPrecioRow } from "@/types/articulos";
 import {
   mergeVentasResumenIntoPresupuestos,
-  ensureVentaForPresupuestoAprobado,
   type VentaResumenMerged,
 } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
@@ -63,7 +63,7 @@ export async function approvePresupuestoWithVenta(presupuestoId: string): Promis
     .update({ status: "aprobado", updated_at: nowIso })
     .eq("id", presupuestoId);
   if (error) return { error: new Error(error.message) };
-  return ensureVentaForPresupuestoAprobado(presupuestoId);
+  return { error: null };
 }
 
 export async function getPresupuestoById(id: string) {
@@ -97,4 +97,73 @@ export async function insertPresupuestoRow(input: {
 export async function patchPresupuestoStatus(id: string, status: PresupuestoEstado) {
   const now = new Date().toISOString();
   return supabase.from("presupuestos").update({ status, updated_at: now }).eq("id", id);
+}
+
+// ─── Artículos y Listas de Precio ────────────────────────────
+
+/**
+ * Trae todas las listas de precio activas, ordenadas por sort_order.
+ */
+export async function listListasPrecio(): Promise<{
+  data: ListaPrecioRow[] | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("listas_precio")
+    .select("id, codigo, label, moneda, descripcion, sort_order")
+    .eq("activa", true)
+    .order("sort_order");
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: data as ListaPrecioRow[], error: null };
+}
+
+/**
+ * Trae todos los artículos activos con el precio de la lista indicada.
+ * Usa la RPC get_articulos_con_precios para evitar N+1.
+ * Si el artículo no tiene precio en esa lista, precio = null.
+ */
+export async function listArticulosConPrecios(listaPrecioId: string): Promise<{
+  data: ArticuloConPrecio[] | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase.rpc("get_articulos_con_precios", {
+    p_lista_precio_id: listaPrecioId,
+  });
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: data as ArticuloConPrecio[], error: null };
+}
+
+/**
+ * Trae todos los artículos activos sin precio (útil para selects sin contexto de lista).
+ */
+export async function listArticulos(): Promise<{
+  data: ArticuloConPrecio[] | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("articulos")
+    .select("id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order")
+    .eq("activo", true)
+    .order("sort_order");
+  if (error) return { data: null, error: new Error(error.message) };
+  const mapped = (data ?? []).map((a) => ({ ...a, precio: null })) as ArticuloConPrecio[];
+  return { data: mapped, error: null };
+}
+
+/**
+ * Valida que un artículo exista y esté activo.
+ */
+export async function getArticuloById(id: string): Promise<{
+  data: ArticuloConPrecio | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("articulos")
+    .select("id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order")
+    .eq("id", id)
+    .eq("activo", true)
+    .maybeSingle();
+  if (error) return { data: null, error: new Error(error.message) };
+  if (!data) return { data: null, error: null };
+  return { data: { ...data, precio: null } as ArticuloConPrecio, error: null };
 }

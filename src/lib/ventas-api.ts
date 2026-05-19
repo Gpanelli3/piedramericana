@@ -16,15 +16,9 @@ type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 export async function ensureVentaForPresupuestoAprobado(
   presupuestoId: string,
 ): Promise<{ error: Error | null }> {
+  // La venta ya no nace al aprobar el presupuesto: se crea recién con la primera seña.
   const dup = await supabase.from("ventas").select("id").eq("presupuesto_id", presupuestoId).maybeSingle();
   if (dup.error) return { error: new Error(dup.error.message) };
-  if (dup.data?.id) return { error: null };
-  const ins = await supabase
-    .from("ventas")
-    .insert({ presupuesto_id: presupuestoId, estado: "aprobado_sin_sena" })
-    .select("id")
-    .maybeSingle();
-  if (ins.error) return { error: new Error(ins.error.message) };
   return { error: null };
 }
 
@@ -250,6 +244,39 @@ async function crearJobOtSiAusente(opts: {
   return { error: null };
 }
 
+async function getOrCreateVentaParaPago(
+  presupuestoId: string,
+): Promise<{ data: VentaRow | null; error: Error | null }> {
+  const venta = await supabase
+    .from("ventas")
+    .select("*")
+    .eq("presupuesto_id", presupuestoId)
+    .maybeSingle();
+  if (venta.error) {
+    return { data: null, error: new Error(venta.error.message) };
+  }
+  if (venta.data) {
+    return { data: venta.data as VentaRow, error: null };
+  }
+
+  const now = new Date().toISOString();
+  const created = await supabase
+    .from("ventas")
+    .insert({
+      presupuesto_id: presupuestoId,
+      estado: "senado",
+      created_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .maybeSingle();
+  if (created.error) {
+    return { data: null, error: new Error(created.error.message) };
+  }
+
+  return { data: (created.data as VentaRow | null) ?? null, error: null };
+}
+
 /**
  * Repara casos donde ya hay pagos en `ventas_pagos` pero nunca se creó la fila en `ordenes_trabajo`
  * (p. ej. falló el insert cuando aún no existía la tabla).
@@ -316,14 +343,9 @@ export async function registrarPagoSena(opts: {
   if (!presCast) return { error: new Error("Presupuesto no encontrado.") };
   if (presCast.status !== "aprobado") return { error: new Error("Solo presupuestos aprobados reciben seña.") };
 
-  await ensureVentaForPresupuestoAprobado(opts.presupuestoId);
-  const { data: ventaRaw, error: vErr } = await supabase
-    .from("ventas")
-    .select("*")
-    .eq("presupuesto_id", opts.presupuestoId)
-    .maybeSingle();
-  if (vErr) return { error: new Error(vErr.message) };
-  const venta = ventaRaw as VentaRow | null;
+  const ventaRes = await getOrCreateVentaParaPago(opts.presupuestoId);
+  if (ventaRes.error) return { error: ventaRes.error };
+  const venta = ventaRes.data;
   if (!venta) return { error: new Error("No se pudo obtener la venta.") };
 
   const pIns = await supabase.from("ventas_pagos").insert({
@@ -337,15 +359,16 @@ export async function registrarPagoSena(opts: {
   });
   if (pIns.error) return { error: new Error(pIns.error.message) };
 
-  let nextEstado = venta.estado as VentaEstado;
-  if (venta.estado === "aprobado_sin_sena") nextEstado = "senado";
+  const nextEstado: VentaEstado = venta.estado ? (venta.estado as VentaEstado) : "senado";
 
   const now = new Date().toISOString();
-  const updV = await supabase
-    .from("ventas")
-    .update({ estado: nextEstado, updated_at: now })
-    .eq("id", venta.id);
-  if (updV.error) return { error: new Error(updV.error.message) };
+  if (nextEstado !== venta.estado) {
+    const updV = await supabase
+      .from("ventas")
+      .update({ estado: nextEstado, updated_at: now })
+      .eq("id", venta.id);
+    if (updV.error) return { error: new Error(updV.error.message) };
+  }
 
   return crearJobOtSiAusente({
     ventaId: venta.id,
@@ -377,10 +400,23 @@ export async function persistJobOtProduccion(opts: {
   const ot = prev.data as OrdenTrabajoRow | undefined;
   if (!ot) return { error: new Error("Orden de trabajo no encontrada.") };
 
-  const nextEtapa = opts.patch.etapa ?? etapaOtValida(ot.etapa);
+  const etapaActual = etapaOtValida(ot.etapa);
+  const nextEtapa = opts.patch.etapa ?? etapaActual;
   const nextPausada =
     typeof opts.patch.pausada === "boolean" ? opts.patch.pausada : Boolean(ot.pausada);
   const nextStatus: JobStatus = opts.patch.status ?? (ot.estado as JobStatus);
+
+  const estaBloqueada = etapaActual === "medicion";
+  const intentaMoverEtapa = typeof opts.patch.etapa !== "undefined" && nextEtapa !== "medicion";
+  const intentaCambiarEstadoTrabajo =
+    typeof opts.patch.status !== "undefined" && nextStatus !== (ot.estado as JobStatus);
+  if (estaBloqueada && (intentaMoverEtapa || intentaCambiarEstadoTrabajo)) {
+    return {
+      error: new Error(
+        "La OT sigue bloqueada en medición. Registrá el pago del saldo desde Ventas para liberarla.",
+      ),
+    };
+  }
 
   const now = new Date().toISOString();
   const up = await supabase
@@ -406,10 +442,8 @@ export async function persistJobOtProduccion(opts: {
   const vEst = ventaRow.estado as VentaEstado;
 
   let ventaPatch: VentaEstado | null = null;
-  if (nextStatus === "done" && vEst !== "aprobado_sin_sena" && vEst !== "entregado") {
+  if (nextStatus === "done" && vEst !== "finalizado" && vEst !== "entregado") {
     ventaPatch = "finalizado";
-  } else if (vEst === "senado" && (nextStatus === "in_progress" || nextEtapa !== "medicion")) {
-    ventaPatch = "en_produccion";
   }
 
   if (!ventaPatch || ventaPatch === vEst) return { error: null };
@@ -418,6 +452,119 @@ export async function persistJobOtProduccion(opts: {
   if (vUp.error) return { error: new Error(vUp.error.message) };
 
   return { error: null };
+}
+
+/**
+ * Confirma las medidas de una venta en estado "senado".
+ * Pasa la venta a "en_medicion" pero mantiene la OT bloqueada
+ * en la etapa "medicion" hasta registrar el pago del saldo.
+ */
+export async function confirmarMedicionVenta(opts: {
+  ventaId: string;
+  notasMedicion?: string;
+  confirmadoPor?: string | null;
+}): Promise<{ error: Error | null }> {
+  try {
+    const { data, error: fetchErr } = await supabase
+      .from("ventas")
+      .select("estado")
+      .eq("id", opts.ventaId)
+      .maybeSingle();
+    if (fetchErr) return { error: new Error(fetchErr.message) };
+    if (!data) return { error: new Error("Venta no encontrada.") };
+
+    const estado = data.estado as VentaEstado;
+    if (estado !== "senado") {
+      return {
+        error: new Error(
+          `Solo se pueden confirmar medidas de ventas en estado "senado". Estado actual: "${estado}".`,
+        ),
+      };
+    }
+
+    const now = new Date().toISOString();
+    const upVenta = await supabase
+      .from("ventas")
+      .update({
+        estado: "en_medicion" as VentaEstado,
+        fecha_confirmacion_medidas: now,
+        confirmado_por: opts.confirmadoPor ?? null,
+        notas_medicion: opts.notasMedicion?.trim() || null,
+        updated_at: now,
+      })
+      .eq("id", opts.ventaId);
+    if (upVenta.error) return { error: new Error(upVenta.error.message) };
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo confirmar la medicion."),
+    };
+  }
+}
+
+export const confirmarMedidasVenta = confirmarMedicionVenta;
+
+/**
+ * Pasa la venta de "en_medicion" a "en_produccion".
+ * También marca la OT como medidas_confirmadas = true y la pone en etapa "corte".
+ */
+export async function pasarAProduccion(opts: {
+  ventaId: string;
+  confirmadoPor?: string | null;
+}): Promise<{ error: Error | null }> {
+  try {
+    const { data, error: fetchErr } = await supabase
+      .from("ventas")
+      .select("estado")
+      .eq("id", opts.ventaId)
+      .maybeSingle();
+    if (fetchErr) return { error: new Error(fetchErr.message) };
+    if (!data) return { error: new Error("Venta no encontrada.") };
+
+    const estado = data.estado as VentaEstado;
+    if (estado !== "en_medicion") {
+      return {
+        error: new Error(
+          `Solo se puede pasar a producción desde "en_medicion". Estado actual: "${estado}".`,
+        ),
+      };
+    }
+
+    const now = new Date().toISOString();
+    const upVenta = await supabase
+      .from("ventas")
+      .update({ estado: "en_produccion" as VentaEstado, updated_at: now })
+      .eq("id", opts.ventaId);
+    if (upVenta.error) return { error: new Error(upVenta.error.message) };
+
+    const { data: ot, error: otErr } = await supabase
+      .from("ordenes_trabajo")
+      .select("id")
+      .eq("venta_id", opts.ventaId)
+      .maybeSingle();
+    if (otErr) return { error: new Error(otErr.message) };
+
+    if (ot?.id) {
+      const upOt = await supabase
+        .from("ordenes_trabajo")
+        .update({
+          medidas_confirmadas: true,
+          fecha_medidas_confirmadas: now,
+          etapa: "corte",
+          estado: "in_progress",
+          pausada: false,
+          actualizado_en: now,
+        })
+        .eq("id", ot.id);
+      if (upOt.error) return { error: new Error(upOt.error.message) };
+    }
+
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo pasar la venta a produccion."),
+    };
+  }
 }
 
 export async function marcarVentaEntregado(ventaId: string): Promise<{ error: Error | null }> {

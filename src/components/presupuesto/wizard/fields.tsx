@@ -16,10 +16,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Plus, Check, ChevronsUpDown, Search } from "lucide-react";
-import {
-  ARTICULOS_MOCK,
-  getArticuloById,
-} from "@/data/presupuesto-articulos-mock";
+import type { ArticuloConPrecio } from "@/types/articulos";
 import type { ClientePresupuestoMock } from "@/data/presupuesto-clientes-mock";
 import { labelUnidad } from "@/lib/presupuesto-calculos";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -435,13 +432,16 @@ export function PickArticulo({
   value,
   onChange,
   compact,
+  articulos,
 }: {
   value: string;
   onChange: (id: string) => void;
   compact?: boolean;
+  /** Lista dinámica de artículos (del hook useArticulos). */
+  articulos: ArticuloConPrecio[];
 }) {
   const [open, setOpen] = useState(false);
-  const selected = getArticuloById(value);
+  const selected = articulos.find((a) => a.id === value);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -468,9 +468,13 @@ export function PickArticulo({
         <Command>
           <CommandInput placeholder="Buscar artículo…" />
           <CommandList>
-            <CommandEmpty>Sin resultados.</CommandEmpty>
+            <CommandEmpty>
+              {articulos.length === 0
+                ? "Cargando artículos…"
+                : "Sin coincidencias."}
+            </CommandEmpty>
             <CommandGroup>
-              {ARTICULOS_MOCK.map((a) => (
+              {articulos.map((a) => (
                 <CommandItem
                   key={a.id}
                   value={`${a.descripcion} ${a.codigo}`}
@@ -488,12 +492,15 @@ export function PickArticulo({
                   <span className="flex flex-col gap-0">
                     <span>{a.descripcion}</span>
                     <span className="text-[10px] text-muted-foreground font-mono">
-                      {a.codigo} · {labelUnidad(a.unidad)}
-                      {!a.calculaMaterial
+                      {a.codigo} · {labelUnidad(a.unidad as "M2" | "ML" | "UNI")}
+                      {!a.calcula_material
                         ? " · sin m²"
-                        : a.medidaEstandarM2
-                          ? ` · std ${a.medidaEstandarM2} m²`
+                        : a.medida_estandar_m2
+                          ? ` · std ${a.medida_estandar_m2} m²`
                           : ""}
+                      {a.precio != null
+                        ? ` · $${a.precio}`
+                        : ""}
                     </span>
                   </span>
                 </CommandItem>

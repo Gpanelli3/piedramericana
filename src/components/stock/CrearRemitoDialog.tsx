@@ -59,6 +59,7 @@ type LineDraft = {
   ancho_cm: string;
   bulto_inicio: string;
   precio: string;
+  lote_codigo: string;
 };
 
 function newLineKey() {
@@ -77,6 +78,7 @@ function blankLine(): LineDraft {
     ancho_cm: "",
     bulto_inicio: "",
     precio: "",
+    lote_codigo: "",
   };
 }
 
@@ -245,6 +247,7 @@ export function CrearRemitoDialog({
           ancho_cm: ancho,
           bulto_numero_inicio: ini,
           precio_unitario: pu !== null && Number.isFinite(pu) ? pu : null,
+          lote_codigo: draft.lote_codigo.trim() || null,
           sort_order: idx,
         };
       });
@@ -422,6 +425,9 @@ export function CrearRemitoDialog({
                     <TableHead className="w-24 whitespace-nowrap">Ancho cm</TableHead>
                     <TableHead className="w-28 whitespace-nowrap">Precio u.</TableHead>
                     <TableHead className="w-28 whitespace-nowrap">N° inicial</TableHead>
+                    <TableHead className="w-28 whitespace-nowrap" title="Código de lote del proveedor. No mezclar lotes en una misma OT.">
+                      Lote
+                    </TableHead>
                     <TableHead className="w-24 whitespace-nowrap text-right">m² total</TableHead>
                     <TableHead className="w-[88px]" />
                   </TableRow>
@@ -527,6 +533,15 @@ export function CrearRemitoDialog({
                             placeholder="9001"
                             value={ln.bulto_inicio}
                             onChange={(e) => setLine(ln.key, { bulto_inicio: e.target.value })}
+                          />
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <Input
+                            className="h-8 px-2 text-xs"
+                            placeholder="Ej. L-240501"
+                            title="Código de lote del proveedor"
+                            value={ln.lote_codigo}
+                            onChange={(e) => setLine(ln.key, { lote_codigo: e.target.value })}
                           />
                         </TableCell>
                         <TableCell className="py-2 text-right font-semibold tabular-nums text-muted-foreground">

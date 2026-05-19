@@ -43,10 +43,12 @@ function formatMonto(n: number, moneda: "ars" | "usd") {
 
 function etiquetaEstadoVenta(e: VentaEstado | null): string {
   switch (e) {
-    case "aprobado_sin_sena":
+    case null:
       return "Sin seña";
     case "senado":
-      return "Con seña";
+      return "Señado";
+    case "en_medicion":
+      return "En medición";
     case "en_produccion":
       return "En producción";
     case "finalizado":
@@ -65,16 +67,6 @@ function badgeEstadoVenta(e: VentaEstado | null) {
   if (e === null) {
     return (
       <Badge variant="outline" className={cn(base, "border-border text-muted-foreground")}>
-        {label}
-      </Badge>
-    );
-  }
-  if (e === "aprobado_sin_sena") {
-    return (
-      <Badge
-        variant="secondary"
-        className={cn(base, "border-amber-200 bg-amber-50 text-amber-900 text-[11px]")}
-      >
         {label}
       </Badge>
     );
@@ -146,7 +138,7 @@ export function VistaAdministracion() {
       } else {
         if (typeof sal === "number" && sal > 0) saldoArs += sal;
       }
-      if (r.venta_estado === "aprobado_sin_sena") sinSena += 1;
+      if (r.venta_estado === null) sinSena += 1;
     }
     const conSaldo =
       filas.filter((r) => {

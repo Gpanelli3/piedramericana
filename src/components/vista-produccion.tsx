@@ -31,6 +31,7 @@ import {
   ArrowRight,
   GripVertical,
   PlayCircle,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStock } from "@/contexts/StockContext";
@@ -57,6 +58,7 @@ interface OT {
   columna: EtapaId;
   prioridad: "alta" | "normal" | "baja";
   pausada?: boolean;
+  bloqueada: boolean;
   status: JobStatus;
 }
 
@@ -78,6 +80,7 @@ function tarjetaToOtUi(t: OtTarjeta): OT {
     columna: coalesceEtapa(t.orden.etapa),
     prioridad: "normal",
     pausada: Boolean(t.orden.pausada),
+    bloqueada: coalesceEtapa(t.orden.etapa) === "medicion",
     status: (t.orden.estado as JobStatus) ?? "pending",
   };
 }
@@ -157,10 +160,11 @@ export function VistaProduccion() {
   const moverAEtapa = useCallback(
     async (otId: string, nueva: EtapaId) => {
       const ot = ots.find((o) => o.id === otId);
-      if (!ot || ot.pausada || ot.columna === nueva || ot.status === "done") return;
+      if (!ot || ot.pausada || ot.bloqueada || ot.columna === nueva || ot.status === "done") return;
+      if (nueva === "medicion") return;
 
       let nextStatus: JobStatus = ot.status;
-      if (ot.status === "pending" && nueva !== "medicion") nextStatus = "in_progress";
+      if (ot.status === "pending") nextStatus = "in_progress";
 
       setOts((prev) => {
         const next = prev.map((o) => {
@@ -189,7 +193,7 @@ export function VistaProduccion() {
   const avanzarEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || ot.status === "done" || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
+      if (ot.pausada || ot.bloqueada || ot.status === "done" || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
       void moverAEtapa(ot.id, ETAPAS_ORDEN[i + 1]!);
     },
     [moverAEtapa],
@@ -198,7 +202,7 @@ export function VistaProduccion() {
   const retrocederEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || ot.status === "done" || i <= 0) return;
+      if (ot.pausada || ot.bloqueada || ot.status === "done" || i <= 0) return;
       void moverAEtapa(ot.id, ETAPAS_ORDEN[i - 1]!);
     },
     [moverAEtapa],
@@ -395,6 +399,18 @@ export function VistaProduccion() {
 
           {otDetalle && (
             <div className="space-y-4">
+              {otDetalle.bloqueada && (
+                <div className="flex items-start gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium">OT bloqueada en medición</p>
+                    <p className="text-xs opacity-90">
+                      Producción no puede mover esta OT hasta que Ventas registre el pago del saldo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {otDetalle.pausada && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -459,6 +475,7 @@ export function VistaProduccion() {
                   className="flex-1 gap-1"
                   disabled={
                     otDetalle.pausada ||
+                    otDetalle.bloqueada ||
                     otDetalle.status === "done" ||
                     etapaIndex(otDetalle.columna) <= 0
                   }
@@ -472,6 +489,7 @@ export function VistaProduccion() {
                   className="flex-1 gap-1"
                   disabled={
                     otDetalle.pausada ||
+                    otDetalle.bloqueada ||
                     otDetalle.status === "done" ||
                     etapaIndex(otDetalle.columna) >= ETAPAS_ORDEN.length - 1
                   }
@@ -486,14 +504,16 @@ export function VistaProduccion() {
                 <Label className="text-xs">Mover directamente a</Label>
                 <Select
                   value={otDetalle.columna}
-                  disabled={otDetalle.pausada || otDetalle.status === "done"}
+                  disabled={otDetalle.pausada || otDetalle.bloqueada || otDetalle.status === "done"}
                   onValueChange={(v) => void moverAEtapa(otDetalle.id, v as EtapaId)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {columnas.map((c) => (
+                    {columnas
+                      .filter((c) => c.id !== "medicion")
+                      .map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.label}
                       </SelectItem>
@@ -637,7 +657,7 @@ function OTCard({
   showRotura: boolean;
 }) {
   const prioridad = prioridadConfig[ot.prioridad];
-  const puedeArrastrar = !ot.pausada && ot.status !== "done";
+  const puedeArrastrar = !ot.pausada && !ot.bloqueada && ot.status !== "done";
 
   return (
     <div
@@ -656,7 +676,8 @@ function OTCard({
       className={cn(
         "space-y-3 rounded-lg border border-border bg-white p-4 shadow-sm transition-[box-shadow,transform] duration-150",
         puedeArrastrar && "cursor-grab active:cursor-grabbing",
-        !puedeArrastrar && "opacity-90",
+        ot.bloqueada && "opacity-70",
+        !puedeArrastrar && !ot.bloqueada && "opacity-90",
         draggingId === ot.id &&
           "z-10 border-primary/40 shadow-md ring-2 ring-primary/30 ring-offset-2 ring-offset-background"
       )}
@@ -683,6 +704,12 @@ function OTCard({
           {ot.pausada ? (
             <Badge variant="secondary" className="text-[10px] text-amber-800">
               Pausada
+            </Badge>
+          ) : null}
+          {ot.bloqueada ? (
+            <Badge variant="secondary" className="gap-1 text-[10px] text-slate-800">
+              <Lock className="h-3 w-3" />
+              Bloqueada
             </Badge>
           ) : null}
         </div>

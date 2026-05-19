@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRol } from "@/hooks/useRol";
 import type { WorkspaceTab } from "@/types/workspace";
 import { useSearchParams } from "react-router-dom";
 
@@ -28,36 +29,50 @@ function wsDesdeParam(v: string | null): WorkspaceTab {
   return v && KNOWN_WS.has(v as WorkspaceTab) ? (v as WorkspaceTab) : "ventas";
 }
 
-const navItems: { id: WorkspaceTab; label: string; icon: ReactNode; color: string }[] = [
+type NavItemDef = {
+  id: WorkspaceTab;
+  label: string;
+  icon: ReactNode;
+  color: string;
+  /** Roles que pueden ver este módulo. Si está vacío, todos lo ven. */
+  roles?: string[];
+};
+
+const NAV_ITEMS: NavItemDef[] = [
   {
     id: "ventas",
     label: "Presupuestos",
     icon: <FileText className="h-5 w-5" />,
     color: "text-red-400",
+    roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "administracion",
     label: "Ventas",
     icon: <Wallet className="h-5 w-5" />,
     color: "text-purple-400",
+    roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "produccion",
     label: "Producción",
     icon: <Wrench className="h-5 w-5" />,
     color: "text-green-400",
+    roles: ["cortador", "produccion", "medidor", "admin"],
   },
   {
     id: "cantera",
     label: "Cantera",
     icon: <Mountain className="h-5 w-5" />,
     color: "text-sky-400",
+    roles: ["admin", "administracion"],
   },
   {
     id: "stock",
     label: "Stock",
     icon: <Package className="h-5 w-5" />,
     color: "text-yellow-400",
+    roles: ["admin", "administracion", "produccion"],
   },
 ];
 
@@ -74,14 +89,34 @@ function initialsFromUser(email: string | undefined, name: string | undefined) {
   return local.slice(0, 2).toUpperCase();
 }
 
+const ETIQUETAS_ROL: Record<string, string> = {
+  vendedor: "Vendedor",
+  medidor: "Medidor",
+  cortador: "Cortador",
+  produccion: "Producción",
+  instalador: "Instalador",
+  reparador: "Reparador",
+  administracion: "Administración",
+  admin: "Administrador",
+};
+
 export function AppSidebar() {
   const { user, signOut } = useAuth();
+  const { roles, esAdmin } = useRol();
   const [searchParams, setSearchParams] = useSearchParams();
   const [presupuestosMenuAbierto, setPresupuestosMenuAbierto] = useState(false);
 
   const activeTab = useMemo(() => wsDesdeParam(searchParams.get("ws")), [searchParams]);
   const pv = searchParams.get("pv") ?? "";
   const ft = searchParams.get("ft") ?? "pendientes";
+
+  const navItems = useMemo(() => {
+    if (esAdmin || roles.length === 0) return NAV_ITEMS;
+    return NAV_ITEMS.filter((item) => {
+      if (!item.roles || item.roles.length === 0) return true;
+      return item.roles.some((r) => roles.includes(r as never));
+    });
+  }, [roles, esAdmin]);
 
   const gotoWorkspace = useCallback(
     (tab: WorkspaceTab) => {
@@ -178,10 +213,18 @@ export function AppSidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-sidebar-foreground">{displayName}</p>
-            <p className="flex items-center gap-1 text-xs text-green-400">
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
-              Sesión Supabase
-            </p>
+            {roles.length > 0 ? (
+              <p className="truncate text-xs text-sidebar-foreground/60">
+                {(esAdmin ? ["admin"] : roles.slice(0, 2))
+                  .map((r) => ETIQUETAS_ROL[r] ?? r)
+                  .join(" · ")}
+              </p>
+            ) : (
+              <p className="flex items-center gap-1 text-xs text-green-400">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
+                Sesión activa
+              </p>
+            )}
           </div>
         </div>
       </div>

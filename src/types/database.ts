@@ -14,12 +14,22 @@ export type InventorySlabEstado = "Disponible" | "Reservada";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
 export type VentaEstado =
-  | "aprobado_sin_sena"
   | "senado"
+  | "en_medicion"
   | "en_produccion"
   | "finalizado"
   | "entregado";
 export type EtapaOtKanban = "medicion" | "corte" | "produccion" | "despacho";
+export type UnidadArticuloDb = "M2" | "ML" | "UNI";
+export type RolOperativo =
+  | "vendedor"
+  | "medidor"
+  | "cortador"
+  | "produccion"
+  | "instalador"
+  | "reparador"
+  | "administracion"
+  | "admin";
 
 export interface Database {
   public: {
@@ -185,6 +195,8 @@ export interface Database {
           venta_id: string | null;
           etapa: EtapaOtKanban | string;
           pausada: boolean;
+          medidas_confirmadas: boolean;
+          fecha_medidas_confirmadas: string | null;
         };
         Insert: {
           id?: string;
@@ -199,6 +211,8 @@ export interface Database {
           venta_id?: string | null;
           etapa?: EtapaOtKanban | string;
           pausada?: boolean;
+          medidas_confirmadas?: boolean;
+          fecha_medidas_confirmadas?: string | null;
         };
         Update: {
           id?: string;
@@ -213,6 +227,8 @@ export interface Database {
           venta_id?: string | null;
           etapa?: EtapaOtKanban | string;
           pausada?: boolean;
+          medidas_confirmadas?: boolean;
+          fecha_medidas_confirmadas?: string | null;
         };
         Relationships: [
           {
@@ -409,6 +425,7 @@ export interface Database {
           ancho_cm: number;
           precio_unitario: number | null;
           sort_order: number;
+          lote_codigo: string | null;
         };
         Insert: {
           id?: string;
@@ -420,6 +437,7 @@ export interface Database {
           ancho_cm: number;
           precio_unitario?: number | null;
           sort_order?: number;
+          lote_codigo?: string | null;
         };
         Update: {
           id?: string;
@@ -431,6 +449,7 @@ export interface Database {
           ancho_cm?: number;
           precio_unitario?: number | null;
           sort_order?: number;
+          lote_codigo?: string | null;
         };
         Relationships: [
           {
@@ -574,6 +593,7 @@ export interface Database {
           largo_cm: number;
           ancho_cm: number;
           estado: InventorySlabEstado;
+          lote_codigo: string | null;
           created_at: string;
         };
         Insert: {
@@ -585,6 +605,7 @@ export interface Database {
           largo_cm: number;
           ancho_cm: number;
           estado?: InventorySlabEstado;
+          lote_codigo?: string | null;
           created_at?: string;
         };
         Update: {
@@ -596,6 +617,7 @@ export interface Database {
           largo_cm?: number;
           ancho_cm?: number;
           estado?: InventorySlabEstado;
+          lote_codigo?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -667,6 +689,9 @@ export interface Database {
           id: string;
           presupuesto_id: string;
           estado: VentaEstado;
+          fecha_confirmacion_medidas: string | null;
+          confirmado_por: string | null;
+          notas_medicion: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -674,6 +699,9 @@ export interface Database {
           id?: string;
           presupuesto_id: string;
           estado?: VentaEstado;
+          fecha_confirmacion_medidas?: string | null;
+          confirmado_por?: string | null;
+          notas_medicion?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -681,6 +709,9 @@ export interface Database {
           id?: string;
           presupuesto_id?: string;
           estado?: VentaEstado;
+          fecha_confirmacion_medidas?: string | null;
+          confirmado_por?: string | null;
+          notas_medicion?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -799,6 +830,167 @@ export interface Database {
           },
         ];
       };
+      articulos: {
+        Row: {
+          id: string;
+          codigo: string;
+          descripcion: string;
+          unidad: UnidadArticuloDb;
+          calcula_material: boolean;
+          medida_estandar_m2: number | null;
+          prefer_modo_manual: boolean;
+          activo: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          codigo: string;
+          descripcion: string;
+          unidad?: UnidadArticuloDb;
+          calcula_material?: boolean;
+          medida_estandar_m2?: number | null;
+          prefer_modo_manual?: boolean;
+          activo?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          codigo?: string;
+          descripcion?: string;
+          unidad?: UnidadArticuloDb;
+          calcula_material?: boolean;
+          medida_estandar_m2?: number | null;
+          prefer_modo_manual?: boolean;
+          activo?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      listas_precio: {
+        Row: {
+          id: string;
+          codigo: string;
+          label: string;
+          moneda: "ars" | "usd";
+          descripcion: string | null;
+          activa: boolean;
+          vigente_desde: string | null;
+          vigente_hasta: string | null;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          codigo: string;
+          label: string;
+          moneda?: "ars" | "usd";
+          descripcion?: string | null;
+          activa?: boolean;
+          vigente_desde?: string | null;
+          vigente_hasta?: string | null;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          codigo?: string;
+          label?: string;
+          moneda?: "ars" | "usd";
+          descripcion?: string | null;
+          activa?: boolean;
+          vigente_desde?: string | null;
+          vigente_hasta?: string | null;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      usuario_roles: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          rol: RolOperativo;
+          activo: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          rol: RolOperativo;
+          activo?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          usuario_id?: string;
+          rol?: RolOperativo;
+          activo?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "usuario_roles_usuario_id_fkey";
+            columns: ["usuario_id"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      listas_precio_items: {
+        Row: {
+          id: string;
+          lista_precio_id: string;
+          articulo_id: string;
+          precio: number;
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          lista_precio_id: string;
+          articulo_id: string;
+          precio?: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          lista_precio_id?: string;
+          articulo_id?: string;
+          precio?: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "listas_precio_items_lista_precio_id_fkey";
+            columns: ["lista_precio_id"];
+            isOneToOne: false;
+            referencedRelation: "listas_precio";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "listas_precio_items_articulo_id_fkey";
+            columns: ["articulo_id"];
+            isOneToOne: false;
+            referencedRelation: "articulos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -810,6 +1002,28 @@ export interface Database {
         Args: { p_payload: Json };
         Returns: undefined;
       };
+      get_articulos_con_precios: {
+        Args: { p_lista_precio_id: string };
+        Returns: Array<{
+          id: string;
+          codigo: string;
+          descripcion: string;
+          unidad: UnidadArticuloDb;
+          calcula_material: boolean;
+          medida_estandar_m2: number | null;
+          prefer_modo_manual: boolean;
+          sort_order: number;
+          precio: number | null;
+        }>;
+      };
+      mis_roles: {
+        Args: Record<never, never>;
+        Returns: Array<{ rol: RolOperativo }>;
+      };
+      tiene_rol: {
+        Args: { p_rol: RolOperativo };
+        Returns: boolean;
+      };
     };
     Enums: {
       quote_status: QuoteStatus;
@@ -820,6 +1034,8 @@ export interface Database {
       material_kind: MaterialKindDb;
       presupuesto_estado: PresupuestoEstado;
       venta_estado: VentaEstado;
+      unidad_articulo: UnidadArticuloDb;
+      rol_operativo: RolOperativo;
     };
   };
 }

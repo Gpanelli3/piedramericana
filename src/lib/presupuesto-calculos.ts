@@ -6,8 +6,36 @@
  * - ML cant. 1, alto 0,5 m → m² = 1 × 0,5 × (1 + desperdicio/100)
  */
 
-import type { ArticuloMock, UnidadArticulo } from "@/data/presupuesto-articulos-mock";
-import type { Database } from "@/types/database";
+import type { ArticuloConPrecio } from "@/types/articulos";
+import type { Database, UnidadArticuloDb } from "@/types/database";
+
+/**
+ * Interfaz mínima que los cálculos necesitan.
+ * Interfaz mínima que consumen los cálculos del presupuesto.
+ */
+export type ArticuloCalculo = {
+  id: string;
+  codigo: string;
+  descripcion: string;
+  unidad: UnidadArticuloDb;
+  calculaMaterial: boolean;
+  medidaEstandarM2?: number | null;
+  preferModoManualM2?: boolean;
+  precioUnitario?: number;
+};
+
+export function articuloConPrecioToMock(a: ArticuloConPrecio): ArticuloCalculo {
+  return {
+    id: a.id,
+    codigo: a.codigo,
+    descripcion: a.descripcion,
+    unidad: a.unidad,
+    calculaMaterial: a.calcula_material,
+    medidaEstandarM2: a.medida_estandar_m2 ?? undefined,
+    preferModoManualM2: a.prefer_modo_manual,
+    precioUnitario: a.precio ?? 0,
+  };
+}
 
 export type ModoIngresoM2 = "dimensiones" | "manual";
 
@@ -36,7 +64,7 @@ export interface LineaItemOTUiInput {
 }
 
 /** Convierte entradas de interfaz a metros para `computeLineaPresupuesto`. */
-export function buildLineaCalcInput(art: ArticuloMock, line: LineaItemOTUiInput): LineaItemOTCalcInput {
+export function buildLineaCalcInput(art: ArticuloCalculo, line: LineaItemOTUiInput): LineaItemOTCalcInput {
   const cmToMStr = (cm: string) => {
     const m = parseDecimalInput(cm) / 100;
     return String(m);
@@ -87,8 +115,8 @@ export interface ResultadoLineaPresupuesto {
  * $/unidad para ítems que no calculan material).
  */
 export function computeLineaPresupuesto(
-  art: ArticuloMock,
-  line: LineaItemOTCalcInput
+  art: ArticuloCalculo,
+  line: LineaItemOTCalcInput,
 ): ResultadoLineaPresupuesto {
   const pu = parseDecimalInput(line.precioUnitario);
   const qty = parseDecimalInput(line.cantidad);
@@ -136,17 +164,17 @@ export function computeLineaPresupuesto(
   return { m2Linea: 0, subtotal: qty * pu };
 }
 
-export function dimensionesHabilitadas(art: ArticuloMock): boolean {
+export function dimensionesHabilitadas(art: ArticuloCalculo): boolean {
   if (!art.calculaMaterial) return false;
   if (art.medidaEstandarM2 != null && art.medidaEstandarM2 > 0) return false;
   return art.unidad === "M2" || art.unidad === "ML";
 }
 
-export function altoRequerido(art: ArticuloMock): boolean {
+export function altoRequerido(art: ArticuloCalculo): boolean {
   return art.calculaMaterial && art.unidad === "ML" && !art.medidaEstandarM2;
 }
 
-export function anchoRequerido(art: ArticuloMock, modo: ModoIngresoM2): boolean {
+export function anchoRequerido(art: ArticuloCalculo, modo: ModoIngresoM2): boolean {
   return (
     art.calculaMaterial &&
     art.unidad === "M2" &&
@@ -155,11 +183,11 @@ export function anchoRequerido(art: ArticuloMock, modo: ModoIngresoM2): boolean 
   );
 }
 
-export function permiteModoManualCantidadM2(art: ArticuloMock): boolean {
+export function permiteModoManualCantidadM2(art: ArticuloCalculo): boolean {
   return art.calculaMaterial && art.unidad === "M2" && !art.medidaEstandarM2;
 }
 
-export function labelUnidad(u: UnidadArticulo): string {
+export function labelUnidad(u: UnidadArticuloDb): string {
   switch (u) {
     case "M2":
       return "m²";
