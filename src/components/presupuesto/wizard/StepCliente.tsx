@@ -6,17 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
 import type { ListaPrecioRow } from "@/types/articulos";
-import {
-  ORIGEN_VENTA_OPCIONES,
-  type ClientePresupuestoMock,
-} from "@/data/presupuesto-clientes-mock";
+import type { ClientePresupuesto } from "@/lib/clients-api";
+import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import { PickCliente, SectionPresupuesto } from "./fields";
 import { ListaPrecioSelector } from "./ListaPrecioSelector";
 
 type StepClienteProps = {
-  clientesLocales: ClientePresupuestoMock[];
+  clientesLocales: ClientePresupuesto[];
+  clientesCargando?: boolean;
   clienteSeleccionadoId: string | null;
-  aplicarCliente: (c: ClientePresupuestoMock) => void;
+  aplicarCliente: (c: ClientePresupuesto) => void;
+  limpiarCliente: () => void;
   abrirNuevoCliente: (prefillNombre?: string) => void;
   listasPrecios: ListaPrecioRow[];
   listaPrecioId: string;
@@ -39,8 +39,10 @@ type StepClienteProps = {
 
 export function StepCliente({
   clientesLocales,
+  clientesCargando = false,
   clienteSeleccionadoId,
   aplicarCliente,
+  limpiarCliente,
   abrirNuevoCliente,
   listasPrecios,
   listaPrecioId,
@@ -70,7 +72,9 @@ export function StepCliente({
               clientes={clientesLocales}
               value={clienteSeleccionadoId}
               onChange={aplicarCliente}
+              onClear={limpiarCliente}
               onNuevoCliente={abrirNuevoCliente}
+              loading={clientesCargando}
             />
           </div>
           <div className="flex shrink-0 justify-end sm:justify-start sm:pb-px">
@@ -105,7 +109,7 @@ export function StepCliente({
           </div>
           <div className="space-y-1 sm:col-span-2 lg:col-span-1">
             <Label className="text-xs font-medium">
-              Origen <span className="text-destructive">*</span>
+              Origen
             </Label>
             <select
               className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"

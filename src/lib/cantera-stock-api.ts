@@ -40,7 +40,42 @@ export type ConversionRowUi = {
   notes: string | null;
 };
 
+export type ProcesamientoLineInput = {
+  material_producto_id: string;
+  cantidad: number;
+};
+
+export type RegisterCanteraProcesamientoInput = {
+  lote_id: string;
+  qty_kg_consumidos: number;
+  issue_date?: string;
+  notes?: string;
+  created_by?: string | null;
+  lines: ProcesamientoLineInput[];
+};
+
+export type ProcesamientoLineListItem = {
+  id: string;
+  material_producto_id: string;
+  material_producto_name: string | null;
+  cantidad: number;
+  unit: string;
+};
+
+export type ProcesamientoListItem = {
+  id: string;
+  lote_id: string;
+  material_bruto_id: string;
+  material_bruto_name: string | null;
+  qty_kg_consumidos: number;
+  issue_date: string;
+  notes: string | null;
+  created_at: string;
+  lineas: ProcesamientoLineListItem[];
+};
+
 const demoLotesInternal: InventoryLoteListItem[] = [];
+const demoProcesamientosInternal: ProcesamientoListItem[] = [];
 
 function qtyToKg(qty: number, uom: CanteraPurchaseUom): number {
   return uom === "T" ? qty * 1000 : qty;
@@ -228,4 +263,219 @@ export async function patchMaterialCatalogoCampos(params: {
   if (params.material_kind !== undefined) patch.material_kind = params.material_kind;
   const { error } = await supabase.from("materials").update(patch).eq("id", params.materialId);
   if (error) throw error;
+}
+
+async function registerCanteraProcesamientoDirect(input: RegisterCanteraProcesamientoInput): Promise<void> {
+  const { data: lote, error: loteErr } = await supabase
+    .from("lotes_cantera")
+    .select("id,material_id,qty_kg_remaining")
+    .eq("id", input.lote_id)
+    .single();
+
+  if (loteErr || !lote) throw loteErr ?? new Error("Lote no encontrado");
+  if (lote.qty_kg_remaining < input.qty_kg_consumidos) {
+    throw new Error(`Kg insuficientes en el lote (restante: ${lote.qty_kg_remaining})`);
+  }
+
+  const { error: loteUpdErr } = await supabase
+    .from("lotes_cantera")
+    .update({ qty_kg_remaining: lote.qty_kg_remaining - input.qty_kg_consumidos })
+    .eq("id", input.lote_id);
+  if (loteUpdErr) throw loteUpdErr;
+
+  const { data: brutoMat, error: brutoErr } = await supabase
+    .from("materials")
+    .select("bulk_stock_kg")
+    .eq("id", lote.material_id)
+    .single();
+  if (brutoErr || !brutoMat) throw brutoErr ?? new Error("Material bruto no encontrado");
+
+  const { error: bulkErr } = await supabase
+    .from("materials")
+    .update({
+      bulk_stock_kg: Math.max((brutoMat.bulk_stock_kg ?? 0) - input.qty_kg_consumidos, 0),
+    })
+    .eq("id", lote.material_id);
+  if (bulkErr) throw bulkErr;
+
+  const issueDate =
+    input.issue_date && input.issue_date.trim() !== ""
+      ? input.issue_date
+      : new Date().toISOString().slice(0, 10);
+
+  const { data: proc, error: procErr } = await supabase
+    .from("procesamientos_cantera")
+    .insert({
+      lote_id: input.lote_id,
+      material_bruto_id: lote.material_id,
+      qty_kg_consumidos: input.qty_kg_consumidos,
+      issue_date: issueDate,
+      notes: input.notes?.trim() || null,
+      created_by: input.created_by ?? null,
+    })
+    .select("id")
+    .single();
+  if (procErr || !proc) throw procErr ?? new Error("No se pudo crear el procesamiento");
+
+  for (const line of input.lines) {
+    const { data: prodMat, error: prodErr } = await supabase
+      .from("materials")
+      .select("unit,stock_qty")
+      .eq("id", line.material_producto_id)
+      .single();
+    if (prodErr || !prodMat) throw prodErr ?? new Error("Material producto no encontrado");
+
+    const { error: stockErr } = await supabase
+      .from("materials")
+      .update({ stock_qty: (prodMat.stock_qty ?? 0) + line.cantidad })
+      .eq("id", line.material_producto_id);
+    if (stockErr) throw stockErr;
+
+    const { error: lineErr } = await supabase.from("procesamiento_lineas").insert({
+      procesamiento_id: proc.id,
+      material_producto_id: line.material_producto_id,
+      cantidad: line.cantidad,
+      unit: prodMat.unit,
+    });
+    if (lineErr) throw lineErr;
+  }
+}
+
+export async function registerCanteraProcesamiento(input: RegisterCanteraProcesamientoInput): Promise<void> {
+  if (input.lines.length === 0) {
+    throw new Error("Se requiere al menos una línea de producto");
+  }
+  if (!(input.qty_kg_consumidos > 0)) {
+    throw new Error("Los kg consumidos deben ser mayores a 0");
+  }
+
+  if (!isSupabaseConfigured) {
+    const lote = demoLotesInternal.find((l) => l.id === input.lote_id);
+    if (!lote) throw new Error("Lote no encontrado");
+    if (lote.qty_kg_remaining < input.qty_kg_consumidos) {
+      throw new Error(`Kg insuficientes en el lote (restante: ${lote.qty_kg_remaining})`);
+    }
+    lote.qty_kg_remaining -= input.qty_kg_consumidos;
+
+    const procId = `demo-proc-${typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random()}`;
+    demoProcesamientosInternal.unshift({
+      id: procId,
+      lote_id: input.lote_id,
+      material_bruto_id: lote.material_id,
+      material_bruto_name: lote.material_name,
+      qty_kg_consumidos: input.qty_kg_consumidos,
+      issue_date:
+        input.issue_date && input.issue_date.trim() !== ""
+          ? input.issue_date
+          : new Date().toISOString().slice(0, 10),
+      notes: input.notes?.trim() ?? null,
+      created_at: new Date().toISOString(),
+      lineas: input.lines.map((ln, i) => ({
+        id: `${procId}-line-${i}`,
+        material_producto_id: ln.material_producto_id,
+        material_producto_name: null,
+        cantidad: ln.cantidad,
+        unit: "UNI",
+      })),
+    });
+    return;
+  }
+
+  const payload = {
+    lote_id: input.lote_id,
+    qty_kg_consumidos: input.qty_kg_consumidos,
+    issue_date: input.issue_date ?? "",
+    notes: input.notes?.trim() ?? "",
+    created_by: input.created_by ?? null,
+    lines: input.lines.map((line) => ({
+      material_producto_id: line.material_producto_id,
+      cantidad: line.cantidad,
+    })),
+  };
+
+  const { error: rpcError } = await supabase.rpc("register_cantera_procesamiento", { p_payload: payload });
+  if (!rpcError) return;
+
+  try {
+    await registerCanteraProcesamientoDirect(input);
+  } catch (directErr) {
+    console.error("[cantera] RPC procesamiento falló e insert directo también:", rpcError, directErr);
+    throw rpcError;
+  }
+}
+
+export async function fetchProcesamientosRecientes(limit = 20): Promise<ProcesamientoListItem[]> {
+  if (!isSupabaseConfigured) return [...demoProcesamientosInternal].slice(0, limit);
+
+  const { data, error } = await supabase
+    .from("procesamientos_cantera")
+    .select(
+      `
+      id,
+      lote_id,
+      material_bruto_id,
+      qty_kg_consumidos,
+      issue_date,
+      notes,
+      created_at,
+      material_bruto:materials!procesamientos_cantera_material_bruto_id_fkey ( name ),
+      procesamiento_lineas (
+        id,
+        material_producto_id,
+        cantidad,
+        unit,
+        material_producto:materials!procesamiento_lineas_material_producto_id_fkey ( name )
+      )
+    `,
+    )
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error && /procesamientos_cantera|does not exist|schema cache/i.test(error.message)) {
+    return [...demoProcesamientosInternal].slice(0, limit);
+  }
+  if (error) throw error;
+
+  return (data ?? []).map((row: unknown) => {
+    const r = row as {
+      id: string;
+      lote_id: string;
+      material_bruto_id: string;
+      qty_kg_consumidos: number;
+      issue_date: string;
+      notes: string | null;
+      created_at: string;
+      material_bruto: { name: string } | { name: string }[] | null;
+      procesamiento_lineas: Array<{
+        id: string;
+        material_producto_id: string;
+        cantidad: number;
+        unit: string;
+        material_producto: { name: string } | { name: string }[] | null;
+      }> | null;
+    };
+    const bruto = r.material_bruto;
+    const brutoName = Array.isArray(bruto) ? (bruto[0]?.name ?? null) : (bruto?.name ?? null);
+    return {
+      id: r.id,
+      lote_id: r.lote_id,
+      material_bruto_id: r.material_bruto_id,
+      material_bruto_name: brutoName,
+      qty_kg_consumidos: r.qty_kg_consumidos,
+      issue_date: r.issue_date,
+      notes: r.notes,
+      created_at: r.created_at,
+      lineas: (r.procesamiento_lineas ?? []).map((ln) => {
+        const prod = ln.material_producto;
+        const prodName = Array.isArray(prod) ? (prod[0]?.name ?? null) : (prod?.name ?? null);
+        return {
+          id: ln.id,
+          material_producto_id: ln.material_producto_id,
+          material_producto_name: prodName,
+          cantidad: ln.cantidad,
+          unit: ln.unit,
+        };
+      }),
+    };
+  });
 }

@@ -33,9 +33,12 @@ import {
 import { useArticulos } from "@/hooks/useArticulos";
 import { articuloConPrecioToMock } from "@/lib/presupuesto-calculos";
 import {
-  ORIGEN_VENTA_OPCIONES,
-  type ClientePresupuestoMock,
-} from "@/data/presupuesto-clientes-mock";
+  createClient,
+  listClients,
+  type ClientePresupuesto,
+} from "@/lib/clients-api";
+import { listMaterials } from "@/lib/materials-api";
+import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import {
   buildLineaCalcInput,
   computeLineaPresupuesto,
@@ -65,48 +68,14 @@ import {
 import {
   parseMoneyInput,
   validarPresupuestoCompleto,
-  validateClienteYOrigen,
+  validateCliente,
+  validateMaterialesOt,
   validateMecRequisitos,
   mecAlgunoActivo,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 
 export type { LineaItemOT } from "./wizard/types";
-
-const MATERIALES_MOCK_FALLBACK: MaterialWizardRow[] = [
-  {
-    id: "__mock-silestone",
-    name: "Silestone Blanco Norte",
-    unit: "m2",
-    material_kind: "marmol",
-    peso_por_m2_kg: null,
-    bulk_stock_kg: 0,
-  },
-  {
-    id: "__mock-granito",
-    name: "Granito Negro Brasil Extra 20mm",
-    unit: "m2",
-    material_kind: "otra_piedra",
-    peso_por_m2_kg: 55,
-    bulk_stock_kg: 0,
-  },
-  {
-    id: "__mock-cuarcita",
-    name: "Cuarcita Black Taurus",
-    unit: "m2",
-    material_kind: "otra_piedra",
-    peso_por_m2_kg: 62,
-    bulk_stock_kg: 0,
-  },
-  {
-    id: "__mock-dekton",
-    name: "Dekton DK Industrial Nilium Mate 8mm",
-    unit: "m2",
-    material_kind: "agglomerado_otro",
-    peso_por_m2_kg: 28,
-    bulk_stock_kg: 0,
-  },
-];
 
 function formatUsd(n: number): string {
   return n.toLocaleString("es-AR", {
@@ -215,9 +184,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [totalMecGlobal, setTotalMecGlobal] = useState("0");
   const [obsServiciosMec, setObsServiciosMec] = useState("");
 
-  const [clientesLocales, setClientesLocales] = useState<
-    ClientePresupuestoMock[]
-  >(() => []);
+  const [clientesLocales, setClientesLocales] = useState<ClientePresupuesto[]>(
+    () => [],
+  );
+  const [clientesCargando, setClientesCargando] = useState(isSupabaseConfigured);
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<
     string | null
   >(null);
@@ -252,8 +223,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     }
   }, [listaPrecioId, listasPrecios]);
 
-  const defaultMat = MATERIALES_MOCK_FALLBACK[0]!.id;
-  const [materials, setMaterials] = useState<MaterialWizardRow[]>(MATERIALES_MOCK_FALLBACK);
+  const [materials, setMaterials] = useState<MaterialWizardRow[]>([]);
   const [tecnicos, setTecnicos] = useState<
     { id: string; full_name: string | null }[]
   >([]);
@@ -262,7 +232,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const catalogoCargando = materialesCargando || articulosCargando;
 
   const [ordenes, setOrdenes] = useState<OrdenTrabajoWizard[]>(() => [
-    newOrdenTrabajo(defaultMat),
+    newOrdenTrabajo(""),
   ]);
   const [descuentoGlobalPct, setDescuentoGlobalPct] = useState("");
 
@@ -310,6 +280,30 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [guardando, setGuardando] = useState(false);
   useEffect(() => {
     if (!isSupabaseConfigured) {
+      setClientesCargando(false);
+      return;
+    }
+    let cancelled = false;
+    async function loadClientes() {
+      setClientesCargando(true);
+      const { data, error } = await listClients();
+      if (cancelled) return;
+      if (error) {
+        toast.error(`No se pudieron cargar los clientes: ${error.message}`);
+        setClientesLocales([]);
+      } else {
+        setClientesLocales(data);
+      }
+      setClientesCargando(false);
+    }
+    void loadClientes();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
       setMateriaesCargando(false);
       return;
     }
@@ -317,48 +311,24 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     async function load() {
       setMateriaesCargando(true);
       try {
-        const { data: mats, error: matsErr } = await supabase
-          .from("materials")
-          .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
-          .order("name");
-        if (!cancelled && !matsErr && mats?.length) {
-          setMaterials(mats as MaterialWizardRow[]);
-          setOrdenes((prev) =>
-            prev.map((o) =>
-              mats.some((m) => m.id === o.materialId)
-                ? o
-                : { ...o, materialId: mats[0]!.id },
-            ),
-          );
-        } else if (!cancelled) {
-          const { data: basic, error: basicErr } = await supabase
-            .from("materials")
-            .select("id,name,unit")
-            .order("name");
-          if (!cancelled && !basicErr && basic?.length) {
-            const norm: MaterialWizardRow[] = basic.map((r) => ({
-              id: r.id,
-              name: r.name,
-              unit: r.unit,
-              material_kind: "marmol",
-              peso_por_m2_kg: null,
-              bulk_stock_kg: 0,
-            }));
-            setMaterials(norm);
+        const { data: mats, error: matsErr } = await listMaterials();
+        if (cancelled) return;
+        if (matsErr) {
+          setMaterials([]);
+          toast.error(`No se pudo cargar el catálogo de materiales: ${matsErr.message}`);
+        } else {
+          setMaterials(mats);
+          if (mats.length > 0) {
             setOrdenes((prev) =>
               prev.map((o) =>
-                norm.some((m) => m.id === o.materialId) ? o : { ...o, materialId: norm[0]!.id },
+                mats.some((m) => m.id === o.materialId)
+                  ? o
+                  : { ...o, materialId: mats[0]!.id },
               ),
             );
-          } else if (!cancelled) {
-            setMaterials(MATERIALES_MOCK_FALLBACK);
-            if (matsErr || basicErr) {
-              toast.error(
-                `No se pudo cargar el catálogo de materiales: ${matsErr?.message ?? basicErr?.message ?? "error desconocido"}`,
-              );
-            }
           }
         }
+
         const { data: users, error: usersErr } = await supabase
           .from("usuarios")
           .select("id, full_name")
@@ -420,12 +390,16 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [clienteSeleccionadoId, clientesLocales],
   );
 
-  const aplicarCliente = useCallback((c: ClientePresupuestoMock) => {
+  const aplicarCliente = useCallback((c: ClientePresupuesto) => {
     setClienteSeleccionadoId(c.id);
     setContacto(c.contacto);
     setTel(c.tel);
     setEmail(c.email);
     setDireccion(c.direccion);
+  }, []);
+
+  const limpiarCliente = useCallback(() => {
+    setClienteSeleccionadoId(null);
   }, []);
 
   const abrirNuevoCliente = (prefillNombre = "") => {
@@ -439,20 +413,37 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     setDialogClienteAbierto(true);
   };
 
-  const guardarDraftCliente = () => {
+  const guardarDraftCliente = async () => {
     const t = draftCliente.nombre.trim();
     if (!t) return;
-    const nuevo: ClientePresupuestoMock = {
-      id: crypto.randomUUID(),
-      nombre: t,
-      contacto: draftCliente.contacto.trim(),
-      tel: draftCliente.tel.trim(),
-      email: draftCliente.email.trim(),
-      direccion: draftCliente.direccion.trim(),
-    };
-    setClientesLocales((rows) => [...rows, nuevo]);
-    aplicarCliente(nuevo);
-    setDialogClienteAbierto(false);
+
+    if (!isSupabaseConfigured) {
+      toast.error("Supabase no está configurado; no se puede guardar el cliente.");
+      return;
+    }
+
+    setGuardandoCliente(true);
+    try {
+      const { data, error } = await createClient({
+        nombre: t,
+        contacto: draftCliente.contacto,
+        tel: draftCliente.tel,
+        email: draftCliente.email,
+        direccion: draftCliente.direccion,
+      });
+      if (error || !data) {
+        toast.error(error?.message ?? "No se pudo crear el cliente");
+        return;
+      }
+      setClientesLocales((rows) =>
+        [...rows, data].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+      );
+      aplicarCliente(data);
+      setDialogClienteAbierto(false);
+      toast.success("Cliente guardado");
+    } finally {
+      setGuardandoCliente(false);
+    }
   };
 
   const patchOrden = (key: string, patch: Partial<OrdenTrabajoWizard>) => {
@@ -462,7 +453,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   };
 
   const addOrdenTrabajo = () => {
-    const mid = materials[0]?.id ?? defaultMat;
+    const mid = materials[0]?.id ?? "";
     setOrdenes((rows) => [...rows, newOrdenTrabajo(mid)]);
   };
 
@@ -729,6 +720,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       let { data, error } = await insertPresupuestoRow({
         numero,
         cliente: nombreCliente,
+        client_id: clienteSeleccionadoId,
         total: totalPresupuesto,
         moneda: monedaPresupuesto,
         status: "pendiente",
@@ -739,6 +731,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         ({ data, error } = await insertPresupuestoRow({
           numero,
           cliente: nombreCliente,
+          client_id: clienteSeleccionadoId,
           total: totalPresupuesto,
           moneda: monedaPresupuesto,
           status: "pendiente",
@@ -810,25 +803,29 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const handleWizardSiguiente = () => {
     const errCliente =
       wizardStep === 0
-        ? validateClienteYOrigen(clienteSeleccionadoId, origenVentas)
+        ? validateCliente(clienteSeleccionadoId)
         : null;
     if (errCliente) {
       setGrabarError(errCliente);
       return;
     }
-    const errMec =
-      wizardStep === 1
-        ? validateMecRequisitos("global", {
-            mMedicionGlobal,
-            mEntregaGlobal,
-            mColocacionGlobal,
-            totalMecGlobal,
-            ordenes,
-          })
-        : null;
-    if (errMec) {
-      setGrabarError(errMec);
-      return;
+    if (wizardStep === 1) {
+      const errMat = validateMaterialesOt(ordenes);
+      if (errMat) {
+        setGrabarError(errMat);
+        return;
+      }
+      const errMec = validateMecRequisitos("global", {
+        mMedicionGlobal,
+        mEntregaGlobal,
+        mColocacionGlobal,
+        totalMecGlobal,
+        ordenes,
+      });
+      if (errMec) {
+        setGrabarError(errMec);
+        return;
+      }
     }
     if (wizardStep < wizardLastIndex) setWizardStep((s) => s + 1);
   };
@@ -1067,8 +1064,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           {wizardStep === 0 ? (
             <StepCliente
               clientesLocales={clientesLocales}
+              clientesCargando={clientesCargando}
               clienteSeleccionadoId={clienteSeleccionadoId}
               aplicarCliente={aplicarCliente}
+              limpiarCliente={limpiarCliente}
               abrirNuevoCliente={abrirNuevoCliente}
               listasPrecios={listasPrecios}
               listaPrecioId={listaPrecioId}
@@ -1097,6 +1096,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               articulosDisponibles={articulosBd.length}
               ordenes={ordenes}
               materials={materials}
+              materialesCargando={materialesCargando}
               tecnicos={tecnicos}
               totalesItems={totalesItems}
               patchOrden={patchOrden}
@@ -1154,8 +1154,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           <DialogHeader>
             <DialogTitle>Nuevo cliente</DialogTitle>
             <DialogDescription>
-              Datos en memoria (mock). Guardar agrega el cliente a la lista y lo
-              selecciona.
+              Se guarda en la base de datos y queda disponible para próximos
+              presupuestos.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -1221,10 +1221,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             </DialogClose>
             <Button
               type="button"
-              onClick={guardarDraftCliente}
-              disabled={!draftCliente.nombre.trim()}
+              onClick={() => void guardarDraftCliente()}
+              disabled={!draftCliente.nombre.trim() || guardandoCliente}
             >
-              Guardar
+              {guardandoCliente ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>

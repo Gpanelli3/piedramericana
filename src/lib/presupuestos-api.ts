@@ -73,6 +73,7 @@ export async function getPresupuestoById(id: string) {
 export async function insertPresupuestoRow(input: {
   numero: string;
   cliente: string;
+  client_id?: string | null;
   total: number;
   moneda: "ars" | "usd";
   status: PresupuestoEstado;
@@ -84,6 +85,7 @@ export async function insertPresupuestoRow(input: {
     .insert({
       numero: input.numero,
       cliente: input.cliente,
+      client_id: input.client_id ?? null,
       total: input.total,
       moneda: input.moneda,
       status: input.status,

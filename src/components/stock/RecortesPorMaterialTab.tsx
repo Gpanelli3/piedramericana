@@ -163,8 +163,9 @@ export function RecortesPorMaterialTab({ materiales, onCommitted }: RecortesPorM
         ) : null}
         {showEmptyState ? (
           <p className="text-xs text-amber-800 dark:text-amber-200">
-            No hay artículos en la tabla «materials». Cargá materiales desde el catálogo o Supabase antes de
-            continuar.
+            No hay materiales en el catálogo. Andá a{" "}
+            <span className="font-medium text-foreground">Stock → Materiales</span> y creá el
+            primero.
           </p>
         ) : null}
       </CardHeader>

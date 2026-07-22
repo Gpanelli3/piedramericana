@@ -27,9 +27,11 @@ export function listClients() {
 
 export function insertClient(payload: {
   name: string;
+  contact_name?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  notes?: string | null;
 }) {
   return supabase.from("clients").insert(payload).select().single();
 }

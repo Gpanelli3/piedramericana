@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Plus, Check, ChevronsUpDown, Search } from "lucide-react";
 import type { ArticuloConPrecio } from "@/types/articulos";
-import type { ClientePresupuestoMock } from "@/data/presupuesto-clientes-mock";
+import type { ClientePresupuesto } from "@/lib/clients-api";
 import { labelUnidad } from "@/lib/presupuesto-calculos";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { MODELOS_BACHA } from "./types";
@@ -60,22 +60,34 @@ export function PickCliente({
   clientes,
   value,
   onChange,
+  onClear,
   onNuevoCliente,
+  loading = false,
 }: {
-  clientes: ClientePresupuestoMock[];
+  clientes: ClientePresupuesto[];
   value: string | null;
-  onChange: (c: ClientePresupuestoMock) => void;
+  onChange: (c: ClientePresupuesto) => void;
+  /** Se llama al vaciar o editar el texto lejos del cliente seleccionado. */
+  onClear?: () => void;
   onNuevoCliente: (textoBuscado: string) => void;
+  loading?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
+  const prevValueRef = useRef<string | null>(value);
+  const editingRef = useRef(false);
+
+  const selected = useMemo(
+    () => (value ? clientes.find((c) => c.id === value) : undefined),
+    [clientes, value],
+  );
 
   const query = search.trim();
   const filtered = useMemo(() => {
-    if (!query) return [];
     const q = query.toLowerCase();
+    if (!q) return clientes.slice(0, 25);
     return clientes.filter(
       (c) =>
         c.nombre.toLowerCase().includes(q) ||
@@ -83,29 +95,36 @@ export function PickCliente({
     );
   }, [clientes, query]);
 
+  // Solo resincronizar el input cuando cambia la selección desde afuera,
+  // nunca mientras el usuario está escribiendo.
   useEffect(() => {
-    const sel = value ? clientes.find((c) => c.id === value) : undefined;
-    setSearch(sel?.nombre ?? "");
-  }, [value, clientes]);
+    if (editingRef.current) {
+      prevValueRef.current = value;
+      return;
+    }
+    if (prevValueRef.current === value) return;
+    prevValueRef.current = value;
+    setSearch(selected?.nombre ?? "");
+  }, [value, selected?.nombre]);
 
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
         setShowSuggestions(false);
-        const sel = value ? clientes.find((c) => c.id === value) : undefined;
-        setSearch(sel?.nombre ?? "");
+        editingRef.current = false;
+        setSearch(selected?.nombre ?? "");
       }
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [value, clientes]);
+  }, [selected?.nombre]);
 
   const handleAbrirAlta = () => {
     onNuevoCliente(query);
     setShowSuggestions(false);
   };
 
-  const panelOpen = showSuggestions && query.length > 0;
+  const panelOpen = showSuggestions && !loading;
 
   return (
     <div ref={rootRef} className="relative w-full">
@@ -114,7 +133,7 @@ export function PickCliente({
         aria-hidden
       />
       <Input
-        type="search"
+        type="text"
         autoComplete="off"
         role="combobox"
         aria-expanded={panelOpen}
@@ -122,22 +141,30 @@ export function PickCliente({
         aria-haspopup="listbox"
         aria-autocomplete="list"
         aria-label="Buscar cliente o profesional"
-        placeholder="Nombre o firma…"
+        placeholder={loading ? "Cargando clientes…" : "Nombre o firma…"}
+        disabled={loading}
         value={search}
         onChange={(e) => {
-          setSearch(e.target.value);
+          const next = e.target.value;
+          editingRef.current = true;
+          setSearch(next);
           setShowSuggestions(true);
+          // Si había un cliente elegido y el texto ya no coincide, soltar la selección.
+          if (value && selected && next.trim() !== selected.nombre) {
+            onClear?.();
+          }
+          if (!next.trim()) {
+            onClear?.();
+          }
         }}
         onFocus={() => {
-          if (search.trim().length > 0) setShowSuggestions(true);
+          setShowSuggestions(true);
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setShowSuggestions(false);
-            const sel = value
-              ? clientes.find((c) => c.id === value)
-              : undefined;
-            setSearch(sel?.nombre ?? "");
+            editingRef.current = false;
+            setSearch(selected?.nombre ?? "");
             e.preventDefault();
           }
         }}
@@ -170,6 +197,7 @@ export function PickCliente({
                     )}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      editingRef.current = false;
                       onChange(c);
                       setSearch(c.nombre);
                       setShowSuggestions(false);
@@ -194,8 +222,9 @@ export function PickCliente({
           ) : (
             <div className="space-y-3 px-3 py-3">
               <p className="text-sm text-muted-foreground">
-                No hay ningún cliente que coincida
-                {query ? ` con «${query}»` : ""}.
+                {clientes.length === 0
+                  ? "Todavía no hay clientes guardados."
+                  : `No hay ningún cliente que coincida${query ? ` con «${query}»` : ""}.`}
               </p>
               <p className="text-xs text-muted-foreground leading-snug">
                 Podés dar de alta uno nuevo con el botón de abajo o el{" "}
@@ -224,6 +253,7 @@ export function PickMaterial({
   value,
   onChange,
   disabled,
+  loading,
   triggerClassName,
   ariaLabel,
 }: {
@@ -231,6 +261,7 @@ export function PickMaterial({
   value: string;
   onChange: (id: string) => void;
   disabled?: boolean;
+  loading?: boolean;
   triggerClassName?: string;
   /** Accesibilidad cuando no hay etiqueta visible */
   ariaLabel?: string;
@@ -246,16 +277,18 @@ export function PickMaterial({
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel}
-          disabled={disabled}
+          disabled={disabled || loading}
           className={cn(
             "h-9 w-full justify-between px-3 text-sm font-normal",
             triggerClassName,
           )}
         >
           <span className="truncate">
-            {selected
-              ? `${selected.name}${selected.unit ? ` (${selected.unit})` : ""}`
-              : "Elegir material…"}
+            {loading
+              ? "Cargando materiales…"
+              : selected
+                ? `${selected.name}${selected.unit ? ` (${selected.unit})` : ""}`
+                : "Elegir material…"}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -265,7 +298,9 @@ export function PickMaterial({
           <CommandInput placeholder="Buscar material…" />
           <CommandList>
             <CommandEmpty>
-              {materials.length ? "Sin coincidencias." : "Sin materiales."}
+              {materials.length
+                ? "Sin coincidencias."
+                : "Sin materiales. Cargalos en Stock → Materiales."}
             </CommandEmpty>
             <CommandGroup>
               {materials.map((m) => (

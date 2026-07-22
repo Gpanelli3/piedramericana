@@ -23,15 +23,31 @@ export function validarTotalMecSiAplica(
   return parseMoneyInput(totalStr) > 0;
 }
 
-export function validateClienteYOrigen(
+export function validateCliente(
   clienteSeleccionadoId: string | null,
-  origenVentas: string,
 ): string | null {
   if (!clienteSeleccionadoId) {
     return "Seleccioná un cliente de la lista o cargá uno nuevo con +.";
   }
-  if (!origenVentas) {
-    return "El origen de la venta es obligatorio (dato estadístico).";
+  return null;
+}
+
+/** @deprecated Usar validateCliente. Origen ya no es obligatorio. */
+export function validateClienteYOrigen(
+  clienteSeleccionadoId: string | null,
+  _origenVentas?: string,
+): string | null {
+  return validateCliente(clienteSeleccionadoId);
+}
+
+export function validateMaterialesOt(
+  ordenes: OrdenTrabajoWizard[],
+): string | null {
+  for (const ot of ordenes) {
+    if (!ot.materialId?.trim()) {
+      const titulo = ot.titulo.trim() || "sin título";
+      return `Elegí un material (chapa) para la OT «${titulo}».`;
+    }
   }
   return null;
 }
@@ -76,7 +92,7 @@ export function validateMecRequisitos(
 
 export function validarPresupuestoCompleto(
   clienteSeleccionadoId: string | null,
-  origenVentas: string,
+  _origenVentas: string,
   mecScope: "global" | "por_ot",
   mecParams: {
     mMedicionGlobal: boolean;
@@ -87,7 +103,8 @@ export function validarPresupuestoCompleto(
   },
 ): string | null {
   return (
-    validateClienteYOrigen(clienteSeleccionadoId, origenVentas) ??
+    validateCliente(clienteSeleccionadoId) ??
+    validateMaterialesOt(mecParams.ordenes) ??
     validateMecRequisitos(mecScope, mecParams)
   );
 }

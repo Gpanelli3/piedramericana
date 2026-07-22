@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -98,7 +97,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <ClipboardList className="h-4 w-4" />
-            Historial de remitos
+            Remitos registrados
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -116,7 +115,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
         <CardHeader className="flex flex-col gap-3 border-b border-border bg-muted/20 py-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <ClipboardList className="h-4 w-4" />
-            Historial de remitos
+            Remitos registrados
           </CardTitle>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
@@ -125,9 +124,6 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
             />
-            <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => void load()}>
-              Actualizar
-            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">

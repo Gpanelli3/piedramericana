@@ -31,12 +31,6 @@ import {
 } from "./fields";
 import { TIPOS_COLOCACION, type LineaItemOT, type OrdenTrabajoWizard } from "./types";
 
-function FieldHint({ children }: { children: ReactNode }) {
-  return (
-    <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{children}</p>
-  );
-}
-
 type PorOtRes = {
   key: string;
   titulo: string;
@@ -52,6 +46,7 @@ export type StepOrdenesProps = {
   articulosDisponibles: number;
   ordenes: OrdenTrabajoWizard[];
   materials: MaterialWizardRow[];
+  materialesCargando?: boolean;
   tecnicos: { id: string; full_name: string | null }[];
   totalesItems: {
     faltaPesoNonMarmol: boolean;
@@ -70,6 +65,7 @@ export function StepOrdenes({
   articulosDisponibles,
   ordenes,
   materials,
+  materialesCargando = false,
   tecnicos,
   totalesItems,
   patchOrden,
@@ -113,9 +109,6 @@ export function StepOrdenes({
               <h3 className="text-sm font-semibold text-foreground tracking-tight">
                 Órdenes de trabajo
               </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Cada fila se expande para cargar datos e ítems.
-              </p>
             </div>
             <Button
               type="button"
@@ -195,7 +188,6 @@ export function StepOrdenes({
                             <Label htmlFor={`${ot.key}-titulo`} className="text-xs font-medium">
                               Título
                             </Label>
-                            <FieldHint>Cómo identificás esta obra dentro del presupuesto.</FieldHint>
                             <Input
                               id={`${ot.key}-titulo`}
                               className="h-9 text-sm"
@@ -206,11 +198,11 @@ export function StepOrdenes({
                           </div>
                           <div className="space-y-1.5 min-w-0">
                             <Label className="text-xs font-medium">Material (chapa)</Label>
-                            <FieldHint>Define precio base y conversiones para toda la OT.</FieldHint>
                             <PickMaterial
                               materials={materials}
                               value={ot.materialId}
                               onChange={(id) => patchOrden(ot.key, { materialId: id })}
+                              loading={materialesCargando}
                             />
                             <ConversionesMaestroHints parentMaterialId={ot.materialId} />
                           </div>
@@ -234,7 +226,6 @@ export function StepOrdenes({
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 pt-4 mt-3 border-t border-border/40">
                                 <div className="space-y-1.5">
                                   <Label className="text-xs font-medium">Bacha</Label>
-                                  <FieldHint>Opcional. Modelo de referencia para la OT.</FieldHint>
                                   <PickBacha
                                     value={ot.bachaId}
                                     onChange={(id) => patchOrden(ot.key, { bachaId: id })}
@@ -242,7 +233,6 @@ export function StepOrdenes({
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label className="text-xs font-medium">Fecha OT</Label>
-                                  <FieldHint>Fecha de la orden si aplica.</FieldHint>
                                   <Input
                                     type="date"
                                     className="h-9 text-sm"
@@ -252,7 +242,6 @@ export function StepOrdenes({
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label className="text-xs font-medium">Técnico a medir</Label>
-                                  <FieldHint>Quién releva en obra.</FieldHint>
                                   <PickTecnico
                                     tecnicos={tecnicos}
                                     value={ot.tecnicoId}
@@ -261,7 +250,6 @@ export function StepOrdenes({
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label className="text-xs font-medium">Fecha medición</Label>
-                                  <FieldHint>Planificado o realizado.</FieldHint>
                                   <Input
                                     type="date"
                                     className="h-9 text-sm"
@@ -273,7 +261,6 @@ export function StepOrdenes({
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label className="text-xs font-medium">Fecha entrega estimada</Label>
-                                  <FieldHint>Referencia para logística.</FieldHint>
                                   <Input
                                     type="date"
                                     className="h-9 text-sm"
@@ -285,7 +272,6 @@ export function StepOrdenes({
                                 </div>
                                 <div className="space-y-2 sm:col-span-2">
                                   <Label className="text-xs font-medium">Colocación en obra</Label>
-                                  <FieldHint>Referencia interna; el detalle puede ir en totales si MEC único.</FieldHint>
                                   <RadioGroup
                                     value={ot.tipoColocacion}
                                     onValueChange={(v) =>
@@ -314,11 +300,8 @@ export function StepOrdenes({
                         <Separator className="bg-border/60" />
 
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">
-                          <div className="mb-2 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
+                          <div className="mb-2">
                             <p className="text-xs font-medium text-foreground">Ítems de la OT</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              Deslizá en pantallas chicas para ver todas las columnas.
-                            </p>
                           </div>
                           <div className="overflow-hidden rounded-md border border-border/60 bg-card">
                             <div className="overflow-x-auto bg-muted/20">
@@ -392,12 +375,6 @@ export function StepOrdenes({
                             </div>
                           </div>
                         </div>
-
-                        <p className="text-[11px] text-muted-foreground rounded-md border border-border/45 bg-muted/20 px-3 py-2.5 dark:bg-muted/15">
-                          Con MEC <span className="font-medium">único para todo el presupuesto</span>, medición /
-                          entrega / colocación se cargan al final, en{" "}
-                          <span className="font-medium">Totales y descuento</span>.
-                        </p>
 
                         <div className="flex flex-wrap gap-6 text-xs rounded-md border border-border/55 bg-muted/25 px-3 py-2.5 dark:bg-muted/20 justify-between sm:justify-start">
                           <div>

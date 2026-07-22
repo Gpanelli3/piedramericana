@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,21 +13,14 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Separator } from "@/components/ui/separator";
-import { Info, Search, Layers, Box, Ruler, ClipboardList, PanelRightOpen, Plus } from "lucide-react";
+import { Info, Search, Layers, Box, Ruler, Package, Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
-import { HistorialRemitosTab } from "@/components/stock/HistorialRemitosTab";
+import { IngresosTab } from "@/components/stock/IngresosTab";
 import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTab";
+import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
 import {
   fetchMaterialsForStock,
@@ -37,18 +29,9 @@ import {
 } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
-const retazosData = [
-  { id: "Ret-045", material: "Granito Negro Brasil Extra 20mm", medidas: "90 × 60 cm", m2: 0.54, chapaOrigen: "Bulto #8812" },
-  { id: "Ret-044", material: "Silestone Blanco Stellar", medidas: "120 × 45 cm", m2: 0.54, chapaOrigen: "Bulto #8860" },
-  { id: "Ret-043", material: "Cuarcita Blue Roma", medidas: "75 × 80 cm", m2: 0.6, chapaOrigen: "Bulto #8801" },
-  { id: "Ret-042", material: "Dekton TRILIUM 12mm", medidas: "55 × 90 cm", m2: 0.495, chapaOrigen: "Bulto #8792" },
-] as const;
-
 export function VistaStock() {
   const { user } = useAuth();
-  const { chapas, setChapas, reloadChapas, slabsLoading, useRemoteStock } = useStock();
-  const [asignados, setAsignados] = useState<string[]>([]);
-  const [retazosOpen, setRetazosOpen] = useState(false);
+  const { chapas, setChapas, reloadChapas, slabsLoading } = useStock();
   const [busquedaPiedra, setBusquedaPiedra] = useState("");
   const [remitoOpen, setRemitoOpen] = useState(false);
   const [disponibilidadOpen, setDisponibilidadOpen] = useState(false);
@@ -85,10 +68,6 @@ export function VistaStock() {
       cancel = true;
     };
   }, [chapas.length, historialBump]);
-
-  const toggleAsignar = (id: string) => {
-    setAsignados((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
 
   const refreshHistorialRelated = useCallback(() => {
     setHistorialBump((n) => n + 1);
@@ -142,6 +121,7 @@ export function VistaStock() {
                 material_kind: "marmol" as MaterialOption["material_kind"],
                 peso_por_m2_kg: null as number | null,
                 bulk_stock_kg: 0,
+                stock_qty: 0,
               } satisfies MaterialOption,
             ]),
           ).values(),
@@ -159,17 +139,16 @@ export function VistaStock() {
           <div>
             <p className="text-xs text-muted-foreground">Stock / Depósito</p>
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              Planchas y recortes
+              Stock
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Ingresá remitos desde proveedor, consultá el historial y registrá recortes. El inventario puede
-              persistirse en Supabase cuando está configurado.
+              Materiales, ingresos por remito, inventario de planchas y recortes.
               {slabsLoading ? <span className="ml-1 font-medium text-foreground"> Actualizando inventario…</span> : null}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-4xl">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:max-w-3xl">
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">Bultos disponibles</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">
@@ -183,13 +162,6 @@ export function VistaStock() {
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">m² piedra disponible</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">{formatM2(resumenPiedra.m2Disponibles)}</p>
-          </div>
-          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-            <p className="text-[11px] font-medium text-muted-foreground">Retazos depot (lista)</p>
-            <p className="text-lg font-semibold tabular-nums text-foreground">
-              {retazosData.length}
-              <span className="text-sm font-normal text-muted-foreground"> piezas</span>
-            </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">Recortes hoy</p>
@@ -210,20 +182,6 @@ export function VistaStock() {
       </header>
 
       <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
-        <div
-          className={cn(
-            "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm border-border bg-muted/40 text-muted-foreground",
-          )}
-        >
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            <span className="font-medium text-foreground">Las chapas reservadas</span> no suman al m² disponible.
-            {!useRemoteStock
-              ? " Modo demo: configurá Supabase para remitos persistentes."
-              : " Los remitos y recortes se guardan en la base cuando completás los formularios."}
-          </p>
-        </div>
-
         <CrearRemitoDialog
           open={remitoOpen}
           onOpenChange={setRemitoOpen}
@@ -245,47 +203,58 @@ export function VistaStock() {
           chapasLocales={chapas}
         />
 
-        <Tabs defaultValue="piedra" className="gap-4">
+        <Tabs defaultValue="materiales" className="gap-4">
           <TabsList className="h-auto w-full flex-wrap justify-start gap-1 sm:w-auto">
-            <TabsTrigger value="piedra" className="gap-1.5 px-3">
-              <Layers className="h-4 w-4" />
-              Planchas (piedra)
+            <TabsTrigger value="materiales" className="gap-1.5 px-3">
+              <Package className="h-4 w-4" />
+              Materiales
             </TabsTrigger>
-            <TabsTrigger value="remitos-historial" className="gap-1.5 px-3">
-              <ClipboardList className="h-4 w-4" />
-              Historial remitos
+            <TabsTrigger value="ingresos" className="gap-1.5 px-3">
+              <Truck className="h-4 w-4" />
+              Ingresos
+            </TabsTrigger>
+            <TabsTrigger value="planchas" className="gap-1.5 px-3">
+              <Layers className="h-4 w-4" />
+              Planchas
             </TabsTrigger>
             <TabsTrigger value="recortes" className="gap-1.5 px-3">
               <Box className="h-4 w-4" />
-              Recortes por material
+              Recortes
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="piedra" className="mt-4">
+          <TabsContent value="materiales" className="mt-4">
+            <MaterialesCatalogoTab
+              materiales={materialesCatalogo}
+              onMaterialCreated={(m) => {
+                setMaterialesCatalogo((prev) =>
+                  [...prev, m].sort((a, b) => a.name.localeCompare(b.name, "es")),
+                );
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="ingresos" className="mt-4">
+            <IngresosTab
+              onRegistrarIngreso={() => setRemitoOpen(true)}
+              historialBump={historialBump}
+            />
+          </TabsContent>
+
+          <TabsContent value="planchas" className="mt-4">
             <Card className="overflow-hidden shadow-sm">
               <CardHeader className="flex flex-col gap-3 border-b border-border bg-muted/20 py-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="text-base font-semibold">Inventario de chapas</CardTitle>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-9 gap-1.5 shrink-0"
-                      onClick={() => setRemitoOpen(true)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Registrar ingreso
-                    </Button>
-                    <div className="relative w-full sm:w-56">
-                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Buscar bulto o material…"
-                        value={busquedaPiedra}
-                        onChange={(e) => setBusquedaPiedra(e.target.value)}
-                        className="h-9 pl-9"
-                        aria-label="Filtrar chapas"
-                      />
-                    </div>
+                  <div className="relative w-full sm:w-56">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar bulto o material…"
+                      value={busquedaPiedra}
+                      onChange={(e) => setBusquedaPiedra(e.target.value)}
+                      className="h-9 pl-9"
+                      aria-label="Filtrar chapas"
+                    />
                   </div>
                 </div>
               </CardHeader>
@@ -311,7 +280,9 @@ export function VistaStock() {
                       {chapasFiltradas.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                            No hay resultados para «{busquedaPiedra}».
+                            {busquedaPiedra.trim()
+                              ? `No hay resultados para «${busquedaPiedra}».`
+                              : "Sin chapas en inventario. Registrá un ingreso en la pestaña Ingresos."}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -373,86 +344,11 @@ export function VistaStock() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="remitos-historial" className="mt-4">
-            <HistorialRemitosTab reloadToken={historialBump} />
-          </TabsContent>
-
           <TabsContent value="recortes" className="mt-4">
             <RecortesPorMaterialTab materiales={materialesCatalogo} onCommitted={refreshHistorialRelated} />
           </TabsContent>
         </Tabs>
-
-        <Card className="border-2 border-dashed border-muted-foreground/25 bg-muted/20 shadow-none">
-          <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15">
-                <Box className="h-5 w-5 text-amber-700 dark:text-amber-400" />
-              </div>
-              <div className="min-w-0 space-y-0.5">
-                <p className="text-sm font-semibold text-foreground">Depósito de retazos (referencia rápida)</p>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  Listado inspiracional/demo. Para ingresos reales usa la pestaña{" "}
-                  <span className="font-medium text-foreground">Recortes por material</span>.
-                </p>
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-10 shrink-0 gap-2 border border-border bg-background shadow-sm sm:self-center"
-              onClick={() => setRetazosOpen(true)}
-            >
-              <PanelRightOpen className="h-4 w-4" />
-              Abrir depósito de retazos
-              <Badge variant="secondary" className="ml-1 rounded-sm px-1.5 font-mono text-[11px]">
-                {retazosData.length}
-              </Badge>
-            </Button>
-          </CardContent>
-        </Card>
       </div>
-
-      <Sheet open={retazosOpen} onOpenChange={setRetazosOpen}>
-        <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
-          <SheetHeader className="shrink-0 text-left">
-            <SheetTitle>Depósito de retazos</SheetTitle>
-            <SheetDescription>Listado demo. Los ingresos con trazabilidad van en Supabase desde la pestaña de recortes.</SheetDescription>
-          </SheetHeader>
-          <Separator />
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <ul className="space-y-3 pr-1">
-              {retazosData.map((row) => (
-                <li key={row.id} className="rounded-lg border border-border bg-card p-3 shadow-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-mono text-sm font-semibold text-foreground">{row.id}</p>
-                    <Badge variant="outline" className="shrink-0 text-[10px] tabular-nums">
-                      ~{formatM2(row.m2)} m²
-                    </Badge>
-                  </div>
-                  <button
-                    type="button"
-                    className="mt-1 text-left text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    onClick={() => openDisponibilidad(row.material)}
-                  >
-                    {row.material}
-                  </button>
-                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">{row.medidas}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{row.chapaOrigen}</p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={asignados.includes(row.id) ? "secondary" : "outline"}
-                    className="mt-3 h-8 w-full text-xs"
-                    onClick={() => toggleAsignar(row.id)}
-                  >
-                    {asignados.includes(row.id) ? "Asignado (mock)" : "Asignar a OT"}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

@@ -59,6 +59,7 @@ export interface Database {
         Row: {
           id: string;
           name: string;
+          contact_name: string | null;
           email: string | null;
           phone: string | null;
           address: string | null;
@@ -68,6 +69,7 @@ export interface Database {
         Insert: {
           id?: string;
           name: string;
+          contact_name?: string | null;
           email?: string | null;
           phone?: string | null;
           address?: string | null;
@@ -77,6 +79,7 @@ export interface Database {
         Update: {
           id?: string;
           name?: string;
+          contact_name?: string | null;
           email?: string | null;
           phone?: string | null;
           address?: string | null;
@@ -583,6 +586,103 @@ export interface Database {
           },
         ];
       };
+      procesamientos_cantera: {
+        Row: {
+          id: string;
+          lote_id: string;
+          material_bruto_id: string;
+          qty_kg_consumidos: number;
+          issue_date: string;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          lote_id: string;
+          material_bruto_id: string;
+          qty_kg_consumidos: number;
+          issue_date?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          lote_id?: string;
+          material_bruto_id?: string;
+          qty_kg_consumidos?: number;
+          issue_date?: string;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "procesamientos_cantera_lote_id_fkey";
+            columns: ["lote_id"];
+            isOneToOne: false;
+            referencedRelation: "lotes_cantera";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "procesamientos_cantera_material_bruto_id_fkey";
+            columns: ["material_bruto_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "procesamientos_cantera_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      procesamiento_lineas: {
+        Row: {
+          id: string;
+          procesamiento_id: string;
+          material_producto_id: string;
+          cantidad: number;
+          unit: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          procesamiento_id: string;
+          material_producto_id: string;
+          cantidad: number;
+          unit: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          procesamiento_id?: string;
+          material_producto_id?: string;
+          cantidad?: number;
+          unit?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "procesamiento_lineas_procesamiento_id_fkey";
+            columns: ["procesamiento_id"];
+            isOneToOne: false;
+            referencedRelation: "procesamientos_cantera";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "procesamiento_lineas_material_producto_id_fkey";
+            columns: ["material_producto_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       chapas_inventario: {
         Row: {
           id: string;
@@ -642,6 +742,7 @@ export interface Database {
           id: string;
           numero: string;
           cliente: string;
+          client_id: string | null;
           total: number;
           moneda: "ars" | "usd";
           status: PresupuestoEstado;
@@ -654,6 +755,7 @@ export interface Database {
           id?: string;
           numero: string;
           cliente?: string;
+          client_id?: string | null;
           total?: number;
           moneda: "ars" | "usd";
           status?: PresupuestoEstado;
@@ -666,6 +768,7 @@ export interface Database {
           id?: string;
           numero?: string;
           cliente?: string;
+          client_id?: string | null;
           total?: number;
           moneda?: "ars" | "usd";
           status?: PresupuestoEstado;
@@ -675,6 +778,13 @@ export interface Database {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "presupuestos_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "presupuestos_created_by_fkey";
             columns: ["created_by"];
@@ -999,6 +1109,10 @@ export interface Database {
         Returns: string;
       };
       register_cantera_ingreso: {
+        Args: { p_payload: Json };
+        Returns: undefined;
+      };
+      register_cantera_procesamiento: {
         Args: { p_payload: Json };
         Returns: undefined;
       };

@@ -8,4 +8,5 @@ export type MaterialWizardRow = {
   material_kind: MaterialKindDb;
   peso_por_m2_kg: number | null;
   bulk_stock_kg?: number;
+  stock_qty?: number;
 };

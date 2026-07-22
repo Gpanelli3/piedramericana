@@ -132,7 +132,7 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
 
 export type MaterialOption = Pick<
   Database["public"]["Tables"]["materials"]["Row"],
-  "id" | "name" | "unit" | "material_kind" | "peso_por_m2_kg" | "bulk_stock_kg"
+  "id" | "name" | "unit" | "material_kind" | "peso_por_m2_kg" | "bulk_stock_kg" | "stock_qty"
 >;
 
 const DEFAULT_MAT_OPT = (
@@ -142,13 +142,14 @@ const DEFAULT_MAT_OPT = (
   material_kind: "marmol",
   peso_por_m2_kg: null,
   bulk_stock_kg: 0,
+  stock_qty: 0,
 });
 
 export async function fetchMaterialsForStock(): Promise<MaterialOption[]> {
   if (!isSupabaseConfigured) return [];
   const ext = await supabase
     .from("materials")
-    .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg")
+    .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg,stock_qty")
     .order("name");
   if (ext.error) {
     const basic = await supabase.from("materials").select("id,name,unit").order("name");

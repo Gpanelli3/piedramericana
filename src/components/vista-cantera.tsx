@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Mountain } from "lucide-react";
+import { Mountain } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStock } from "@/contexts/StockContext";
 import { CanteraIngresoTab } from "@/features/cantera/CanteraIngresoTab";
 import { fetchMaterialsForStock, type MaterialOption } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
 
 export function VistaCantera() {
   const { user } = useAuth();
@@ -47,6 +46,7 @@ export function VistaCantera() {
                 material_kind: "marmol" as MaterialOption["material_kind"],
                 peso_por_m2_kg: null as number | null,
                 bulk_stock_kg: 0,
+                stock_qty: 0,
               } satisfies MaterialOption,
             ]),
           ).values(),
@@ -68,11 +68,11 @@ export function VistaCantera() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Cantera / materia prima</p>
               <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-                Ingreso a granel
+                Ingreso y procesamiento
               </h1>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Registro de piedra que ingresa por peso (proveedor/cantera). No reemplaza el ingreso de
-                planchas con medidas → usá Stock para chapas y remitos de placas.
+                Registrá piedra a granel por peso, procesala en productos vendibles por cantidad, o ingresá
+                planchas con medidas desde Stock.
               </p>
             </div>
           </div>
@@ -80,20 +80,6 @@ export function VistaCantera() {
       </header>
 
       <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
-        <div
-          className={cn(
-            "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm border-border bg-muted/40 text-muted-foreground",
-          )}
-        >
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            Este módulo incrementa{" "}
-            <span className="font-medium text-foreground">stock a granel (kg)</span> por material y deja{" "}
-            <span className="font-medium text-foreground">lotes</span> con trazabilidad. El maestro de peso kg/m²
-            alimenta los totales en toneladas del presupuesto cuando el material no es mármol.
-          </p>
-        </div>
-
         <CanteraIngresoTab materiales={materialesOpciones} userId={user?.id} onCatalogStale={onCatalogStale} />
       </div>
     </div>
