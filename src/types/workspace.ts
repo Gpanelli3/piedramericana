@@ -1,1 +1,7 @@
-export type WorkspaceTab = "ventas" | "produccion" | "cantera" | "stock" | "administracion";
+export type WorkspaceTab =
+  | "ventas"
+  | "articulos"
+  | "produccion"
+  | "cantera"
+  | "stock"
+  | "administracion";

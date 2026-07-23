@@ -161,16 +161,12 @@ export function VistaAdministracion() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="shrink-0 border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1">
+          <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
               Ventas — Caja y cuentas corrientes
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Presupuestos aprobados: cobros adicionales, señas y entrega se gestionan aquí (no en la lista de
-              presupuestos).
-            </p>
           </div>
         </div>
       </header>
@@ -242,9 +238,6 @@ export function VistaAdministracion() {
                 <CardTitle className="text-base font-semibold text-foreground">
                   Obras y cobros
                 </CardTitle>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Tocá una fila o abrí cobros para registrar pagos y marcar entrega.
-                </p>
               </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -89,6 +89,7 @@ export type RemitoLineInput = {
   ancho_cm: number;
   bulto_numero_inicio: number;
   precio_unitario?: number | null;
+  lote_codigo?: string | null;
   sort_order?: number;
 };
 
@@ -119,6 +120,7 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
       ancho_cm: l.ancho_cm,
       bulto_numero_inicio: l.bulto_numero_inicio,
       precio_unitario: l.precio_unitario ?? null,
+      lote_codigo: l.lote_codigo?.trim() || null,
       sort_order: l.sort_order ?? i,
     })),
   };
@@ -126,7 +128,7 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
   const { data, error } = await supabase.rpc("create_remito_with_slabs", {
     p_payload: body,
   });
-  if (error) throw error;
+  if (error) throw new Error(error.message || "No se pudo crear el remito");
   return data as string;
 }
 

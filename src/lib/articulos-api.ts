@@ -88,3 +88,71 @@ export async function fetchArticulosConPrecios(
     };
   }
 }
+
+export type ArticuloUpsertInput = {
+  codigo: string;
+  descripcion: string;
+  unidad: ArticuloConPrecio["unidad"];
+  calcula_material: boolean;
+  medida_estandar_m2: number | null;
+  prefer_modo_manual: boolean;
+  sort_order?: number;
+};
+
+export async function createArticulo(input: ArticuloUpsertInput): Promise<{
+  data: ArticuloConPrecio | null;
+  error: Error | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("articulos")
+      .insert({
+        codigo: input.codigo.trim(),
+        descripcion: input.descripcion.trim(),
+        unidad: input.unidad,
+        calcula_material: input.calcula_material,
+        medida_estandar_m2: input.medida_estandar_m2,
+        prefer_modo_manual: input.prefer_modo_manual,
+        sort_order: input.sort_order ?? 0,
+      })
+      .select(
+        "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order",
+      )
+      .single();
+
+    if (error) return { data: null, error: new Error(error.message) };
+    return { data: { ...(data as ArticuloConPrecio), precio: null }, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error : new Error("No se pudo crear el artículo."),
+    };
+  }
+}
+
+export async function updateArticulo(
+  id: string,
+  input: ArticuloUpsertInput,
+): Promise<{ error: Error | null }> {
+  try {
+    const { error } = await supabase
+      .from("articulos")
+      .update({
+        codigo: input.codigo.trim(),
+        descripcion: input.descripcion.trim(),
+        unidad: input.unidad,
+        calcula_material: input.calcula_material,
+        medida_estandar_m2: input.medida_estandar_m2,
+        prefer_modo_manual: input.prefer_modo_manual,
+        sort_order: input.sort_order ?? 0,
+      })
+      .eq("id", id);
+
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo actualizar el artículo."),
+    };
+  }
+}

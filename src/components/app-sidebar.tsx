@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Mountain,
   Package,
+  Tags,
   Wallet,
   Wrench,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { useSearchParams } from "react-router-dom";
 
 const KNOWN_WS = new Set<WorkspaceTab>([
   "ventas",
+  "articulos",
   "administracion",
   "produccion",
   "cantera",
@@ -44,6 +46,13 @@ const NAV_ITEMS: NavItemDef[] = [
     label: "Presupuestos",
     icon: <FileText className="h-5 w-5" />,
     color: "text-red-400",
+    roles: ["vendedor", "admin", "administracion"],
+  },
+  {
+    id: "articulos",
+    label: "Artículos",
+    icon: <Tags className="h-5 w-5" />,
+    color: "text-orange-400",
     roles: ["vendedor", "admin", "administracion"],
   },
   {
@@ -318,7 +327,11 @@ export function AppSidebar() {
                   >
                     Rechazados
                   </button>
-                  <button type="button" onClick={() => gotoVentasQuery("lista", "todos")} className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}>
+                  <button
+                    type="button"
+                    onClick={() => gotoVentasQuery("lista", "todos")}
+                    className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}
+                  >
                     Todos
                   </button>
                 </div>

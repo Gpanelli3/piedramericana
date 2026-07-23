@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { insertPresupuestoRow } from "@/lib/presupuestos-api";
@@ -48,10 +48,8 @@ import {
   permiteModoManualCantidadM2,
   type ModoIngresoM2,
 } from "@/lib/presupuesto-calculos";
-import {
-  PresupuestoResumenInterior,
-  type LineaResumenMoneda,
-} from "@/components/presupuesto/PresupuestoResumenInterior";
+import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
+import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import { PresupuestoStepper } from "@/components/presupuesto/PresupuestoStepper";
 import { StepCliente } from "@/components/presupuesto/wizard/StepCliente";
 import { StepLogistica } from "@/components/presupuesto/wizard/StepLogistica";
@@ -71,6 +69,7 @@ import {
   validateCliente,
   validateMaterialesOt,
   validateMecRequisitos,
+  validateOrdenesItems,
   mecAlgunoActivo,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
@@ -84,18 +83,12 @@ function formatUsd(n: number): string {
   });
 }
 
-function abbrRubroFooter(id: string): string {
-  switch (id) {
-    case "piedra":
-      return "Piedra";
-    case "mo":
-      return "M.O.";
-    case "perf":
-      return "Perf.";
-    case "flete":
-      return "Flete";
-    default:
-      return id;
+function formatMontoFooter(n: number, moneda: "ars" | "usd"): string {
+  if (moneda === "usd") return `US$${formatUsd(n)}`;
+  try {
+    return `$${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(Math.round(n))}`;
+  } catch {
+    return `$${Math.round(n)}`;
   }
 }
 
@@ -224,9 +217,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   }, [listaPrecioId, listasPrecios]);
 
   const [materials, setMaterials] = useState<MaterialWizardRow[]>([]);
-  const [tecnicos, setTecnicos] = useState<
-    { id: string; full_name: string | null }[]
-  >([]);
   const [materialesCargando, setMateriaesCargando] =
     useState(isSupabaseConfigured);
   const catalogoCargando = materialesCargando || articulosCargando;
@@ -242,8 +232,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     observacion: "",
   }));
 
-  const [cotizacionMixtaActiva, setCotizacionMixtaActiva] = useState(false);
-  const [monedaFinal, setMonedaFinal] = useState("pesos");
+  const [cotizacionMixtaActiva] = useState(false);
+  const [monedaFinal] = useState("pesos");
   const [lineasResumen, setLineasResumen] = useState<LineaResumenMoneda[]>([
     {
       id: "piedra",
@@ -327,16 +317,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               ),
             );
           }
-        }
-
-        const { data: users, error: usersErr } = await supabase
-          .from("usuarios")
-          .select("id, full_name")
-          .order("full_name");
-        if (!cancelled && !usersErr && users?.length) {
-          setTecnicos(users);
-        } else if (!cancelled && usersErr) {
-          toast.error(`No se pudieron cargar los técnicos: ${usersErr.message}`);
         }
       } catch (error) {
         if (!cancelled) {
@@ -512,8 +492,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         modoIngreso: "dimensiones",
         precioUnitario: "",
         cantidad: "",
-        altoCm: "",
-        anchoCm: "",
+        altoM: "",
+        anchoM: "",
         desperdicioPct: "",
       });
       return;
@@ -526,16 +506,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       modoIngreso: art.preferModoManualM2 ? "manual" : "dimensiones",
       precioUnitario: artBd.precio != null ? String(artBd.precio) : "",
       cantidad: "",
-      altoCm: "",
-      anchoCm: "",
+      altoM: "",
+      anchoM: "",
       desperdicioPct: "",
     });
-  };
-
-  const setLineaResumen = (id: string, patch: Partial<LineaResumenMoneda>) => {
-    setLineasResumen((rows) =>
-      rows.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-    );
   };
 
   const totalesItems = useMemo(() => {
@@ -660,6 +634,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         totalMecGlobal,
         ordenes,
       },
+      articulosBd,
     );
   }, [
     clienteSeleccionadoId,
@@ -670,6 +645,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     mColocacionGlobal,
     totalMecGlobal,
     ordenes,
+    articulosBd,
   ]);
 
   const handleGrabar = async () => {
@@ -786,16 +762,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [listaPrecioId, listasPrecios],
   );
 
-  const formatArsEntero = useCallback((n: number) => {
-    try {
-      return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(
-        Math.round(n),
-      );
-    } catch {
-      return String(Math.round(n));
-    }
-  }, []);
-
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [wizardStep]);
@@ -813,6 +779,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       const errMat = validateMaterialesOt(ordenes);
       if (errMat) {
         setGrabarError(errMat);
+        return;
+      }
+      const errItems = validateOrdenesItems(ordenes, articulosBd);
+      if (errItems) {
+        setGrabarError(errItems);
         return;
       }
       const errMec = validateMecRequisitos("global", {
@@ -857,7 +828,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         !manualM2 &&
         (art.unidad === "ML" || art.unidad === "M2"),
     );
-    const showAnchoCm = Boolean(
+    const showAnchoM = Boolean(
       hasArt && art && dim && art.unidad === "M2" && !manualM2,
     );
     const showDesperdicio = Boolean(
@@ -871,7 +842,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     const puedeToggleManual = Boolean(
       hasArt && art && permiteModoManualCantidadM2(art),
     );
-    const altoEsMetros = Boolean(hasArt && art?.unidad === "ML");
+    const todosEnMetros = Boolean(hasArt && art && (art.unidad === "M2" || art.unidad === "ML"));
 
     return (
       <TableRow
@@ -931,7 +902,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                   patchItem(ot.key, line.key, {
                     modoIngreso: next,
                     ...(next === "manual"
-                      ? { altoCm: "", anchoCm: "", desperdicioPct: "" }
+                      ? { altoM: "", anchoM: "", desperdicioPct: "" }
                       : {}),
                   });
                 }}
@@ -978,15 +949,15 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
             )}
             inputMode="decimal"
-            placeholder={altoEsMetros ? "m" : "cm"}
+            placeholder={todosEnMetros ? "m" : "–"}
             title={
-              altoEsMetros
+              art?.unidad === "ML"
                 ? "Alto en metros (metro lineal)"
-                : "Alto en centímetros (m² por dimensiones)"
+                : "Alto en metros (m² por dimensiones)"
             }
-            value={line.altoCm}
+            value={line.altoM}
             onChange={(e) =>
-              patchItem(ot.key, line.key, { altoCm: e.target.value })
+              patchItem(ot.key, line.key, { altoM: e.target.value })
             }
             disabled={!showAltoField}
           />
@@ -1000,13 +971,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
             )}
             inputMode="decimal"
-            placeholder="cm"
-            title="Ancho (centímetros)"
-            value={line.anchoCm}
+            placeholder="m"
+            title="Ancho en metros"
+            value={line.anchoM}
             onChange={(e) =>
-              patchItem(ot.key, line.key, { anchoCm: e.target.value })
+              patchItem(ot.key, line.key, { anchoM: e.target.value })
             }
-            disabled={!showAnchoCm}
+            disabled={!showAnchoM}
           />
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle w-[3.25rem]">
@@ -1092,12 +1063,9 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           {wizardStep === 1 ? (
             <StepOrdenes
               catalogoCargando={catalogoCargando}
-              listaPrecioLabel={listaPrecioLabel}
-              articulosDisponibles={articulosBd.length}
               ordenes={ordenes}
               materials={materials}
               materialesCargando={materialesCargando}
-              tecnicos={tecnicos}
               totalesItems={totalesItems}
               patchOrden={patchOrden}
               addOrdenTrabajo={addOrdenTrabajo}
@@ -1249,36 +1217,44 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
       <Dialog open={resumenAbierto} onOpenChange={setResumenAbierto}>
         <DialogContent
-          className="gap-0 p-0 sm:max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
+          className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
           showCloseButton
         >
-          <DialogHeader className="border-b bg-muted/30 px-6 py-5 shrink-0">
-            <DialogTitle className="text-xl font-bold">
+          <DialogHeader className="border-b bg-muted/30 px-5 py-4 shrink-0 print:hidden">
+            <DialogTitle className="text-lg font-bold">
               Resumen del presupuesto
             </DialogTitle>
             <DialogDescription>
-              Lista {listaPrecioLabel}. Dólar hoy {formatUsd(dolarHoy)}.
+              Vista para imprimir · {listaPrecioLabel}
+              {monedaPresupuesto === "usd"
+                ? ` · Dólar hoy ${formatUsd(dolarHoy)}`
+                : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto px-6 py-6">
-            <PresupuestoResumenInterior
-              dolarHoy={dolarHoy}
-              cotizacionMixtaActiva={cotizacionMixtaActiva}
-              setCotizacionMixtaActiva={setCotizacionMixtaActiva}
-              lineasResumen={lineasResumen}
-              setLineaResumen={setLineaResumen}
-              monedaFinal={monedaFinal}
-              setMonedaFinal={setMonedaFinal}
-              totalUsdEquivalente={totalUsdEquivalente}
-              totalArsEquivalente={totalArsEquivalente}
-              materialM2Presupuesto={totalesItems.totalM2}
-              materialTonEstimadoPresupuesto={
-                totalesItems.totalTon > 0 ? totalesItems.totalTon : null
-              }
-              rubrosImportesBloqueados={["piedra"]}
+          <div className="overflow-y-auto px-4 py-4 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
+            <PresupuestoDocumento
+              clienteNombre={clienteSeleccionado?.nombre ?? ""}
+              contacto={contacto}
+              tel={tel}
+              email={email}
+              direccion={direccion}
+              observacion={obsCabecera}
+              origenLabel={origenLabelDisplay}
+              listaPrecioLabel={listaPrecioLabel}
+              moneda={monedaPresupuesto}
+              ordenes={ordenes}
+              articulos={articulosBd}
+              materials={materials}
+              descuentoPct={totalesItems.descuentoPct}
+              mMedicion={mMedicionGlobal}
+              mEntrega={mEntregaGlobal}
+              mColocacion={mColocacionGlobal}
+              totalMec={totalMecImporte}
+              obsMec={obsServiciosMec}
+              className="mx-auto max-w-3xl shadow-sm border border-neutral-200 print:shadow-none print:border-0"
             />
           </div>
-          <DialogFooter className="border-t px-6 py-4 gap-2">
+          <DialogFooter className="border-t px-6 py-4 gap-2 print:hidden">
             <Button
               type="button"
               variant="outline"
@@ -1301,122 +1277,48 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         )}
       >
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          {wizardStep < 3 ? (
-            <div className="text-[11px] sm:text-xs min-w-0 flex-1 tabular-nums space-y-1">
-              {lineasResumen.some((ln) => ln.id !== "piedra" && parseMoneyInput(ln.monto) > 0) ? (
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  {lineasResumen
-                    .filter((ln) => ln.id !== "piedra" && parseMoneyInput(ln.monto) > 0)
-                    .map((ln, idx) => (
-                      <span key={ln.id}>
-                        {idx > 0 ? (
-                          <span className="text-border mx-1.5 hidden sm:inline">|</span>
-                        ) : null}
-                        <span className="text-muted-foreground">{abbrRubroFooter(ln.id)}</span>{" "}
-                        <strong>
-                          {ln.moneda === "usd"
-                            ? `US$${formatUsd(parseMoneyInput(ln.monto))}`
-                            : `$${formatArsEntero(parseMoneyInput(ln.monto))}`}
-                        </strong>
-                      </span>
-                    ))}
-                </div>
-              ) : null}
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground">
+          <div className="text-xs sm:text-sm min-w-0 flex-1 tabular-nums flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground">
+            {totalMecImporte > 0 ? (
+              <>
                 <span>
-                  Ítems{" "}
+                  MEC{" "}
                   <strong className="text-foreground">
-                    $
-                    {monedaPresupuesto === "usd"
-                      ? formatUsd(totalesItems.totalConDesc)
-                      : formatArsEntero(totalesItems.totalConDesc)}
+                    {formatMontoFooter(totalMecImporte, monedaPresupuesto)}
                   </strong>
                 </span>
-                <span className="hidden sm:inline text-border">|</span>
-                <span>
-                  m²{" "}
-                  <strong className="text-foreground">
-                    {totalesItems.totalM2.toLocaleString("es-AR", {
-                      maximumFractionDigits: 3,
-                    })}
-                  </strong>
-                </span>
-                {totalesItems.totalTon > 0 ? (
-                  <>
-                    <span className="hidden sm:inline text-border">|</span>
-                    <span>
-                      ton (~){" "}
-                      <strong className="text-foreground">
-                        {totalesItems.totalTon.toLocaleString("es-AR", {
-                          minimumFractionDigits: 3,
-                          maximumFractionDigits: 4,
-                        })}
-                      </strong>
-                    </span>
-                  </>
-                ) : null}
-                <span className="hidden sm:inline text-border">|</span>
-                <span>
-                  TOTAL equiv. USD{" "}
-                  <strong className="text-foreground">
-                    US${formatUsd(totalUsdEquivalente)}
-                  </strong>
-                </span>
-                <span className="text-border mx-1 sm:inline">·</span>
-                <span>
-                  ARS{" "}
-                  <strong className="text-foreground">
-                    ${formatArsEntero(totalArsEquivalente)}
-                  </strong>
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="text-xs sm:text-sm min-w-0 flex-1 tabular-nums">
-              <span className="text-muted-foreground">Ítems c/ dto.</span>{" "}
-              <strong>
-                $
-                {monedaPresupuesto === "usd"
-                  ? formatUsd(totalesItems.totalConDesc)
-                  : formatArsEntero(totalesItems.totalConDesc)}
-              </strong>
-              <span className="mx-2 text-border">|</span>
-              <span className="text-muted-foreground">MEC</span>{" "}
-              <strong>
-                $
-                {monedaPresupuesto === "usd"
-                  ? formatUsd(totalMecImporte)
-                  : formatArsEntero(totalMecImporte)}
-              </strong>
-              <span className="mx-2 text-border">|</span>
-              <span className="text-muted-foreground">m²</span>{" "}
-              <strong>
+                <span className="text-border">|</span>
+              </>
+            ) : null}
+            <span>
+              m²{" "}
+              <strong className="text-foreground">
                 {totalesItems.totalM2.toLocaleString("es-AR", {
                   maximumFractionDigits: 3,
                 })}
               </strong>
-              {totalesItems.totalTon > 0 ? (
-                <>
-                  <span className="mx-2 text-border">|</span>
-                  <span className="text-muted-foreground">ton (~)</span>{" "}
-                  <strong>
+            </span>
+            {totalesItems.totalTon > 0 ? (
+              <>
+                <span className="text-border">|</span>
+                <span>
+                  ton{" "}
+                  <strong className="text-foreground">
                     {totalesItems.totalTon.toLocaleString("es-AR", {
                       minimumFractionDigits: 3,
                       maximumFractionDigits: 4,
                     })}
                   </strong>
-                </>
-              ) : null}
-              <span className="mx-2 text-border">|</span>
-              <span className="text-muted-foreground">Total</span>{" "}
-              <strong>
-                $
-                {monedaPresupuesto === "usd"
-                  ? formatUsd(totalPresupuesto)
-                  : formatArsEntero(totalPresupuesto)}
+                </span>
+              </>
+            ) : null}
+            <span className="text-border">|</span>
+            <span>
+              Total{" "}
+              <strong className="text-foreground">
+                {formatMontoFooter(totalPresupuesto, monedaPresupuesto)}
               </strong>
-            </div>
-          )}
+            </span>
+          </div>
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
             {wizardStep > 0 ? (
               <Button
@@ -1431,27 +1333,15 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               </Button>
             ) : null}
             {wizardStep < 3 ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1 text-muted-foreground"
-                  onClick={handleImprimir}
-                >
-                  <Printer className="h-4 w-4" />
-                  Imprimir
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1"
-                  onClick={handleWizardSiguiente}
-                >
-                  Siguiente
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1"
+                onClick={handleWizardSiguiente}
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             ) : (
               <>
                 <Button

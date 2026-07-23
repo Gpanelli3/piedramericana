@@ -3,6 +3,7 @@ import type {
   LogisticaPresupuesto,
   OrdenTrabajoWizard,
 } from "@/components/presupuesto/wizard/types";
+import { normalizeOrdenesFromPayload } from "@/lib/presupuesto-payload-normalize";
 
 export const PRESUPUESTO_PAYLOAD_VERSION = 1 as const;
 
@@ -46,4 +47,12 @@ export function isPresupuestoPayloadV1(x: unknown): x is PresupuestoPayloadV1 {
     x !== null &&
     (x as PresupuestoPayloadV1).version === PRESUPUESTO_PAYLOAD_VERSION
   );
+}
+
+/** Normaliza OTs/ítems de payloads guardados (compat. alto/ancho en cm). */
+export function hydratePresupuestoPayloadV1(payload: PresupuestoPayloadV1): PresupuestoPayloadV1 {
+  return {
+    ...payload,
+    ordenes: normalizeOrdenesFromPayload(payload.ordenes),
+  };
 }

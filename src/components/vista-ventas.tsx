@@ -20,18 +20,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { PresupuestoResumenInterior } from "@/components/presupuesto/PresupuestoResumenInterior";
-import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
+import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import {
   listPresupuestosLista,
   getPresupuestoById,
   patchPresupuestoStatus,
+  listArticulosConPrecios,
+  listArticulos,
   type PresupuestoRowLista,
 } from "@/lib/presupuestos-api";
+import { listMaterials } from "@/lib/materials-api";
 import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import {
+  hydratePresupuestoPayloadV1,
+  isPresupuestoPayloadV1,
+  type PresupuestoPayloadV1,
+} from "@/types/presupuesto-payload";
 import type { Database } from "@/types/database";
+import type { ArticuloConPrecio } from "@/types/articulos";
+import type { MaterialWizardRow } from "@/types/material-catalog";
+import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
+import { parseMoneyInput, mecAlgunoActivo } from "@/components/presupuesto/wizard/validacion";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -46,7 +56,8 @@ export function VistaVentas() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const vista = searchParams.get("pv") === "nuevo" ? "wizard" : "lista";
+  const pv = searchParams.get("pv");
+  const vista = pv === "nuevo" ? "wizard" : "lista";
   const tab = useMemo(() => parseTab(searchParams.get("ft")), [searchParams]);
 
   const [rows, setRows] = useState<PresupuestoRowLista[]>([]);
@@ -60,6 +71,10 @@ export function VistaVentas() {
   const [aprobDialogAbierto, setAprobDialogAbierto] = useState(false);
   const [aprobDialogRow, setAprobDialogRow] = useState<PresupuestoRowLista | null>(null);
   const [aprobBusy, setAprobBusy] = useState(false);
+
+  const [docArticulos, setDocArticulos] = useState<ArticuloConPrecio[]>([]);
+  const [docMaterials, setDocMaterials] = useState<MaterialWizardRow[]>([]);
+  const [docCatalogoCargando, setDocCatalogoCargando] = useState(false);
 
   const refreshLista = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -154,8 +169,48 @@ export function VistaVentas() {
   const cerrarResumen = useCallback(() => {
     setResumenAbierto(false);
     setFilaResumen(null);
+    setDocArticulos([]);
+    setDocMaterials([]);
     limpiarRid();
   }, [limpiarRid]);
+
+  const payloadRaw = filaResumen?.payload != null ? filaResumen.payload : null;
+  const payload: PresupuestoPayloadV1 | null =
+    payloadRaw && isPresupuestoPayloadV1(payloadRaw)
+      ? hydratePresupuestoPayloadV1(payloadRaw)
+      : null;
+
+  useEffect(() => {
+    if (!filaResumen || !resumenAbierto) return;
+    const raw = filaResumen.payload;
+    if (!raw || !isPresupuestoPayloadV1(raw)) {
+      setDocArticulos([]);
+      setDocMaterials([]);
+      return;
+    }
+    const listaId = raw.listaPrecioId;
+    let cancelled = false;
+    async function loadCatalogo() {
+      setDocCatalogoCargando(true);
+      const [artsRes, matsRes] = await Promise.all([
+        listaId ? listArticulosConPrecios(listaId) : listArticulos(),
+        listMaterials(),
+      ]);
+      if (cancelled) return;
+      if (artsRes.error || !artsRes.data) {
+        const plain = await listArticulos();
+        if (!cancelled) setDocArticulos(plain.data ?? []);
+      } else {
+        setDocArticulos(artsRes.data);
+      }
+      setDocMaterials(matsRes.data ?? []);
+      setDocCatalogoCargando(false);
+    }
+    void loadCatalogo();
+    return () => {
+      cancelled = true;
+    };
+  }, [filaResumen, resumenAbierto]);
 
   const persistidoDesdeWizard = useCallback(
     async ({ id, numero: _numero }: { id: string; numero: string }) => {
@@ -175,12 +230,13 @@ export function VistaVentas() {
     [refreshLista, setSearchParams],
   );
 
-  const noopStr = useCallback((_v: string) => {}, []);
-  const noopBool = useCallback((_v: boolean) => {}, []);
-  const noopLinea = useCallback((_id: string, _patch: Partial<LineaResumenMoneda>) => {}, []);
-
-  const payload = filaResumen?.payload != null ? filaResumen.payload : null;
-  const resumenInterior = payload && isPresupuestoPayloadV1(payload);
+  const origenLabelResumen = useMemo(() => {
+    if (!payload) return "";
+    return (
+      ORIGEN_VENTA_OPCIONES.find((o) => o.value === payload.origenVentas)?.label ??
+      payload.origenVentas
+    );
+  }, [payload]);
 
   const iniciarAprobacion = useCallback(
     (id: string) => {
@@ -244,21 +300,14 @@ export function VistaVentas() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border bg-white">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+      <header className="border-b border-border bg-white">
         <div className="px-8 pt-5 pb-5">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">Home &rsaquo; Presupuestos</p>
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
-            <p className="text-xs text-muted-foreground mt-1 max-w-xl leading-relaxed">
-              Al aprobás, definís total y seña inicial; los cobros adicionales están en{" "}
-              <span className="font-medium text-foreground">Ventas</span> en el menú lateral.
-            </p>
-          </div>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-y-auto p-8 [scrollbar-gutter:stable]">
+      <main className="p-8 [scrollbar-gutter:stable]">
         {vista === "wizard" ? (
           <PresupuestoWizard onPersisted={persistidoDesdeWizard} />
         ) : (
@@ -276,9 +325,9 @@ export function VistaVentas() {
       </main>
 
       <Dialog open={resumenAbierto} onOpenChange={(o) => !o && cerrarResumen()}>
-        <DialogContent className="gap-0 p-0 sm:max-w-xl max-h-[90vh] flex flex-col overflow-hidden" showCloseButton>
-          <DialogHeader className="border-b bg-muted/30 px-6 py-5 shrink-0 space-y-1">
-            <DialogTitle className="text-xl font-bold tracking-tight">Resumen del presupuesto</DialogTitle>
+        <DialogContent className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden" showCloseButton>
+          <DialogHeader className="border-b bg-muted/30 px-5 py-4 shrink-0 space-y-1 print:hidden">
+            <DialogTitle className="text-lg font-bold tracking-tight">Resumen del presupuesto</DialogTitle>
             <DialogDescription>
               {filaResumen ? (
                 <>
@@ -300,35 +349,51 @@ export function VistaVentas() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto px-6 py-6">
-            {!filaResumen || resumenCargando ? (
+          <div className="overflow-y-auto px-4 py-4 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
+            {!filaResumen || resumenCargando || docCatalogoCargando ? (
               <div className="text-sm text-muted-foreground py-10 text-center">Cargando…</div>
-            ) : !resumenInterior ? (
+            ) : !payload ? (
               <div className="text-sm text-muted-foreground py-10 text-center">
                 El detalle guardado no es compatible con esta vista de resumen.
               </div>
             ) : (
-              <PresupuestoResumenInterior
-                readOnly
-                dolarHoy={payload.dolarHoy}
-                cotizacionMixtaActiva={payload.cotizacionMixtaActiva}
-                setCotizacionMixtaActiva={noopBool}
-                lineasResumen={payload.lineasResumen}
-                setLineaResumen={noopLinea}
-                monedaFinal={payload.monedaFinal}
-                setMonedaFinal={noopStr}
-                totalUsdEquivalente={payload.totalUsdEquivalente}
-                totalArsEquivalente={payload.totalArsEquivalente}
-                materialM2Presupuesto={payload.materialM2Presupuesto}
-                materialTonEstimadoPresupuesto={payload.materialTonEstimadoPresupuesto}
+              <PresupuestoDocumento
+                numero={filaResumen.numero}
+                fecha={new Date(filaResumen.created_at).toLocaleDateString("es-AR")}
+                clienteNombre={payload.clienteNombre || filaResumen.cliente}
+                contacto={payload.contacto}
+                tel={payload.tel}
+                email={payload.email}
+                direccion={payload.direccion}
+                observacion={payload.obsCabecera}
+                origenLabel={origenLabelResumen}
+                moneda={payload.monedaPresupuesto}
+                ordenes={payload.ordenes}
+                articulos={docArticulos}
+                materials={docMaterials}
+                descuentoPct={parseMoneyInput(payload.descuentoGlobalPct)}
+                mMedicion={payload.mMedicionGlobal}
+                mEntrega={payload.mEntregaGlobal}
+                mColocacion={payload.mColocacionGlobal}
+                totalMec={
+                  mecAlgunoActivo(
+                    payload.mMedicionGlobal,
+                    payload.mEntregaGlobal,
+                    payload.mColocacionGlobal,
+                  )
+                    ? parseMoneyInput(payload.totalMecGlobal)
+                    : 0
+                }
+                obsMec={payload.obsServiciosMec}
+                className="mx-auto max-w-3xl shadow-sm border border-neutral-200 print:shadow-none print:border-0"
               />
             )}
           </div>
-          <DialogFooter className="border-t px-6 py-4 gap-2">
+          <DialogFooter className="border-t px-6 py-4 gap-2 print:hidden">
             <Button
               type="button"
               variant="outline"
-              className="gap-2 print:hidden"
+              className="gap-2"
               disabled={!filaResumen}
               onClick={() => navigate(`/presupuestos/${filaResumen!.id}/imprimir`)}
             >

@@ -8,7 +8,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -267,8 +266,12 @@ export function CrearRemitoDialog({
         await reloadChapas();
         await refreshRemitos();
         onOpenChange(false);
-      } catch {
-        toast.error("No se pudo grabar el remito (¿bultos duplicados o datos inválidos?).");
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "No se pudo grabar el remito (¿bultos duplicados o datos inválidos?).",
+        );
       } finally {
         setSaving(false);
       }
@@ -316,10 +319,6 @@ export function CrearRemitoDialog({
         <DialogContent className="flex max-h-[92vh] max-w-[min(64rem,calc(100vw-2rem))] flex-col gap-3 overflow-hidden p-4 sm:p-6">
           <DialogHeader className="shrink-0 space-y-1 text-left">
             <DialogTitle>Crear remito</DialogTitle>
-            <DialogDescription>
-              Registro contenedor desde proveedor. Con Supabase se guardan cabecera, líneas e historial; sin
-              conexión, solo se actualiza el inventario local de demostración.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">

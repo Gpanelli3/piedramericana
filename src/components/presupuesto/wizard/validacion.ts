@@ -1,4 +1,9 @@
 import type { OrdenTrabajoWizard } from "./types";
+import type { ArticuloConPrecio } from "@/types/articulos";
+import {
+  articuloConPrecioToMock,
+  parseDecimalInput,
+} from "@/lib/presupuesto-calculos";
 
 export const MSG_MEC_INCORRECTO =
   "El costo del servicio MEC es incorrecto. Si tenés tildada medición, entrega o colocación, cargá un importe mayor a cero o destildá los servicios que no correspondan.";
@@ -47,6 +52,80 @@ export function validateMaterialesOt(
     if (!ot.materialId?.trim()) {
       const titulo = ot.titulo.trim() || "sin título";
       return `Elegí un material (chapa) para la OT «${titulo}».`;
+    }
+  }
+  return null;
+}
+
+function tituloOt(ot: OrdenTrabajoWizard, index: number): string {
+  return ot.titulo.trim() || `OT ${index + 1}`;
+}
+
+export function validateOrdenesItems(
+  ordenes: OrdenTrabajoWizard[],
+  articulos: ArticuloConPrecio[],
+): string | null {
+  for (let i = 0; i < ordenes.length; i++) {
+    const ot = ordenes[i]!;
+    const titulo = tituloOt(ot, i);
+
+    if (ot.items.length === 0) {
+      return `La OT «${titulo}» no tiene ítems. Agregá al menos uno.`;
+    }
+
+    for (const line of ot.items) {
+      if (!line.articuloId?.trim()) {
+        return `Hay una línea sin artículo en la OT «${titulo}».`;
+      }
+
+      const artBd = articulos.find((a) => a.id === line.articuloId);
+      if (!artBd) {
+        return `Un artículo de la OT «${titulo}» ya no está disponible.`;
+      }
+
+      const art = articuloConPrecioToMock(artBd);
+      const qty = parseDecimalInput(line.cantidad);
+
+      if (!art.calculaMaterial) {
+        if (qty <= 0) {
+          return `Indicá la cantidad en «${art.descripcion}» (OT «${titulo}»).`;
+        }
+        continue;
+      }
+
+      if (art.medidaEstandarM2 != null && art.medidaEstandarM2 > 0) {
+        if (qty <= 0) {
+          return `Indicá la cantidad en «${art.descripcion}» (OT «${titulo}»).`;
+        }
+        continue;
+      }
+
+      if (art.unidad === "M2") {
+        if (line.modoIngreso === "manual") {
+          if (qty <= 0) {
+            return `Indicá los m² totales en «${art.descripcion}» (OT «${titulo}»).`;
+          }
+        } else {
+          const alto = parseDecimalInput(line.altoM);
+          const ancho = parseDecimalInput(line.anchoM);
+          if (alto <= 0 || ancho <= 0) {
+            return `Completá alto y ancho (metros) en «${art.descripcion}» (OT «${titulo}»).`;
+          }
+        }
+        continue;
+      }
+
+      if (art.unidad === "ML") {
+        const alto = parseDecimalInput(line.altoM);
+        if (qty <= 0 || alto <= 0) {
+          return `Completá cantidad y alto (metros) en «${art.descripcion}» (OT «${titulo}»).`;
+        }
+        continue;
+      }
+
+      if (qty <= 0) {
+        return `Indicá la cantidad en «${art.descripcion}» (OT «${titulo}»).`;
+      }
     }
   }
   return null;
@@ -101,10 +180,12 @@ export function validarPresupuestoCompleto(
     totalMecGlobal: string;
     ordenes: OrdenTrabajoWizard[];
   },
+  articulos: ArticuloConPrecio[] = [],
 ): string | null {
   return (
     validateCliente(clienteSeleccionadoId) ??
     validateMaterialesOt(mecParams.ordenes) ??
+    validateOrdenesItems(mecParams.ordenes, articulos) ??
     validateMecRequisitos(mecScope, mecParams)
   );
 }

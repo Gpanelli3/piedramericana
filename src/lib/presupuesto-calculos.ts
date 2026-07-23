@@ -7,6 +7,7 @@
  */
 
 import type { ArticuloConPrecio } from "@/types/articulos";
+import type { OrdenTrabajoWizard } from "@/components/presupuesto/wizard/types";
 import type { Database, UnidadArticuloDb } from "@/types/database";
 
 /**
@@ -49,26 +50,19 @@ export interface LineaItemOTCalcInput {
   desperdicioPct: string;
 }
 
-/**
- * Valores de línea en UI: `altoCm` guarda **centímetros** en M2 modo dimensiones, y **metros**
- * en artículos ML (único dato de altura). Nombre histórico del campo.
- */
+/** Valores de línea en UI: alto y ancho siempre en metros (modelo OtFlex). */
 export interface LineaItemOTUiInput {
   articuloId: string;
   modoIngreso: ModoIngresoM2;
   cantidad: string;
   precioUnitario: string;
-  altoCm: string;
-  anchoCm: string;
+  altoM: string;
+  anchoM: string;
   desperdicioPct: string;
 }
 
 /** Convierte entradas de interfaz a metros para `computeLineaPresupuesto`. */
 export function buildLineaCalcInput(art: ArticuloCalculo, line: LineaItemOTUiInput): LineaItemOTCalcInput {
-  const cmToMStr = (cm: string) => {
-    const m = parseDecimalInput(cm) / 100;
-    return String(m);
-  };
   const base = {
     articuloId: line.articuloId,
     modoIngreso: line.modoIngreso,
@@ -81,13 +75,13 @@ export function buildLineaCalcInput(art: ArticuloCalculo, line: LineaItemOTUiInp
     return { ...base, altoM: "0", anchoM: "0" };
   }
   if (art.unidad === "ML") {
-    return { ...base, altoM: String(parseDecimalInput(line.altoCm)), anchoM: "0" };
+    return { ...base, altoM: line.altoM, anchoM: "0" };
   }
   if (art.unidad === "M2" && line.modoIngreso === "manual") {
     return { ...base, altoM: "0", anchoM: "0" };
   }
   if (art.unidad === "M2" && line.modoIngreso === "dimensiones") {
-    return { ...base, altoM: cmToMStr(line.altoCm), anchoM: cmToMStr(line.anchoCm) };
+    return { ...base, altoM: line.altoM, anchoM: line.anchoM };
   }
   return { ...base, altoM: "0", anchoM: "0" };
 }
@@ -198,6 +192,23 @@ export function labelUnidad(u: UnidadArticuloDb): string {
     default:
       return u;
   }
+}
+
+export function computePresupuestoTotalM2(
+  ordenes: OrdenTrabajoWizard[],
+  articulos: ArticuloConPrecio[],
+): number {
+  let totalM2 = 0;
+  for (const ot of ordenes) {
+    for (const line of ot.items) {
+      const artBd = articulos.find((a) => a.id === line.articuloId);
+      if (!artBd) continue;
+      const art = articuloConPrecioToMock(artBd);
+      const calc = buildLineaCalcInput(art, line);
+      totalM2 += computeLineaPresupuesto(art, calc).m2Linea;
+    }
+  }
+  return totalM2;
 }
 
 /** Peso estimado de piedra (ton equiv en presupuesto), según tipo y kg/m² del maestro. */

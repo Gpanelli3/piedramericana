@@ -26,8 +26,10 @@ export type LineaItemOT = {
   modoIngreso: ModoIngresoM2;
   cantidad: string;
   precioUnitario: string;
-  altoCm: string;
-  anchoCm: string;
+  /** Alto en metros (M2 dimensiones o ML). */
+  altoM: string;
+  /** Ancho en metros (solo M2 dimensiones). */
+  anchoM: string;
   desperdicioPct: string;
 };
 
@@ -56,8 +58,8 @@ export function newEmptyLineaItem(): LineaItemOT {
     modoIngreso: "dimensiones",
     cantidad: "",
     precioUnitario: "",
-    altoCm: "",
-    anchoCm: "",
+    altoM: "",
+    anchoM: "",
     desperdicioPct: "",
   };
 }

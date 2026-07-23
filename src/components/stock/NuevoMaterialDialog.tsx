@@ -7,7 +7,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -92,10 +91,6 @@ export function NuevoMaterialDialog({
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           <DialogTitle>Nuevo material</DialogTitle>
-          <DialogDescription>
-            Maestro de chapas / piedras. Queda disponible en presupuestos, remitos y
-            recortes.
-          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 py-2">
           <div className="space-y-1">

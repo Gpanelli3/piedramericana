@@ -7,7 +7,7 @@ import type {
   VentaEstado,
 } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
-import { isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 
 type OrdenTrabajoRow = Database["public"]["Tables"]["ordenes_trabajo"]["Row"];
 type VentaRow = Database["public"]["Tables"]["ventas"]["Row"];
@@ -185,7 +185,7 @@ export async function mergeVentasResumenIntoPresupuestos<
 
 function parsePayload(p: Json): PresupuestoPayloadV1 | null {
   const asUnknown: unknown = p;
-  return isPresupuestoPayloadV1(asUnknown) ? asUnknown : null;
+  return isPresupuestoPayloadV1(asUnknown) ? hydratePresupuestoPayloadV1(asUnknown) : null;
 }
 
 /** Postgres `uuid` solo acepta formato estándar; el wizard puede guardar slugs en `clienteId`. */

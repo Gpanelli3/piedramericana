@@ -286,17 +286,13 @@ export function VistaProduccion() {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-border bg-white px-6 py-4 sm:px-8">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+      <header className="border-b border-border bg-white px-6 py-4 sm:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs text-muted-foreground">Producción / Taller</p>
             <h1 className="text-xl font-bold text-foreground">
               Control de taller — Kanban por OT
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Arrastrá una tarjeta a otra columna, o abrí la OT para avanzar o retroceder una etapa.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground">
@@ -310,7 +306,7 @@ export function VistaProduccion() {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-x-auto overflow-y-auto p-4 sm:p-6">
+      <main className="overflow-x-auto p-4 sm:p-6">
         {boardLoading ? (
           <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
             Cargando órdenes de trabajo…

@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ConfigWarning } from "@/components/ConfigWarning";
 import { Toaster } from "@/components/ui/sonner";
 import { VistaAdministracion } from "@/components/vista-administracion";
+import { VistaArticulos } from "@/components/vista-articulos";
 import { VistaCantera } from "@/components/vista-cantera";
 import { VistaProduccion } from "@/components/vista-produccion";
 import { VistaStock } from "@/components/vista-stock";
@@ -14,6 +15,7 @@ import type { WorkspaceTab } from "@/types/workspace";
 
 const KNOWN_WS = new Set<WorkspaceTab>([
   "ventas",
+  "articulos",
   "administracion",
   "produccion",
   "cantera",
@@ -40,6 +42,7 @@ export function MainWorkspace() {
           <AppSidebar />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "ventas" && <VistaVentas />}
+            {activeTab === "articulos" && <VistaArticulos />}
             {activeTab === "produccion" && <VistaProduccion />}
             {activeTab === "cantera" && <VistaCantera />}
             {activeTab === "stock" && <VistaStock />}

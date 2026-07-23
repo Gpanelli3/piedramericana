@@ -147,8 +147,6 @@ export function RecortesPorMaterialTab({ materiales, onCommitted }: RecortesPorM
     }
   };
 
-  const showEmptyState = materiales.length === 0 && isSupabaseConfigured;
-
   return (
     <Card className="overflow-hidden shadow-sm">
       <CardHeader className="border-b border-border bg-muted/20 py-3">
@@ -156,18 +154,6 @@ export function RecortesPorMaterialTab({ materiales, onCommitted }: RecortesPorM
           <Scissors className="h-4 w-4" />
           Ingreso de recortes por material
         </CardTitle>
-        {!isSupabaseConfigured ? (
-          <p className="text-xs text-muted-foreground">
-            Esta pantalla necesita Supabase para persistir registros de recorte.
-          </p>
-        ) : null}
-        {showEmptyState ? (
-          <p className="text-xs text-amber-800 dark:text-amber-200">
-            No hay materiales en el catálogo. Andá a{" "}
-            <span className="font-medium text-foreground">Stock → Materiales</span> y creá el
-            primero.
-          </p>
-        ) : null}
       </CardHeader>
       <CardContent className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">

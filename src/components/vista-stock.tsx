@@ -134,17 +134,17 @@ export function VistaStock() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <header className="shrink-0 border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs text-muted-foreground">Stock / Depósito</p>
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               Stock
+              {slabsLoading ? (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  Actualizando inventario…
+                </span>
+              ) : null}
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Materiales, ingresos por remito, inventario de planchas y recortes.
-              {slabsLoading ? <span className="ml-1 font-medium text-foreground"> Actualizando inventario…</span> : null}
-            </p>
           </div>
         </div>
 

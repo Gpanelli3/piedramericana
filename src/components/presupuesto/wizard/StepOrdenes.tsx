@@ -4,8 +4,6 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Collapsible,
   CollapsibleContent,
@@ -23,13 +21,8 @@ import { cn } from "@/lib/utils";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
-import {
-  PickMaterial,
-  PickTecnico,
-  PickBacha,
-  SectionPresupuesto,
-} from "./fields";
-import { TIPOS_COLOCACION, type LineaItemOT, type OrdenTrabajoWizard } from "./types";
+import { PickMaterial, SectionPresupuesto } from "./fields";
+import type { LineaItemOT, OrdenTrabajoWizard } from "./types";
 
 type PorOtRes = {
   key: string;
@@ -42,12 +35,9 @@ type PorOtRes = {
 
 export type StepOrdenesProps = {
   catalogoCargando: boolean;
-  listaPrecioLabel: string;
-  articulosDisponibles: number;
   ordenes: OrdenTrabajoWizard[];
   materials: MaterialWizardRow[];
   materialesCargando?: boolean;
-  tecnicos: { id: string; full_name: string | null }[];
   totalesItems: {
     faltaPesoNonMarmol: boolean;
     porOt: PorOtRes[];
@@ -61,12 +51,9 @@ export type StepOrdenesProps = {
 
 export function StepOrdenes({
   catalogoCargando,
-  listaPrecioLabel,
-  articulosDisponibles,
   ordenes,
   materials,
   materialesCargando = false,
-  tecnicos,
   totalesItems,
   patchOrden,
   addOrdenTrabajo,
@@ -78,17 +65,8 @@ export function StepOrdenes({
     <div className="space-y-6">
       {catalogoCargando ? (
         <p className="text-sm text-muted-foreground border-b border-dashed border-border/80 pb-3">
-          Cargando materiales y técnicos…
+          Cargando materiales…
         </p>
-      ) : null}
-
-      {!catalogoCargando ? (
-        <div className="rounded-md border border-border/70 bg-card px-3 py-2 text-xs text-muted-foreground">
-          Precios cargados desde <span className="font-medium text-foreground">{listaPrecioLabel || "sin lista"}</span>.
-          {articulosDisponibles > 0 ? (
-            <span className="ml-1">Artículos disponibles: {articulosDisponibles}.</span>
-          ) : null}
-        </div>
       ) : null}
 
       <SectionPresupuesto
@@ -208,97 +186,6 @@ export function StepOrdenes({
                           </div>
                         </div>
 
-                        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-3 sm:px-4 dark:bg-muted/25">
-                          <Collapsible>
-                            <CollapsibleTrigger asChild>
-                              <button
-                                type="button"
-                                className="flex w-full items-center gap-2 text-left text-xs font-medium text-foreground py-0.5 [&[data-state=open]>svg]:rotate-180"
-                              >
-                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200" />
-                                <span>Más datos</span>
-                                <span className="font-normal text-muted-foreground">
-                                  · bacha, fechas, técnico, colocación
-                                </span>
-                              </button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 pt-4 mt-3 border-t border-border/40">
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-medium">Bacha</Label>
-                                  <PickBacha
-                                    value={ot.bachaId}
-                                    onChange={(id) => patchOrden(ot.key, { bachaId: id })}
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-medium">Fecha OT</Label>
-                                  <Input
-                                    type="date"
-                                    className="h-9 text-sm"
-                                    value={ot.fecha}
-                                    onChange={(e) => patchOrden(ot.key, { fecha: e.target.value })}
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-medium">Técnico a medir</Label>
-                                  <PickTecnico
-                                    tecnicos={tecnicos}
-                                    value={ot.tecnicoId}
-                                    onChange={(id) => patchOrden(ot.key, { tecnicoId: id })}
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-medium">Fecha medición</Label>
-                                  <Input
-                                    type="date"
-                                    className="h-9 text-sm"
-                                    value={ot.fechaMedicion}
-                                    onChange={(e) =>
-                                      patchOrden(ot.key, { fechaMedicion: e.target.value })
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label className="text-xs font-medium">Fecha entrega estimada</Label>
-                                  <Input
-                                    type="date"
-                                    className="h-9 text-sm"
-                                    value={ot.fechaEntrega}
-                                    onChange={(e) =>
-                                      patchOrden(ot.key, { fechaEntrega: e.target.value })
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-2 sm:col-span-2">
-                                  <Label className="text-xs font-medium">Colocación en obra</Label>
-                                  <RadioGroup
-                                    value={ot.tipoColocacion}
-                                    onValueChange={(v) =>
-                                      patchOrden(ot.key, {
-                                        tipoColocacion:
-                                          v as (typeof TIPOS_COLOCACION)[number]["value"],
-                                      })
-                                    }
-                                    className="flex flex-wrap gap-4"
-                                  >
-                                    {TIPOS_COLOCACION.map((opt) => (
-                                      <div key={opt.value} className="flex items-center gap-2">
-                                        <RadioGroupItem value={opt.value} id={`${ot.key}-${opt.value}-step`} />
-                                        <Label htmlFor={`${ot.key}-${opt.value}-step`} className="text-sm font-normal">
-                                          {opt.label}
-                                        </Label>
-                                      </div>
-                                    ))}
-                                  </RadioGroup>
-                                </div>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        </div>
-
-                        <Separator className="bg-border/60" />
-
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">
                           <div className="mb-2">
                             <p className="text-xs font-medium text-foreground">Ítems de la OT</p>
@@ -316,15 +203,15 @@ export function StepOrdenes({
                                     <TableHead className="text-right">Total $</TableHead>
                                     <TableHead
                                       className="whitespace-nowrap"
-                                      title="m² por dimensiones: centímetros. Metro lineal: metros."
+                                      title="Alto en metros (m² por dimensiones o metro lineal)."
                                     >
-                                      Alto
+                                      Alto (m)
                                     </TableHead>
                                     <TableHead
                                       className="whitespace-nowrap"
-                                      title="Solo m² por dimensiones (centímetros)."
+                                      title="Ancho en metros (solo m² por dimensiones)."
                                     >
-                                      Ancho
+                                      Ancho (m)
                                     </TableHead>
                                     <TableHead title="Desperdicio: % extra de material. Vacío = 0%.">
                                       Desp.%
