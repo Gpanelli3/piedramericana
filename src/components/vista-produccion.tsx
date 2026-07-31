@@ -34,7 +34,6 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useStock } from "@/contexts/StockContext";
 import { toast } from "sonner";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -44,6 +43,14 @@ import {
   type OtTarjeta,
 } from "@/lib/ventas-api";
 import type { JobStatus } from "@/types/database";
+import { OtStockPanel } from "@/components/produccion/OtStockPanel";
+import {
+  bajaChapaPorRotura,
+  listChapasDisponibles,
+  listChapasPorOt,
+  type ChapaInventarioRow,
+} from "@/lib/stock-ot-api";
+import { useStock } from "@/contexts/StockContext";
 
 const ETAPAS_ORDEN = ["medicion", "corte", "produccion", "despacho"] as const;
 type EtapaId = (typeof ETAPAS_ORDEN)[number];
@@ -118,14 +125,16 @@ function jobStatusEtiqueta(s: JobStatus): string {
 }
 
 export function VistaProduccion() {
-  const { tryDeducirChapaPorRotura } = useStock();
+  const { reloadChapas } = useStock();
   const [ots, setOts] = useState<OT[]>([]);
   const [boardLoading, setBoardLoading] = useState(false);
   const [modalRoturaOpen, setModalRoturaOpen] = useState(false);
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [selectedOT, setSelectedOT] = useState<OT | null>(null);
   const [motivo, setMotivo] = useState("");
-  const [materialDescuento, setMaterialDescuento] = useState("");
+  const [chapaRoturaId, setChapaRoturaId] = useState("");
+  const [obsRotura, setObsRotura] = useState("");
+  const [chapasRotura, setChapasRotura] = useState<ChapaInventarioRow[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<EtapaId | null>(null);
 
@@ -240,19 +249,39 @@ export function VistaProduccion() {
 
   const handleRotura = (ot: OT) => {
     setSelectedOT(ot);
+    setMotivo("");
+    setChapaRoturaId("");
+    setObsRotura("");
     setModalRoturaOpen(true);
+    void (async () => {
+      const [res, disp] = await Promise.all([
+        listChapasPorOt(ot.id, ["Reservada"]),
+        listChapasDisponibles(),
+      ]);
+      const merge = [...res.data];
+      const ids = new Set(merge.map((c) => c.id));
+      for (const c of disp.data) {
+        if (!ids.has(c.id)) merge.push(c);
+      }
+      setChapasRotura(merge);
+      if (merge[0]) setChapaRoturaId(merge[0].id);
+    })();
   };
 
   const handleConfirmarRotura = async () => {
-    if (!selectedOT || !motivo || !materialDescuento) return;
-    const { removed, bulto } = await tryDeducirChapaPorRotura(materialDescuento);
-    if (removed) {
-      toast.success(`Stock actualizado: se dio de baja la chapa ${bulto ?? ""}`.trim());
-    } else {
-      toast.warning(
-        "No había chapa disponible de ese material en stock; la OT queda pausada igual."
-      );
+    if (!selectedOT || !motivo || !chapaRoturaId) return;
+    const baja = await bajaChapaPorRotura({
+      chapaId: chapaRoturaId,
+      otId: selectedOT.id,
+      motivo,
+      observacion: obsRotura,
+    });
+    if (baja.error) {
+      toast.error(baja.error.message);
+      return;
     }
+    toast.success(`Stock: baja de chapa ${baja.bulto ?? ""}`.trim());
+    await reloadChapas();
     const r = await persistJobOtProduccion({
       ordenTrabajoId: selectedOT.id,
       patch: { pausada: true },
@@ -264,7 +293,8 @@ export function VistaProduccion() {
     }
     setModalRoturaOpen(false);
     setMotivo("");
-    setMaterialDescuento("");
+    setChapaRoturaId("");
+    setObsRotura("");
   };
 
   const abrirDetalle = (ot: OT) => {
@@ -443,6 +473,12 @@ export function VistaProduccion() {
                 </p>
               </div>
 
+              <OtStockPanel
+                otId={otDetalle.id}
+                materialHint={otDetalle.material}
+                onChanged={() => void reloadChapas()}
+              />
+
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Etapa actual</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -555,9 +591,7 @@ export function VistaProduccion() {
               Registrar rotura / reproceso
             </DialogTitle>
             <DialogDescription>
-              Al confirmar, la OT queda pausada hasta que el taller la reanude. Se intenta dar de
-              baja una chapa disponible del material elegido en el módulo Stock (mock compartido en
-              esta sesión).
+              La OT queda pausada y la chapa elegida pasa a estado Baja (queda historial, no se borra).
             </DialogDescription>
           </DialogHeader>
 
@@ -589,17 +623,25 @@ export function VistaProduccion() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="material-desc">Material a descontar del stock (mock)</Label>
-              <Select value={materialDescuento} onValueChange={setMaterialDescuento}>
-                <SelectTrigger id="material-desc">
-                  <SelectValue placeholder="Seleccionar material…" />
+              <Label htmlFor="chapa-baja">Chapa a dar de baja</Label>
+              <Select value={chapaRoturaId} onValueChange={setChapaRoturaId}>
+                <SelectTrigger id="chapa-baja">
+                  <SelectValue placeholder="Seleccionar chapa…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="granito-negro">Granito Negro Brasil Extra 20mm</SelectItem>
-                  <SelectItem value="silestone-blanco">Silestone Blanco Norte</SelectItem>
-                  <SelectItem value="cuarcita-black">Cuarcita Black Taurus</SelectItem>
-                  <SelectItem value="dekton-trilium">Dekton TRILIUM 12mm</SelectItem>
-                  <SelectItem value="granito-boreal">Granito Negro Boreal Leather</SelectItem>
+                  {chapasRotura.length === 0 ? (
+                    <SelectItem value="__none" disabled>
+                      Sin chapas disponibles/reservadas
+                    </SelectItem>
+                  ) : (
+                    chapasRotura.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.bulto} · {c.material_label}
+                        {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""}
+                        {c.estado === "Reservada" ? " (reservada)" : ""}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -611,6 +653,8 @@ export function VistaProduccion() {
                 placeholder="Descripción del incidente…"
                 rows={3}
                 className="resize-none"
+                value={obsRotura}
+                onChange={(e) => setObsRotura(e.target.value)}
               />
             </div>
           </div>
@@ -622,8 +666,8 @@ export function VistaProduccion() {
             <Button
               type="button"
               className="bg-red-600 text-white hover:bg-red-700"
-              onClick={handleConfirmarRotura}
-              disabled={!motivo || !materialDescuento}
+              onClick={() => void handleConfirmarRotura()}
+              disabled={!motivo || !chapaRoturaId || chapaRoturaId === "__none"}
             >
               <AlertTriangle className="mr-2 h-4 w-4" />
               Confirmar y pausar OT

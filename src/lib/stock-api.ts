@@ -7,7 +7,10 @@ export type ChapaRow = {
   material: string;
   largoCm: number;
   anchoCm: number;
-  estado: "Disponible" | "Reservada";
+  estado: "Disponible" | "Reservada" | "Usada" | "Baja";
+  loteCodigo?: string | null;
+  otReservaId?: string | null;
+  motivoEstado?: string | null;
 };
 
 export type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
@@ -34,7 +37,10 @@ export function slabRowToChapa(row: {
   material_label: string;
   largo_cm: number;
   ancho_cm: number;
-  estado: "Disponible" | "Reservada";
+  estado: ChapaRow["estado"];
+  lote_codigo?: string | null;
+  ot_reserva_id?: string | null;
+  motivo_estado?: string | null;
 }): ChapaRow {
   return {
     id: row.id,
@@ -43,6 +49,9 @@ export function slabRowToChapa(row: {
     largoCm: Number(row.largo_cm),
     anchoCm: Number(row.ancho_cm),
     estado: row.estado,
+    loteCodigo: row.lote_codigo ?? null,
+    otReservaId: row.ot_reserva_id ?? null,
+    motivoEstado: row.motivo_estado ?? null,
   };
 }
 
@@ -50,7 +59,9 @@ export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
   if (!isSupabaseConfigured) return [...STOCK_CHAPAS_INICIAL];
   const { data, error } = await supabase
     .from("chapas_inventario")
-    .select("id,bulto,material_label,largo_cm,ancho_cm,estado,created_at")
+    .select(
+      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,created_at",
+    )
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r) =>
@@ -60,7 +71,10 @@ export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
       material_label: r.material_label,
       largo_cm: Number(r.largo_cm),
       ancho_cm: Number(r.ancho_cm),
-      estado: r.estado as "Disponible" | "Reservada",
+      estado: r.estado as ChapaRow["estado"],
+      lote_codigo: r.lote_codigo,
+      ot_reserva_id: r.ot_reserva_id,
+      motivo_estado: r.motivo_estado,
     }),
   );
 }
@@ -238,7 +252,9 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
   if (!isSupabaseConfigured) return STOCK_CHAPAS_INICIAL.filter((c) => c.material === label);
   const { data, error } = await supabase
     .from("chapas_inventario")
-    .select("id,bulto,material_label,largo_cm,ancho_cm,estado,created_at")
+    .select(
+      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,created_at",
+    )
     .eq("material_label", label)
     .order("bulto", { ascending: true });
   if (error) throw error;
@@ -249,7 +265,10 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
       material_label: r.material_label,
       largo_cm: Number(r.largo_cm),
       ancho_cm: Number(r.ancho_cm),
-      estado: r.estado as "Disponible" | "Reservada",
+      estado: r.estado as ChapaRow["estado"],
+      lote_codigo: r.lote_codigo,
+      ot_reserva_id: r.ot_reserva_id,
+      motivo_estado: r.motivo_estado,
     }),
   );
 }

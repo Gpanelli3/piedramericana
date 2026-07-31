@@ -31,7 +31,13 @@ import {
   pasarAProduccion,
   registrarPagoSena,
 } from "@/lib/ventas-api";
+import {
+  listCuentasActivas,
+  sugerirCuentaPorMetodo,
+  type CuentaFinancieraRow,
+} from "@/lib/finanzas-api";
 import type { PresupuestoRowList } from "@/lib/presupuestos-api";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 type VentasPagoRow = Database["public"]["Tables"]["ventas_pagos"]["Row"];
 
@@ -131,6 +137,8 @@ export function VentaCobrosDialog({
   const [pagoMetodo, setPagoMetodo] = useState("transferencia");
   const [pagoFecha, setPagoFecha] = useState("");
   const [pagoNota, setPagoNota] = useState("");
+  const [pagoCuentaId, setPagoCuentaId] = useState("");
+  const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
   const [notasMedicion, setNotasMedicion] = useState("");
 
   const cargar = useCallback(async (pid: string) => {
@@ -157,8 +165,19 @@ export function VentaCobrosDialog({
     setPagoNota("");
     setNotasMedicion("");
     if (rowResumen?.moneda) setPagoMoneda(rowResumen.moneda);
+    if (isSupabaseConfigured) {
+      void listCuentasActivas().then(({ data }) => setCuentas(data));
+    } else {
+      setCuentas([]);
+    }
     void cargar(presupuestoId);
   }, [open, presupuestoId, rowResumen?.moneda, cargar]);
+
+  useEffect(() => {
+    if (!open || cuentas.length === 0) return;
+    const sugerida = sugerirCuentaPorMetodo(pagoMetodo, pagoMoneda, cuentas);
+    if (sugerida) setPagoCuentaId(sugerida);
+  }, [open, pagoMetodo, pagoMoneda, cuentas]);
 
   const onRegistrarPago = useCallback(async () => {
     if (!presupuestoId || pagoBusy) return;
@@ -185,6 +204,7 @@ export function VentaCobrosDialog({
         fecha: pagoFecha,
         metodo: pagoMetodo || "Sin especificar",
         nota: pagoNota.trim() ? pagoNota.trim() : undefined,
+        cuenta_id: pagoCuentaId || null,
         created_by: null,
       });
       if (res.error) { toast.error(res.error.message); return; }
@@ -214,6 +234,7 @@ export function VentaCobrosDialog({
     pagoFecha,
     pagoMetodo,
     pagoNota,
+    pagoCuentaId,
     rowResumen?.saldo_misma_moneda,
     ventaCabecera,
     cargar,
@@ -394,6 +415,23 @@ export function VentaCobrosDialog({
                   </Select>
                 </div>
               </div>
+              {cuentas.length > 0 ? (
+                <div className="space-y-1.5">
+                  <Label>Cuenta destino</Label>
+                  <Select value={pagoCuentaId} onValueChange={setPagoCuentaId}>
+                    <SelectTrigger><SelectValue placeholder="Dónde entra el cobro" /></SelectTrigger>
+                    <SelectContent>
+                      {cuentas
+                        .filter((c) => c.moneda === pagoMoneda)
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nombre}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <Label htmlFor="vc-nota">Nota (opcional)</Label>
                 <Textarea id="vc-nota" rows={2} value={pagoNota} onChange={(e) => setPagoNota(e.target.value)} />

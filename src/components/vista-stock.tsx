@@ -83,14 +83,15 @@ export function VistaStock() {
     n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const resumenPiedra = useMemo(() => {
+    const activas = chapas.filter((c) => c.estado === "Disponible" || c.estado === "Reservada");
     const disponibles = chapas.filter((c) => c.estado === "Disponible");
+    const reservadas = chapas.filter((c) => c.estado === "Reservada");
     const m2Disp = disponibles.reduce((s, c) => s + m2Chapa(c.largoCm, c.anchoCm), 0);
-    const m2Total = chapas.reduce((s, c) => s + m2Chapa(c.largoCm, c.anchoCm), 0);
     return {
-      bultos: chapas.length,
+      bultos: activas.length,
       bultosLibres: disponibles.length,
+      bultosReservados: reservadas.length,
       m2Disponibles: m2Disp,
-      m2EnPlanchas: m2Total,
     };
   }, [chapas]);
 
@@ -101,7 +102,8 @@ export function VistaStock() {
       (c) =>
         c.bulto.toLowerCase().includes(q) ||
         c.material.toLowerCase().includes(q) ||
-        c.estado.toLowerCase().includes(q),
+        c.estado.toLowerCase().includes(q) ||
+        (c.loteCodigo ?? "").toLowerCase().includes(q),
     );
   }, [chapas, busquedaPiedra]);
 
@@ -148,7 +150,7 @@ export function VistaStock() {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:max-w-3xl">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-4xl">
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">Bultos disponibles</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">
@@ -162,6 +164,12 @@ export function VistaStock() {
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">m² piedra disponible</p>
             <p className="text-lg font-semibold tabular-nums text-foreground">{formatM2(resumenPiedra.m2Disponibles)}</p>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+            <p className="text-[11px] font-medium text-muted-foreground">Reservadas</p>
+            <p className="text-lg font-semibold tabular-nums text-foreground">
+              {resumenPiedra.bultosReservados}
+            </p>
           </div>
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-[11px] font-medium text-muted-foreground">Recortes hoy</p>
@@ -264,7 +272,8 @@ export function VistaStock() {
                     <TableHeader>
                       <TableRow className="bg-muted/50 hover:bg-muted/50">
                         <TableHead className="whitespace-nowrap pl-4 text-xs font-semibold">Bulto</TableHead>
-                        <TableHead className="min-w-[200px] text-xs font-semibold">Material</TableHead>
+                        <TableHead className="min-w-[180px] text-xs font-semibold">Material</TableHead>
+                        <TableHead className="text-xs font-semibold">Lote</TableHead>
                         <TableHead className="text-right text-xs font-semibold">Largo</TableHead>
                         <TableHead className="text-right text-xs font-semibold">Ancho</TableHead>
                         <TableHead className="text-right text-xs font-semibold">
@@ -279,7 +288,7 @@ export function VistaStock() {
                     <TableBody>
                       {chapasFiltradas.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                             {busquedaPiedra.trim()
                               ? `No hay resultados para «${busquedaPiedra}».`
                               : "Sin chapas en inventario. Registrá un ingreso en la pestaña Ingresos."}
@@ -301,10 +310,13 @@ export function VistaStock() {
                                   >
                                     {row.material}
                                   </button>
-                                  <Badge variant="outline" className="w-fit text-[10px] font-normal">
-                                    Chapa entera · ver disponibilidad
-                                  </Badge>
+                                  {row.motivoEstado ? (
+                                    <span className="text-[10px] text-muted-foreground">{row.motivoEstado}</span>
+                                  ) : null}
                                 </div>
+                              </TableCell>
+                              <TableCell className="text-xs tabular-nums text-muted-foreground">
+                                {row.loteCodigo?.trim() || "—"}
                               </TableCell>
                               <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                                 {row.largoCm} cm
@@ -318,9 +330,14 @@ export function VistaStock() {
                                   variant="secondary"
                                   className={cn(
                                     "text-xs font-medium",
-                                    row.estado === "Disponible"
-                                      ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                                      : "border border-amber-200 bg-amber-50 text-amber-900",
+                                    row.estado === "Disponible" &&
+                                      "border border-emerald-200 bg-emerald-50 text-emerald-800",
+                                    row.estado === "Reservada" &&
+                                      "border border-amber-200 bg-amber-50 text-amber-900",
+                                    row.estado === "Usada" &&
+                                      "border border-border bg-muted text-muted-foreground",
+                                    row.estado === "Baja" &&
+                                      "border border-red-200 bg-red-50 text-red-800",
                                   )}
                                 >
                                   {row.estado}

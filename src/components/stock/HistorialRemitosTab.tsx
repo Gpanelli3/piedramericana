@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -20,8 +22,9 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { fetchRemitosList, fetchRemitoLines, type RemitoLineDetail, type RemitoListRow } from "@/lib/stock-api";
+import { exportRemitosCsv, exportRemitosDetalleCsv } from "@/lib/reportes-export-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function formatM2Stock(n: number): string {
@@ -43,6 +46,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
   const [filtro, setFiltro] = useState("");
   const [detalleRemitoId, setDetalleRemitoId] = useState<string | null>(null);
   const [detalleLines, setDetalleLines] = useState<RemitoLineDetail[]>([]);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -118,6 +122,40 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
             Remitos registrados
           </CardTitle>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exportBusy || loading}
+              onClick={() => {
+                setExportBusy(true);
+                void exportRemitosCsv().then((res) => {
+                  setExportBusy(false);
+                  if (res.error) toast.error(res.error.message);
+                  else toast.success("Export de remitos descargado.");
+                });
+              }}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Export remitos
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exportBusy || loading}
+              onClick={() => {
+                setExportBusy(true);
+                void exportRemitosDetalleCsv().then((res) => {
+                  setExportBusy(false);
+                  if (res.error) toast.error(res.error.message);
+                  else toast.success("Export detalle descargado.");
+                });
+              }}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Export detalle
+            </Button>
             <Input
               className="h-9 sm:w-64"
               placeholder="Buscar por N°, proveedor o fecha…"

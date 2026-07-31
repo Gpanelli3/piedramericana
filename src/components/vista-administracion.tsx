@@ -20,6 +20,7 @@ import {
   Clock,
   ChevronRight,
   Search,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +30,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { VentaEstado } from "@/types/database";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
+import { exportPagosVentasCsv, exportVentasCsv } from "@/lib/reportes-export-api";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
   const opts: Intl.NumberFormatOptions = {
@@ -93,6 +95,7 @@ export function VistaAdministracion() {
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [cobrosAbierto, setCobrosAbierto] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [filaCobros, setFilaCobros] = useState<PresupuestoRowList | null>(null);
 
   const recargar = useCallback(async () => {
@@ -159,6 +162,22 @@ export function VistaAdministracion() {
     setCobrosAbierto(true);
   }
 
+  async function onExportVentas() {
+    setExportBusy(true);
+    const res = await exportVentasCsv();
+    setExportBusy(false);
+    if (res.error) toast.error(res.error.message);
+    else toast.success("Export de ventas descargado.");
+  }
+
+  async function onExportPagos() {
+    setExportBusy(true);
+    const res = await exportPagosVentasCsv();
+    setExportBusy(false);
+    if (res.error) toast.error(res.error.message);
+    else toast.success("Export de cobros descargado.");
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
@@ -167,6 +186,28 @@ export function VistaAdministracion() {
             <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
               Ventas — Caja y cuentas corrientes
             </h1>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exportBusy || cargando}
+              onClick={() => void onExportVentas()}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Export ventas
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={exportBusy || cargando}
+              onClick={() => void onExportPagos()}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Export cobros
+            </Button>
           </div>
         </div>
       </header>

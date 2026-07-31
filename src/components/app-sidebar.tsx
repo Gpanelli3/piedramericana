@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import {
   ChevronRight,
   FileText,
+  Landmark,
   LayoutDashboard,
   Mountain,
   Package,
@@ -19,16 +20,18 @@ import type { WorkspaceTab } from "@/types/workspace";
 import { useSearchParams } from "react-router-dom";
 
 const KNOWN_WS = new Set<WorkspaceTab>([
+  "dashboard",
   "ventas",
   "articulos",
   "administracion",
+  "finanzas",
   "produccion",
   "cantera",
   "stock",
 ]);
 
 function wsDesdeParam(v: string | null): WorkspaceTab {
-  return v && KNOWN_WS.has(v as WorkspaceTab) ? (v as WorkspaceTab) : "ventas";
+  return v && KNOWN_WS.has(v as WorkspaceTab) ? (v as WorkspaceTab) : "dashboard";
 }
 
 type NavItemDef = {
@@ -41,6 +44,12 @@ type NavItemDef = {
 };
 
 const NAV_ITEMS: NavItemDef[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: <LayoutDashboard className="h-5 w-5" />,
+    color: "text-accent",
+  },
   {
     id: "ventas",
     label: "Presupuestos",
@@ -61,6 +70,13 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: <Wallet className="h-5 w-5" />,
     color: "text-purple-400",
     roles: ["vendedor", "admin", "administracion"],
+  },
+  {
+    id: "finanzas",
+    label: "Finanzas",
+    icon: <Landmark className="h-5 w-5" />,
+    color: "text-teal-400",
+    roles: ["admin", "administracion"],
   },
   {
     id: "produccion",

@@ -10,7 +10,7 @@ export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired"
 export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
-export type InventorySlabEstado = "Disponible" | "Reservada";
+export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
 export type VentaEstado =
@@ -694,7 +694,11 @@ export interface Database {
           ancho_cm: number;
           estado: InventorySlabEstado;
           lote_codigo: string | null;
+          ot_reserva_id: string | null;
+          motivo_estado: string | null;
+          chapa_origen_id: string | null;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -706,7 +710,11 @@ export interface Database {
           ancho_cm: number;
           estado?: InventorySlabEstado;
           lote_codigo?: string | null;
+          ot_reserva_id?: string | null;
+          motivo_estado?: string | null;
+          chapa_origen_id?: string | null;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -718,7 +726,11 @@ export interface Database {
           ancho_cm?: number;
           estado?: InventorySlabEstado;
           lote_codigo?: string | null;
+          ot_reserva_id?: string | null;
+          motivo_estado?: string | null;
+          chapa_origen_id?: string | null;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -735,7 +747,44 @@ export interface Database {
             referencedRelation: "remito_lines";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "chapas_inventario_ot_reserva_fkey";
+            columns: ["ot_reserva_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
         ];
+      };
+      stock_movimientos: {
+        Row: {
+          id: string;
+          chapa_id: string | null;
+          ot_id: string | null;
+          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          detalle: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          chapa_id?: string | null;
+          ot_id?: string | null;
+          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          detalle?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          chapa_id?: string | null;
+          ot_id?: string | null;
+          tipo?: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          detalle?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       presupuestos: {
         Row: {
@@ -844,6 +893,7 @@ export interface Database {
           fecha: string;
           metodo: string;
           nota: string | null;
+          cuenta_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -855,6 +905,7 @@ export interface Database {
           fecha: string;
           metodo: string;
           nota?: string | null;
+          cuenta_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -866,6 +917,7 @@ export interface Database {
           fecha?: string;
           metodo?: string;
           nota?: string | null;
+          cuenta_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1101,8 +1153,151 @@ export interface Database {
           },
         ];
       };
+      cuentas_financieras: {
+        Row: {
+          id: string;
+          nombre: string;
+          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          moneda: "ars" | "usd";
+          saldo_inicial: number;
+          activa: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nombre: string;
+          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          moneda: "ars" | "usd";
+          saldo_inicial?: number;
+          activa?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nombre?: string;
+          tipo?: "caja" | "banco" | "tarjeta" | "otro";
+          moneda?: "ars" | "usd";
+          saldo_inicial?: number;
+          activa?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      movimientos_caja: {
+        Row: {
+          id: string;
+          cuenta_id: string;
+          tipo: "ingreso" | "egreso" | "transferencia_entrada" | "transferencia_salida";
+          monto: number;
+          moneda: "ars" | "usd";
+          fecha: string;
+          descripcion: string | null;
+          referencia_tipo: string | null;
+          referencia_id: string | null;
+          cuenta_contraparte_id: string | null;
+          transferencia_grupo_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          cuenta_id: string;
+          tipo: "ingreso" | "egreso" | "transferencia_entrada" | "transferencia_salida";
+          monto: number;
+          moneda: "ars" | "usd";
+          fecha: string;
+          descripcion?: string | null;
+          referencia_tipo?: string | null;
+          referencia_id?: string | null;
+          cuenta_contraparte_id?: string | null;
+          transferencia_grupo_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          cuenta_id?: string;
+          tipo?: "ingreso" | "egreso" | "transferencia_entrada" | "transferencia_salida";
+          monto?: number;
+          moneda?: "ars" | "usd";
+          fecha?: string;
+          descripcion?: string | null;
+          referencia_tipo?: string | null;
+          referencia_id?: string | null;
+          cuenta_contraparte_id?: string | null;
+          transferencia_grupo_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "movimientos_caja_cuenta_id_fkey";
+            columns: ["cuenta_id"];
+            isOneToOne: false;
+            referencedRelation: "cuentas_financieras";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      cierres_caja: {
+        Row: {
+          id: string;
+          fecha: string;
+          cuenta_id: string;
+          saldo_calculado: number;
+          saldo_arqueo: number | null;
+          notas: string | null;
+          cerrado_por: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          fecha: string;
+          cuenta_id: string;
+          saldo_calculado: number;
+          saldo_arqueo?: number | null;
+          notas?: string | null;
+          cerrado_por?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          fecha?: string;
+          cuenta_id?: string;
+          saldo_calculado?: number;
+          saldo_arqueo?: number | null;
+          notas?: string | null;
+          cerrado_por?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cierres_caja_cuenta_id_fkey";
+            columns: ["cuenta_id"];
+            isOneToOne: false;
+            referencedRelation: "cuentas_financieras";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      v_saldos_cuentas: {
+        Row: {
+          cuenta_id: string;
+          nombre: string;
+          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          moneda: "ars" | "usd";
+          saldo_inicial: number;
+          movimientos_neto: number;
+          saldo_actual: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       create_remito_with_slabs: {
         Args: { p_payload: Json };

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { registrarMovimientoPorCobro } from "@/lib/finanzas-api";
 import type {
   Database,
   EtapaOtKanban,
@@ -331,6 +332,7 @@ export async function registrarPagoSena(opts: {
   fecha: string;
   metodo: string;
   nota?: string;
+  cuenta_id?: string | null;
   created_by?: string | null;
 }): Promise<{ error: Error | null }> {
   const { data: pres, error: pErr } = await supabase
@@ -355,9 +357,23 @@ export async function registrarPagoSena(opts: {
     fecha: opts.fecha,
     metodo: opts.metodo,
     nota: opts.nota ?? null,
+    cuenta_id: opts.cuenta_id ?? null,
     created_by: opts.created_by ?? null,
-  });
+  }).select("id").single();
   if (pIns.error) return { error: new Error(pIns.error.message) };
+
+  if (opts.cuenta_id && pIns.data?.id) {
+    const mov = await registrarMovimientoPorCobro({
+      cuentaId: opts.cuenta_id,
+      pagoId: pIns.data.id,
+      monto: opts.monto,
+      moneda: opts.moneda,
+      fecha: opts.fecha,
+      descripcion: `Cobro ${presCast.numero} · ${opts.metodo}`,
+      created_by: opts.created_by ?? null,
+    });
+    if (mov.error) return mov;
+  }
 
   const nextEstado: VentaEstado = venta.estado ? (venta.estado as VentaEstado) : "senado";
 
