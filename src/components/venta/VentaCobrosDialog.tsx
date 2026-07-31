@@ -38,6 +38,10 @@ import {
 } from "@/lib/finanzas-api";
 import type { PresupuestoRowList } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  listChapasUsadasPorOt,
+  type ChapaInventarioRow,
+} from "@/lib/stock-ot-api";
 
 type VentasPagoRow = Database["public"]["Tables"]["ventas_pagos"]["Row"];
 
@@ -140,6 +144,7 @@ export function VentaCobrosDialog({
   const [pagoCuentaId, setPagoCuentaId] = useState("");
   const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
   const [notasMedicion, setNotasMedicion] = useState("");
+  const [placasOt, setPlacasOt] = useState<ChapaInventarioRow[]>([]);
 
   const cargar = useCallback(async (pid: string) => {
     setBusy(true);
@@ -147,14 +152,23 @@ export function VentaCobrosDialog({
     if (vt.error || !vt.data) {
       setVentaCabecera(null);
       setPagosVentas([]);
+      setPlacasOt([]);
       setBusy(false);
       return;
     }
     const lp = await listPagosVenta(vt.data.id);
     setVentaCabecera({ id: vt.data.id, estado: vt.data.estado as VentaEstado });
     setPagosVentas(lp.error ? [] : lp.data ?? []);
+
+    const otId = rowResumen?.orden_trabajo_id;
+    if (otId && isSupabaseConfigured) {
+      const ch = await listChapasUsadasPorOt(otId);
+      setPlacasOt(ch.error ? [] : ch.data);
+    } else {
+      setPlacasOt([]);
+    }
     setBusy(false);
-  }, []);
+  }, [rowResumen?.orden_trabajo_id]);
 
   useEffect(() => {
     if (!open || !presupuestoId) return;
@@ -460,7 +474,7 @@ export function VentaCobrosDialog({
 
             {/* ─── Historial de pagos ─── */}
             <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Historial</p>
+              <p className="text-sm font-medium text-foreground">Historial de cobros</p>
               <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border p-3 text-xs">
                 {pagosVentas.length === 0 ? (
                   <p className="text-muted-foreground">Sin pagos registrados.</p>
@@ -488,6 +502,34 @@ export function VentaCobrosDialog({
                 )}
               </div>
             </div>
+
+            {/* ─── Placas usadas en la OT ─── */}
+            {rowResumen?.orden_trabajo_id ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Placas de la obra</p>
+                <div className="max-h-36 space-y-1.5 overflow-y-auto rounded-md border border-border p-3 text-xs">
+                  {placasOt.length === 0 ? (
+                    <p className="text-muted-foreground">
+                      Sin placas reservadas/usadas aún. Se asignan desde Producción.
+                    </p>
+                  ) : (
+                    placasOt.map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border/60 pb-1.5 last:border-none last:pb-0"
+                      >
+                        <span className="font-mono font-medium text-foreground">{c.bulto}</span>
+                        <span className="text-muted-foreground truncate max-w-[10rem]">
+                          {c.lote_codigo ? `lote ${c.lote_codigo}` : "sin lote"}
+                          {c.origen_placa ? ` · ${c.origen_placa}` : ""}
+                        </span>
+                        <span className="font-medium">{c.estado}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 

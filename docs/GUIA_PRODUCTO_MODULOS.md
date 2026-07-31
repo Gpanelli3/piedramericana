@@ -360,7 +360,9 @@ Hoy: kanban `medicion → corte → produccion → despacho` — evolucionar sem
 
 ### M09.F5 — Reserva / asignación a OT `PARCIAL` (jul 2026)
 - **Hecho:** reservar/liberar chapa a OT (`ot_reserva_id`), alerta mezcla de lotes, consumo → `Usada`, rotura → `Baja` con motivo.
-- **Falta:** reserva automática sugerida al pasar a producción.
+- **Hecho:** al pasar a producción → `requiere_reserva_stock` + sugerencia de chapas por material/lote (confirmación humana).
+- **Hecho:** historial de movimientos por OT + placas en ficha de cobros/venta.
+- **Hecho:** lote obligatorio en remitos nuevos + origen nacional/importado/cantera/otro.
 
 ### M09.F6 — Carga manual de planchas `PENDIENTE` / fuera de sprint jul 2026
 - Default: ingreso vía remito. Alta sin remito queda para después.

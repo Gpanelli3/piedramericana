@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Layers, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, History, Layers, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,9 +21,12 @@ import {
   liberarChapasDeOt,
   listChapasDisponibles,
   listChapasPorOt,
+  listTrazabilidadStockPorOt,
   lotesDistintosEnChapas,
   reservarChapasAOt,
+  sugerirChapasParaOt,
   type ChapaInventarioRow,
+  type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -31,6 +34,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   otId: string;
   materialHint?: string;
+  requiereReservaStock?: boolean;
   onChanged?: () => void;
 };
 
@@ -38,9 +42,26 @@ function m2(l: number, a: number) {
   return ((l / 100) * (a / 100)).toFixed(2);
 }
 
-export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
+function etiquetaMov(t: MovimientoStockRow["tipo"]): string {
+  const map: Record<MovimientoStockRow["tipo"], string> = {
+    reserva: "Reserva",
+    liberacion: "Liberación",
+    consumo: "Consumo",
+    baja: "Baja",
+    retazo_alta: "Retazo",
+  };
+  return map[t] ?? t;
+}
+
+export function OtStockPanel({
+  otId,
+  materialHint,
+  requiereReservaStock = false,
+  onChanged,
+}: Props) {
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
+  const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
   const [consumoOpen, setConsumoOpen] = useState(false);
@@ -48,6 +69,8 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forzarMezcla, setForzarMezcla] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sugeridas, setSugeridas] = useState<ChapaInventarioRow[]>([]);
+  const [loteSugerido, setLoteSugerido] = useState<string | null>(null);
   const [retazosByChapa, setRetazosByChapa] = useState<
     Record<string, Array<{ largo: string; ancho: string }>>
   >({});
@@ -55,14 +78,17 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const [r, u] = await Promise.all([
+    const [r, u, mov] = await Promise.all([
       listChapasPorOt(otId, ["Reservada"]),
       listChapasPorOt(otId, ["Usada", "Baja"]),
+      listTrazabilidadStockPorOt(otId),
     ]);
     if (r.error) toast.error(r.error.message);
     if (u.error) toast.error(u.error.message);
+    if (mov.error) toast.error(mov.error.message);
     setReservadas(r.data);
     setUsadas(u.data);
+    setMovimientos(mov.data);
     setLoading(false);
   }, [otId]);
 
@@ -70,20 +96,65 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
     void reload();
   }, [reload]);
 
-  const abrirReservar = async () => {
+  const reservaPendiente = requiereReservaStock && reservadas.length === 0;
+
+  const cargarSugerencias = useCallback(async () => {
+    const sug = await sugerirChapasParaOt({ materialHint, cantidad: 1 });
+    if (sug.error) {
+      toast.error(sug.error.message);
+      return;
+    }
+    setSugeridas(sug.data.chapas);
+    setLoteSugerido(sug.data.lotePreferido);
+  }, [materialHint]);
+
+  useEffect(() => {
+    if (reservaPendiente) void cargarSugerencias();
+  }, [reservaPendiente, cargarSugerencias]);
+
+  const abrirReservar = async (preselectSugeridas = false) => {
     setReservarOpen(true);
-    setSelected(new Set());
     setForzarMezcla(false);
     const needle = materialHint && materialHint !== "—" ? materialHint.split(" ")[0] : undefined;
     const { data, error } = await listChapasDisponibles({ materialNeedle: needle });
     if (error) toast.error(error.message);
-    // Si el filtro por material no dio nada, traer todas disponibles
+    let pool = data;
     if ((data ?? []).length === 0 && needle) {
       const all = await listChapasDisponibles();
-      setDisponibles(all.data);
-    } else {
-      setDisponibles(data);
+      pool = all.data;
     }
+    setDisponibles(pool);
+    if (preselectSugeridas && sugeridas.length > 0) {
+      setSelected(new Set(sugeridas.map((c) => c.id)));
+    } else {
+      setSelected(new Set());
+    }
+  };
+
+  const onReservarSugeridas = async () => {
+    if (sugeridas.length === 0) {
+      await abrirReservar(false);
+      return;
+    }
+    setBusy(true);
+    const res = await reservarChapasAOt({
+      otId,
+      chapaIds: sugeridas.map((c) => c.id),
+      permitirMezclaLotes: false,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      await abrirReservar(true);
+      return;
+    }
+    toast.success(
+      loteSugerido
+        ? `Reservada(s) del lote ${loteSugerido}.`
+        : "Chapas sugeridas reservadas.",
+    );
+    await reload();
+    onChanged?.();
   };
 
   const mezclaPreview = useMemo(() => {
@@ -171,7 +242,7 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
           Placas / stock
         </p>
         <div className="flex flex-wrap gap-1.5">
-          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => void abrirReservar()}>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => void abrirReservar(false)}>
             Reservar
           </Button>
           <Button
@@ -187,12 +258,45 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
         </div>
       </div>
 
+      {reservaPendiente ? (
+        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="flex gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0 space-y-1">
+              <p className="font-semibold">Reserva pendiente</p>
+              <p className="text-amber-900/80 dark:text-amber-100/80">
+                La OT pasó a corte. Reservá placas para no venderlas a otro cliente.
+                {loteSugerido ? ` Lote sugerido: ${loteSugerido}.` : null}
+              </p>
+              {sugeridas.length > 0 ? (
+                <p className="font-mono text-[11px]">
+                  Sugerida: {sugeridas.map((c) => c.bulto).join(", ")}
+                </p>
+              ) : (
+                <p>No hay chapas disponibles que coincidan con el material.</p>
+              )}
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-7 w-full text-xs"
+            disabled={busy}
+            onClick={() => void onReservarSugeridas()}
+          >
+            {sugeridas.length > 0 ? "Reservar sugeridas" : "Elegir chapas…"}
+          </Button>
+        </div>
+      ) : null}
+
       {loading ? (
         <p className="text-xs text-muted-foreground">Cargando…</p>
       ) : reservadas.length === 0 && usadas.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Sin placas asignadas. Reservá chapas al pasar a corte para no venderlas a otro cliente.
-        </p>
+        !reservaPendiente ? (
+          <p className="text-xs text-muted-foreground">
+            Sin placas asignadas. Reservá chapas al pasar a corte para no venderlas a otro cliente.
+          </p>
+        ) : null
       ) : (
         <ul className="space-y-1.5">
           {reservadas.map((c) => (
@@ -206,6 +310,7 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
                   {" "}
                   · {m2(Number(c.largo_cm), Number(c.ancho_cm))} m²
                   {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""}
+                  {c.origen_placa ? ` · ${c.origen_placa}` : ""}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -248,6 +353,27 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
           ))}
         </ul>
       )}
+
+      {movimientos.length > 0 ? (
+        <div className="space-y-1.5 border-t border-border/60 pt-2">
+          <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <History className="h-3 w-3" />
+            Historial de stock
+          </p>
+          <ul className="max-h-28 space-y-1 overflow-y-auto">
+            {movimientos.slice(0, 12).map((m) => (
+              <li key={m.id} className="flex justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>
+                  <span className="font-medium text-foreground">{etiquetaMov(m.tipo)}</span>
+                  {m.chapa_bulto ? ` · ${m.chapa_bulto}` : ""}
+                  {m.chapa_lote ? ` · lote ${m.chapa_lote}` : ""}
+                </span>
+                <span className="shrink-0 tabular-nums">{m.created_at.slice(0, 10)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <Dialog open={reservarOpen} onOpenChange={setReservarOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -300,6 +426,7 @@ export function OtStockPanel({ otId, materialHint, onChanged }: Props) {
                         {c.material_label} · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm ·{" "}
                         {m2(Number(c.largo_cm), Number(c.ancho_cm))} m²
                         {c.lote_codigo ? ` · lote ${c.lote_codigo}` : " · sin lote"}
+                        {c.origen_placa ? ` · ${c.origen_placa}` : ""}
                       </p>
                     </div>
                   </label>

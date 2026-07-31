@@ -36,7 +36,7 @@ import {
   PenSquare,
 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-import type { MaterialOption } from "@/lib/stock-api";
+import type { MaterialOption, OrigenPlaca } from "@/lib/stock-api";
 import {
   fetchSuppliers,
   createRemitoWithSlabsViaRpc,
@@ -122,6 +122,7 @@ export function CrearRemitoDialog({
   const [serialCode, setSerialCode] = useState("000000");
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
+  const [origenPlaca, setOrigenPlaca] = useState<OrigenPlaca>("nacional");
   const [lines, setLines] = useState<LineDraft[]>(() => [blankLine()]);
   const [saving, setSaving] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -149,6 +150,7 @@ export function CrearRemitoDialog({
     setNotes("");
     setBranchCode("");
     setSupplierId("");
+    setOrigenPlaca("nacional");
     setIssueDate(new Date().toISOString().slice(0, 10));
     setSerialCode("000000");
   }, [open]);
@@ -212,6 +214,10 @@ export function CrearRemitoDialog({
         toast.error("Indicá N° inicial de bulto (entero positivo) por línea.");
         return;
       }
+      if (!d.lote_codigo.trim()) {
+        toast.error("El código de lote es obligatorio en cada línea.");
+        return;
+      }
 
       labelLines.push({
         draft: {
@@ -246,7 +252,8 @@ export function CrearRemitoDialog({
           ancho_cm: ancho,
           bulto_numero_inicio: ini,
           precio_unitario: pu !== null && Number.isFinite(pu) ? pu : null,
-          lote_codigo: draft.lote_codigo.trim() || null,
+          lote_codigo: draft.lote_codigo.trim(),
+          origen_placa: origenPlaca,
           sort_order: idx,
         };
       });
@@ -259,6 +266,7 @@ export function CrearRemitoDialog({
           serial_code: serialCode,
           issue_date: issueDate,
           notes: notes || null,
+          origen_placa: origenPlaca,
           created_by: userId ?? null,
           lines: payloadLines,
         });
@@ -341,7 +349,7 @@ export function CrearRemitoDialog({
                   onChange={(e) => setSerialCode(e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5 sm:col-span-6">
+              <div className="space-y-1.5 sm:col-span-4">
                 <Label>Fecha</Label>
                 <div className="relative">
                   <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -353,7 +361,21 @@ export function CrearRemitoDialog({
                   />
                 </div>
               </div>
-              <div className="space-y-1.5 sm:col-span-6">
+              <div className="space-y-1.5 sm:col-span-4">
+                <Label>Origen de placa</Label>
+                <Select value={origenPlaca} onValueChange={(v) => setOrigenPlaca(v as OrigenPlaca)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nacional">Nacional</SelectItem>
+                    <SelectItem value="importado">Importado</SelectItem>
+                    <SelectItem value="cantera">Cantera</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5 sm:col-span-4">
                 <Label>Proveedor</Label>
                 <div className="flex gap-2">
                   <Select
@@ -424,8 +446,8 @@ export function CrearRemitoDialog({
                     <TableHead className="w-24 whitespace-nowrap">Ancho cm</TableHead>
                     <TableHead className="w-28 whitespace-nowrap">Precio u.</TableHead>
                     <TableHead className="w-28 whitespace-nowrap">N° inicial</TableHead>
-                    <TableHead className="w-28 whitespace-nowrap" title="Código de lote del proveedor. No mezclar lotes en una misma OT.">
-                      Lote
+                    <TableHead className="w-28 whitespace-nowrap" title="Código de lote del proveedor. Obligatorio. No mezclar lotes en una misma OT.">
+                      Lote *
                     </TableHead>
                     <TableHead className="w-24 whitespace-nowrap text-right">m² total</TableHead>
                     <TableHead className="w-[88px]" />
@@ -537,8 +559,9 @@ export function CrearRemitoDialog({
                         <TableCell className="py-2">
                           <Input
                             className="h-8 px-2 text-xs"
-                            placeholder="Ej. L-240501"
-                            title="Código de lote del proveedor"
+                            placeholder="Obligatorio"
+                            required
+                            title="Código de lote del proveedor (obligatorio)"
                             value={ln.lote_codigo}
                             onChange={(e) => setLine(ln.key, { lote_codigo: e.target.value })}
                           />

@@ -31,6 +31,20 @@ function formatM2Stock(n: number): string {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
+function etiquetaOrigen(o: string | null | undefined): string {
+  switch (o) {
+    case "importado":
+      return "Importado";
+    case "cantera":
+      return "Cantera";
+    case "otro":
+      return "Otro";
+    case "nacional":
+    default:
+      return "Nacional";
+  }
+}
+
 function m2Line(l: Pick<RemitoLineDetail, "qty_slabs" | "largo_cm" | "ancho_cm">): number {
   const piece = (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100);
   return piece * l.qty_slabs;
@@ -172,6 +186,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
                   <TableHead className="pl-4 text-xs font-semibold">Fecha</TableHead>
                   <TableHead className="text-xs font-semibold">N° remito</TableHead>
                   <TableHead className="text-xs font-semibold">Proveedor</TableHead>
+                  <TableHead className="text-xs font-semibold">Origen</TableHead>
                   <TableHead className="text-right text-xs font-semibold">Placas</TableHead>
                   <TableHead className="pr-4 text-right text-xs font-semibold">m²</TableHead>
                 </TableRow>
@@ -179,13 +194,13 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       Cargando…
                     </TableCell>
                   </TableRow>
                 ) : filtradas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       No hay remitos para mostrar.
                     </TableCell>
                   </TableRow>
@@ -203,6 +218,9 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
                         {r.branch_code}-{r.serial_code}
                       </TableCell>
                       <TableCell className="text-sm">{r.supplier_name ?? "—"}</TableCell>
+                      <TableCell className="text-sm capitalize text-muted-foreground">
+                        {etiquetaOrigen(r.origen_placa)}
+                      </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{r.total_slabs}</TableCell>
                       <TableCell className="pr-4 text-right text-sm font-semibold tabular-nums">
                         {formatM2Stock(r.total_m2)}
@@ -229,10 +247,16 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
           <Separator />
           <div className="min-h-0 flex-1 overflow-y-auto space-y-3 pr-1">
             {detalle ? (
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Proveedor:</span>{" "}
-                {detalle.supplier_name ?? "—"}
-              </p>
+              <>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Proveedor:</span>{" "}
+                  {detalle.supplier_name ?? "—"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Origen:</span>{" "}
+                  {etiquetaOrigen(detalle.origen_placa)}
+                </p>
+              </>
             ) : null}
             {detalle?.notes ? (
               <p className="text-sm">
@@ -246,6 +270,8 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
                   <p className="font-medium text-foreground">{l.material_label}</p>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                     {l.qty_slabs} × {l.largo_cm} × {l.ancho_cm} cm → {formatM2Stock(m2Line(l))} m²
+                    {l.lote_codigo ? ` · lote ${l.lote_codigo}` : ""}
+                    {l.origen_placa ? ` · ${etiquetaOrigen(l.origen_placa)}` : ""}
                   </p>
                 </li>
               ))}

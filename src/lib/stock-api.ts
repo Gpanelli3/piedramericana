@@ -1,6 +1,8 @@
 import type { Database } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
+export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
+
 export type ChapaRow = {
   id?: string;
   bulto: string;
@@ -11,6 +13,7 @@ export type ChapaRow = {
   loteCodigo?: string | null;
   otReservaId?: string | null;
   motivoEstado?: string | null;
+  origenPlaca?: OrigenPlaca | null;
 };
 
 export type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
@@ -41,6 +44,7 @@ export function slabRowToChapa(row: {
   lote_codigo?: string | null;
   ot_reserva_id?: string | null;
   motivo_estado?: string | null;
+  origen_placa?: OrigenPlaca | null;
 }): ChapaRow {
   return {
     id: row.id,
@@ -52,6 +56,7 @@ export function slabRowToChapa(row: {
     loteCodigo: row.lote_codigo ?? null,
     otReservaId: row.ot_reserva_id ?? null,
     motivoEstado: row.motivo_estado ?? null,
+    origenPlaca: row.origen_placa ?? null,
   };
 }
 
@@ -60,7 +65,7 @@ export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
   const { data, error } = await supabase
     .from("chapas_inventario")
     .select(
-      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,created_at",
+      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,created_at",
     )
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -75,6 +80,7 @@ export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
       lote_codigo: r.lote_codigo,
       ot_reserva_id: r.ot_reserva_id,
       motivo_estado: r.motivo_estado,
+      origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
     }),
   );
 }
@@ -103,7 +109,8 @@ export type RemitoLineInput = {
   ancho_cm: number;
   bulto_numero_inicio: number;
   precio_unitario?: number | null;
-  lote_codigo?: string | null;
+  lote_codigo: string;
+  origen_placa?: OrigenPlaca;
   sort_order?: number;
 };
 
@@ -113,18 +120,25 @@ export type CreateRemitoPayload = {
   serial_code: string;
   issue_date: string;
   notes?: string | null;
+  origen_placa: OrigenPlaca;
   created_by?: string | null;
   lines: RemitoLineInput[];
 };
 
 export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload): Promise<string> {
   if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
+  for (const l of payload.lines) {
+    if (!l.lote_codigo?.trim()) {
+      throw new Error("lote_codigo es obligatorio en cada línea de remito");
+    }
+  }
   const body = {
     supplier_id: payload.supplier_id,
     branch_code: payload.branch_code?.trim() ?? "",
     serial_code: payload.serial_code?.trim() ?? "",
     issue_date: payload.issue_date,
     notes: payload.notes?.slice(0, 200) ?? null,
+    origen_placa: payload.origen_placa,
     created_by: payload.created_by ?? null,
     lines: payload.lines.map((l, i) => ({
       material_id: l.material_id ?? null,
@@ -134,7 +148,8 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
       ancho_cm: l.ancho_cm,
       bulto_numero_inicio: l.bulto_numero_inicio,
       precio_unitario: l.precio_unitario ?? null,
-      lote_codigo: l.lote_codigo?.trim() || null,
+      lote_codigo: l.lote_codigo.trim(),
+      origen_placa: l.origen_placa ?? payload.origen_placa,
       sort_order: l.sort_order ?? i,
     })),
   };
@@ -193,6 +208,7 @@ export async function fetchRemitosList(): Promise<RemitoListRow[]> {
       serial_code,
       issue_date,
       notes,
+      origen_placa,
       created_by,
       created_at,
       suppliers ( name ),
@@ -253,7 +269,7 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
   const { data, error } = await supabase
     .from("chapas_inventario")
     .select(
-      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,created_at",
+      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,created_at",
     )
     .eq("material_label", label)
     .order("bulto", { ascending: true });
@@ -269,6 +285,7 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
       lote_codigo: r.lote_codigo,
       ot_reserva_id: r.ot_reserva_id,
       motivo_estado: r.motivo_estado,
+      origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
     }),
   );
 }

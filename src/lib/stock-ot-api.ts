@@ -134,6 +134,11 @@ export async function reservarChapasAOt(opts: {
     });
   }
 
+  await supabase
+    .from("ordenes_trabajo")
+    .update({ requiere_reserva_stock: false, actualizado_en: ts })
+    .eq("id", opts.otId);
+
   return { error: null, warningMezclaLotes };
 }
 
@@ -252,6 +257,7 @@ export async function consumirChapasConRetazos(opts: {
           lote_codigo: c.lote_codigo,
           remito_line_id: c.remito_line_id,
           chapa_origen_id: c.id,
+          origen_placa: c.origen_placa,
           motivo_estado: `Retazo de ${c.bulto}`,
         })
         .select("id")
@@ -327,4 +333,190 @@ export async function bajaChapaPorRotura(opts: {
   });
 
   return { error: null, bulto: c.bulto };
+}
+
+export type SugerenciaReserva = {
+  chapas: ChapaInventarioRow[];
+  lotePreferido: string | null;
+  materialNeedle: string | null;
+};
+
+/**
+ * Sugiere chapas Disponibles del mismo material (y preferentemente un solo lote).
+ * No reserva sola: el usuario confirma.
+ */
+export async function sugerirChapasParaOt(opts: {
+  materialHint?: string;
+  cantidad?: number;
+}): Promise<{ data: SugerenciaReserva; error: Error | null }> {
+  const needle =
+    opts.materialHint && opts.materialHint !== "—"
+      ? opts.materialHint.trim().split(/\s+/)[0] ?? null
+      : null;
+  const qty = Math.max(1, opts.cantidad ?? 1);
+
+  const { data, error } = await listChapasDisponibles({
+    materialNeedle: needle ?? undefined,
+  });
+  if (error) return { data: { chapas: [], lotePreferido: null, materialNeedle: needle }, error };
+
+  let pool = data;
+  if (pool.length === 0 && needle) {
+    const all = await listChapasDisponibles();
+    if (all.error) return { data: { chapas: [], lotePreferido: null, materialNeedle: needle }, error: all.error };
+    pool = all.data;
+  }
+
+  // Preferir el lote con más chapas disponibles
+  const porLote = new Map<string, ChapaInventarioRow[]>();
+  for (const c of pool) {
+    const key = (c.lote_codigo ?? "").trim() || "__sin_lote__";
+    const arr = porLote.get(key) ?? [];
+    arr.push(c);
+    porLote.set(key, arr);
+  }
+  let bestKey = "__sin_lote__";
+  let bestLen = -1;
+  for (const [k, arr] of porLote) {
+    if (arr.length > bestLen) {
+      bestLen = arr.length;
+      bestKey = k;
+    }
+  }
+  const delLote = porLote.get(bestKey) ?? pool;
+  const sugeridas = delLote.slice(0, qty);
+
+  return {
+    data: {
+      chapas: sugeridas,
+      lotePreferido: bestKey === "__sin_lote__" ? null : bestKey,
+      materialNeedle: needle,
+    },
+    error: null,
+  };
+}
+
+export type MovimientoStockRow = Database["public"]["Tables"]["stock_movimientos"]["Row"] & {
+  chapa_bulto?: string | null;
+  chapa_lote?: string | null;
+  chapa_estado?: string | null;
+};
+
+export async function listTrazabilidadStockPorOt(
+  otId: string,
+): Promise<{ data: MovimientoStockRow[]; error: Error | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("stock_movimientos")
+    .select("*, chapas_inventario ( bulto, lote_codigo, estado )")
+    .eq("ot_id", otId)
+    .order("created_at", { ascending: false });
+  if (error) return { data: [], error: new Error(error.message) };
+
+  const rows = (data ?? []).map((m) => {
+    const ch = (
+      m as unknown as {
+        chapas_inventario:
+          | { bulto: string; lote_codigo: string | null; estado: string }
+          | { bulto: string; lote_codigo: string | null; estado: string }[]
+          | null;
+      }
+    ).chapas_inventario;
+    const chapa = Array.isArray(ch) ? ch[0] : ch;
+    const base = m as Database["public"]["Tables"]["stock_movimientos"]["Row"];
+    return {
+      ...base,
+      chapa_bulto: chapa?.bulto ?? null,
+      chapa_lote: chapa?.lote_codigo ?? null,
+      chapa_estado: chapa?.estado ?? null,
+    } satisfies MovimientoStockRow;
+  });
+  return { data: rows, error: null };
+}
+
+export type TrazabilidadObraRow = {
+  ot_id: string;
+  ot_titulo: string;
+  cliente: string;
+  presupuesto_numero: string | null;
+  chapa_id: string;
+  bulto: string;
+  material_label: string;
+  lote_codigo: string | null;
+  origen_placa: string | null;
+  estado: InventorySlabEstado;
+  motivo_estado: string | null;
+};
+
+/** Consulta inversa: chapas vinculadas a OTs de un cliente (por nombre en presupuesto). */
+export async function listTrazabilidadStockPorCliente(
+  cliente: string,
+): Promise<{ data: TrazabilidadObraRow[]; error: Error | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  const q = cliente.trim();
+  if (!q) return { data: [], error: null };
+
+  const { data: presupuestos, error: pErr } = await supabase
+    .from("presupuestos")
+    .select("id, numero, cliente")
+    .ilike("cliente", `%${q}%`);
+  if (pErr) return { data: [], error: new Error(pErr.message) };
+  if (!presupuestos?.length) return { data: [], error: null };
+
+  const presIds = presupuestos.map((p) => p.id);
+  const { data: ventas, error: vErr } = await supabase
+    .from("ventas")
+    .select("id, presupuesto_id")
+    .in("presupuesto_id", presIds);
+  if (vErr) return { data: [], error: new Error(vErr.message) };
+  if (!ventas?.length) return { data: [], error: null };
+
+  const ventaIds = ventas.map((v) => v.id);
+  const { data: ots, error: oErr } = await supabase
+    .from("ordenes_trabajo")
+    .select("id, titulo, venta_id")
+    .in("venta_id", ventaIds);
+  if (oErr) return { data: [], error: new Error(oErr.message) };
+  if (!ots?.length) return { data: [], error: null };
+
+  const otIds = ots.map((o) => o.id);
+  const { data: chapas, error: cErr } = await supabase
+    .from("chapas_inventario")
+    .select("id, bulto, material_label, lote_codigo, origen_placa, estado, motivo_estado, ot_reserva_id")
+    .in("ot_reserva_id", otIds)
+    .in("estado", ["Reservada", "Usada", "Baja"]);
+  if (cErr) return { data: [], error: new Error(cErr.message) };
+
+  const presById = new Map(presupuestos.map((p) => [p.id, p]));
+  const ventaById = new Map(ventas.map((v) => [v.id, v]));
+  const otById = new Map(ots.map((o) => [o.id, o]));
+
+  const rows: TrazabilidadObraRow[] = [];
+  for (const c of chapas ?? []) {
+    const ot = c.ot_reserva_id ? otById.get(c.ot_reserva_id) : undefined;
+    if (!ot?.venta_id) continue;
+    const venta = ventaById.get(ot.venta_id);
+    const pres = venta ? presById.get(venta.presupuesto_id) : undefined;
+    rows.push({
+      ot_id: ot.id,
+      ot_titulo: ot.titulo,
+      cliente: pres?.cliente ?? q,
+      presupuesto_numero: pres?.numero ?? null,
+      chapa_id: c.id,
+      bulto: c.bulto,
+      material_label: c.material_label,
+      lote_codigo: c.lote_codigo,
+      origen_placa: c.origen_placa ?? null,
+      estado: c.estado as InventorySlabEstado,
+      motivo_estado: c.motivo_estado,
+    });
+  }
+
+  return { data: rows, error: null };
+}
+
+export async function listChapasUsadasPorOt(
+  otId: string,
+): Promise<{ data: ChapaInventarioRow[]; error: Error | null }> {
+  return listChapasPorOt(otId, ["Reservada", "Usada", "Baja"]);
 }

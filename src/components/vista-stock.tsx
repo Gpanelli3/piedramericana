@@ -274,6 +274,7 @@ export function VistaStock() {
                         <TableHead className="whitespace-nowrap pl-4 text-xs font-semibold">Bulto</TableHead>
                         <TableHead className="min-w-[180px] text-xs font-semibold">Material</TableHead>
                         <TableHead className="text-xs font-semibold">Lote</TableHead>
+                        <TableHead className="text-xs font-semibold">Origen</TableHead>
                         <TableHead className="text-right text-xs font-semibold">Largo</TableHead>
                         <TableHead className="text-right text-xs font-semibold">Ancho</TableHead>
                         <TableHead className="text-right text-xs font-semibold">
@@ -288,7 +289,7 @@ export function VistaStock() {
                     <TableBody>
                       {chapasFiltradas.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                          <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                             {busquedaPiedra.trim()
                               ? `No hay resultados para «${busquedaPiedra}».`
                               : "Sin chapas en inventario. Registrá un ingreso en la pestaña Ingresos."}
@@ -317,6 +318,9 @@ export function VistaStock() {
                               </TableCell>
                               <TableCell className="text-xs tabular-nums text-muted-foreground">
                                 {row.loteCodigo?.trim() || "—"}
+                              </TableCell>
+                              <TableCell className="text-xs capitalize text-muted-foreground">
+                                {row.origenPlaca ?? "—"}
                               </TableCell>
                               <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                                 {row.largoCm} cm

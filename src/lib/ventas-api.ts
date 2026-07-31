@@ -569,6 +569,7 @@ export async function pasarAProduccion(opts: {
           etapa: "corte",
           estado: "in_progress",
           pausada: false,
+          requiere_reserva_stock: true,
           actualizado_en: now,
         })
         .eq("id", ot.id);

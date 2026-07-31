@@ -11,6 +11,7 @@ export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
 export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja";
+export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
 export type VentaEstado =
@@ -200,6 +201,7 @@ export interface Database {
           pausada: boolean;
           medidas_confirmadas: boolean;
           fecha_medidas_confirmadas: string | null;
+          requiere_reserva_stock: boolean;
         };
         Insert: {
           id?: string;
@@ -216,6 +218,7 @@ export interface Database {
           pausada?: boolean;
           medidas_confirmadas?: boolean;
           fecha_medidas_confirmadas?: string | null;
+          requiere_reserva_stock?: boolean;
         };
         Update: {
           id?: string;
@@ -232,6 +235,7 @@ export interface Database {
           pausada?: boolean;
           medidas_confirmadas?: boolean;
           fecha_medidas_confirmadas?: string | null;
+          requiere_reserva_stock?: boolean;
         };
         Relationships: [
           {
@@ -377,6 +381,7 @@ export interface Database {
           serial_code: string;
           issue_date: string;
           notes: string | null;
+          origen_placa: OrigenPlaca;
           created_by: string | null;
           created_at: string;
         };
@@ -387,6 +392,7 @@ export interface Database {
           serial_code?: string;
           issue_date: string;
           notes?: string | null;
+          origen_placa?: OrigenPlaca;
           created_by?: string | null;
           created_at?: string;
         };
@@ -397,6 +403,7 @@ export interface Database {
           serial_code?: string;
           issue_date?: string;
           notes?: string | null;
+          origen_placa?: OrigenPlaca;
           created_by?: string | null;
           created_at?: string;
         };
@@ -429,6 +436,7 @@ export interface Database {
           precio_unitario: number | null;
           sort_order: number;
           lote_codigo: string | null;
+          origen_placa: OrigenPlaca;
         };
         Insert: {
           id?: string;
@@ -441,6 +449,7 @@ export interface Database {
           precio_unitario?: number | null;
           sort_order?: number;
           lote_codigo?: string | null;
+          origen_placa?: OrigenPlaca;
         };
         Update: {
           id?: string;
@@ -453,6 +462,7 @@ export interface Database {
           precio_unitario?: number | null;
           sort_order?: number;
           lote_codigo?: string | null;
+          origen_placa?: OrigenPlaca;
         };
         Relationships: [
           {
@@ -697,6 +707,7 @@ export interface Database {
           ot_reserva_id: string | null;
           motivo_estado: string | null;
           chapa_origen_id: string | null;
+          origen_placa: OrigenPlaca;
           created_at: string;
           updated_at: string;
         };
@@ -713,6 +724,7 @@ export interface Database {
           ot_reserva_id?: string | null;
           motivo_estado?: string | null;
           chapa_origen_id?: string | null;
+          origen_placa?: OrigenPlaca;
           created_at?: string;
           updated_at?: string;
         };
@@ -729,6 +741,7 @@ export interface Database {
           ot_reserva_id?: string | null;
           motivo_estado?: string | null;
           chapa_origen_id?: string | null;
+          origen_placa?: OrigenPlaca;
           created_at?: string;
           updated_at?: string;
         };
@@ -1340,6 +1353,7 @@ export interface Database {
       invoice_status: InvoiceStatus;
       profile_role: ProfileRole;
       inventory_slab_estado: InventorySlabEstado;
+      origen_placa: OrigenPlaca;
       material_kind: MaterialKindDb;
       presupuesto_estado: PresupuestoEstado;
       venta_estado: VentaEstado;

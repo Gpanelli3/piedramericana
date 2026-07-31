@@ -67,6 +67,7 @@ interface OT {
   pausada?: boolean;
   bloqueada: boolean;
   status: JobStatus;
+  requiereReservaStock: boolean;
 }
 
 function coalesceEtapa(raw: unknown): EtapaId {
@@ -89,6 +90,7 @@ function tarjetaToOtUi(t: OtTarjeta): OT {
     pausada: Boolean(t.orden.pausada),
     bloqueada: coalesceEtapa(t.orden.etapa) === "medicion",
     status: (t.orden.estado as JobStatus) ?? "pending",
+    requiereReservaStock: Boolean(t.orden.requiere_reserva_stock),
   };
 }
 
@@ -476,7 +478,11 @@ export function VistaProduccion() {
               <OtStockPanel
                 otId={otDetalle.id}
                 materialHint={otDetalle.material}
-                onChanged={() => void reloadChapas()}
+                requiereReservaStock={otDetalle.requiereReservaStock && otDetalle.columna !== "medicion"}
+                onChanged={() => {
+                  void reloadChapas();
+                  void refreshBoard();
+                }}
               />
 
               <div>
