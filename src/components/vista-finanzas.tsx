@@ -2,13 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  ArrowLeftRight,
-  Banknote,
-  Plus,
-  Wallet,
-  Landmark,
-} from "lucide-react";
+import { ArrowLeftRight, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,15 +33,19 @@ import {
 } from "@/components/ui/dialog";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  calcularSaldoCuentaEnFecha,
+  CONCEPTOS_MOVIMIENTO,
+  METODOS_PAGO,
+  etiquetaConcepto,
+  etiquetaMetodo,
   listCuentasActivas,
   listMovimientos,
   listSaldosCuentas,
-  registrarCierreCaja,
   registrarMovimientoManual,
   resumenCajaDelDia,
   transferirEntreCuentas,
+  type ConceptoMovimiento,
   type CuentaFinancieraRow,
+  type MetodoPago,
   type MovimientoCajaRow,
   type SaldoCuentaRow,
 } from "@/lib/finanzas-api";
@@ -72,14 +70,18 @@ function etiquetaTipo(t: MovimientoCajaRow["tipo"]): string {
   return map[t];
 }
 
-function iconoTipoCuenta(tipo: CuentaFinancieraRow["tipo"]) {
+function etiquetaFormaPago(tipo: CuentaFinancieraRow["tipo"]): string {
   switch (tipo) {
     case "banco":
-      return Landmark;
+      return "Transferencia";
     case "tarjeta":
-      return Banknote;
+      return "Tarjeta";
+    case "cheque":
+      return "Cheque";
+    case "caja":
+      return "Efectivo";
     default:
-      return Wallet;
+      return "Otro";
   }
 }
 
@@ -92,7 +94,6 @@ export function VistaFinanzas() {
 
   const [dialogMov, setDialogMov] = useState(false);
   const [dialogTransf, setDialogTransf] = useState(false);
-  const [dialogCierre, setDialogCierre] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const hoy = new Date().toISOString().slice(0, 10);
@@ -104,13 +105,22 @@ export function VistaFinanzas() {
   } | null>(null);
 
   const [movForm, setMovForm] = useState({
-    cuentaId: "",
     tipo: "ingreso" as "ingreso" | "egreso",
+    metodo: "efectivo" as MetodoPago,
+    concepto: "trabajo" as Exclude<ConceptoMovimiento, "transferencia">,
     monto: "",
     moneda: "ars" as "ars" | "usd",
     fecha: hoy,
     descripcion: "",
   });
+
+  const conceptosDisponibles = useMemo(
+    () =>
+      CONCEPTOS_MOVIMIENTO.filter(
+        (c) => c.para === "ambos" || c.para === movForm.tipo,
+      ),
+    [movForm.tipo],
+  );
 
   const [transfForm, setTransfForm] = useState({
     origenId: "",
@@ -119,14 +129,6 @@ export function VistaFinanzas() {
     moneda: "ars" as "ars" | "usd",
     fecha: hoy,
     descripcion: "",
-  });
-
-  const [cierreForm, setCierreForm] = useState({
-    cuentaId: "",
-    fecha: hoy,
-    saldoArqueo: "",
-    notas: "",
-    saldoCalculado: null as number | null,
   });
 
   const recargar = useCallback(async () => {
@@ -167,21 +169,17 @@ export function VistaFinanzas() {
     return { ars, usd };
   }, [saldos]);
 
-  const cuentaNombre = useCallback(
-    (id: string) => cuentas.find((c) => c.id === id)?.nombre ?? id.slice(0, 8),
-    [cuentas],
-  );
-
   async function onRegistrarMovimiento() {
     const n = Number(String(movForm.monto).replace(",", "."));
-    if (!movForm.cuentaId || !Number.isFinite(n) || n <= 0) {
-      toast.error("Completá cuenta y monto válido.");
+    if (!movForm.metodo || !Number.isFinite(n) || n <= 0) {
+      toast.error("Completá forma de pago y monto válido.");
       return;
     }
     setBusy(true);
     const res = await registrarMovimientoManual({
-      cuentaId: movForm.cuentaId,
       tipo: movForm.tipo,
+      metodo: movForm.metodo,
+      concepto: movForm.concepto,
       monto: n,
       moneda: movForm.moneda,
       fecha: movForm.fecha,
@@ -194,7 +192,15 @@ export function VistaFinanzas() {
     }
     toast.success("Movimiento registrado.");
     setDialogMov(false);
-    setMovForm({ cuentaId: "", tipo: "ingreso", monto: "", moneda: "ars", fecha: hoy, descripcion: "" });
+    setMovForm({
+      tipo: "ingreso",
+      metodo: "efectivo",
+      concepto: "trabajo",
+      monto: "",
+      moneda: "ars",
+      fecha: hoy,
+      descripcion: "",
+    });
     await recargar();
   }
 
@@ -224,38 +230,6 @@ export function VistaFinanzas() {
     await recargar();
   }
 
-  async function onAbrirCierre(cuentaId: string) {
-    const { saldo, error } = await calcularSaldoCuentaEnFecha(cuentaId, cierreForm.fecha);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setCierreForm((f) => ({ ...f, cuentaId, saldoCalculado: saldo }));
-    setDialogCierre(true);
-  }
-
-  async function onRegistrarCierre() {
-    if (!cierreForm.cuentaId) return;
-    setBusy(true);
-    const arqueo = cierreForm.saldoArqueo.trim()
-      ? Number(String(cierreForm.saldoArqueo).replace(",", "."))
-      : null;
-    const res = await registrarCierreCaja({
-      cuentaId: cierreForm.cuentaId,
-      fecha: cierreForm.fecha,
-      saldoArqueo: arqueo != null && Number.isFinite(arqueo) ? arqueo : null,
-      notas: cierreForm.notas,
-    });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Cierre de caja registrado.");
-    setDialogCierre(false);
-    await recargar();
-  }
-
   if (!isSupabaseConfigured) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
@@ -270,12 +244,14 @@ export function VistaFinanzas() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Finanzas</h1>
-            <p className="text-sm text-muted-foreground">Cuentas, movimientos y cierre de caja</p>
+            <p className="text-sm text-muted-foreground">
+              Los cobros de trabajos y pagos normales entran por Ventas y sus procesos. Acá ves el libro y ajustás excepciones.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setDialogMov(true)}>
               <Plus className="mr-1 h-4 w-4" />
-              Movimiento
+              Ajuste manual
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setDialogTransf(true)}>
               <ArrowLeftRight className="mr-1 h-4 w-4" />
@@ -313,7 +289,7 @@ export function VistaFinanzas() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Cobros:{" "}
                   {Object.entries(resumenDia.porMetodo)
-                    .map(([k, v]) => `${k} ${Math.round(v).toLocaleString("es-AR")}`)
+                    .map(([k, v]) => `${etiquetaMetodo(k)} ${Math.round(v).toLocaleString("es-AR")}`)
                     .join(" · ")}
                 </p>
               ) : null}
@@ -323,43 +299,53 @@ export function VistaFinanzas() {
 
         <Tabs defaultValue="cuentas">
           <TabsList>
-            <TabsTrigger value="cuentas">Cuentas</TabsTrigger>
+            <TabsTrigger value="cuentas">Por forma de pago</TabsTrigger>
             <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cuentas" className="mt-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {saldos.map((s) => {
-                const Icon = iconoTipoCuenta(s.tipo);
-                return (
-                  <Card key={s.cuenta_id}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        {s.nombre}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <p className="text-xl font-semibold tabular-nums">
-                        {formatMonto(Number(s.saldo_actual), s.moneda)}
-                      </p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {s.tipo} · {s.moneda.toUpperCase()}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-full text-xs"
-                        onClick={() => void onAbrirCierre(s.cuenta_id)}
-                      >
-                        Cerrar caja hoy
-                      </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+            <Card>
+              <CardHeader className="border-b space-y-1">
+                <CardTitle className="text-base">Saldos por forma de pago</CardTitle>
+                <p className="text-sm font-normal text-muted-foreground">
+                  Cajones del libro según cómo se pagó o cobró. No son cuentas bancarias conectadas.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Forma de pago</TableHead>
+                      <TableHead>Moneda</TableHead>
+                      <TableHead className="text-right">Saldo registrado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {saldos.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
+                          {cargando ? "Cargando…" : "Sin saldos."}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      saldos.map((s) => (
+                        <TableRow key={s.cuenta_id}>
+                          <TableCell className="font-medium">
+                            {etiquetaFormaPago(s.tipo)}
+                          </TableCell>
+                          <TableCell className="uppercase text-muted-foreground">
+                            {s.moneda}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold tabular-nums">
+                            {formatMonto(Number(s.saldo_actual), s.moneda)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="movimientos" className="mt-4">
@@ -368,13 +354,13 @@ export function VistaFinanzas() {
                 <CardTitle className="text-base">Últimos movimientos</CardTitle>
                 <Select value={filtroCuenta} onValueChange={setFiltroCuenta}>
                   <SelectTrigger className="h-9 w-full sm:w-52">
-                    <SelectValue placeholder="Cuenta" />
+                    <SelectValue placeholder="Forma de pago" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todas">Todas las cuentas</SelectItem>
+                    <SelectItem value="todas">Todas las formas</SelectItem>
                     {cuentas.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.nombre}
+                        {etiquetaFormaPago(c.tipo)} {c.moneda.toUpperCase()}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -385,7 +371,8 @@ export function VistaFinanzas() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
-                      <TableHead>Cuenta</TableHead>
+                      <TableHead>Método</TableHead>
+                      <TableHead>Concepto</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
@@ -394,7 +381,7 @@ export function VistaFinanzas() {
                   <TableBody>
                     {movFiltrados.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                        <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                           {cargando ? "Cargando…" : "Sin movimientos."}
                         </TableCell>
                       </TableRow>
@@ -404,7 +391,8 @@ export function VistaFinanzas() {
                         return (
                           <TableRow key={m.id}>
                             <TableCell className="tabular-nums text-sm">{m.fecha}</TableCell>
-                            <TableCell className="text-sm">{cuentaNombre(m.cuenta_id)}</TableCell>
+                            <TableCell className="text-sm">{etiquetaMetodo(m.metodo)}</TableCell>
+                            <TableCell className="text-sm">{etiquetaConcepto(m.concepto)}</TableCell>
                             <TableCell className="text-sm">{etiquetaTipo(m.tipo)}</TableCell>
                             <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                               {m.descripcion ?? "—"}
@@ -433,31 +421,69 @@ export function VistaFinanzas() {
       <Dialog open={dialogMov} onOpenChange={setDialogMov}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Registrar movimiento</DialogTitle>
+            <DialogTitle>Ajuste manual</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Solo para plata fuera de proceso: un ingreso/egreso suelto. Cobros de trabajo, señas y boletas van por Ventas / compras.
+            </p>
           </DialogHeader>
           <div className="grid gap-3">
-            <div className="space-y-1">
-              <Label>Cuenta</Label>
-              <Select value={movForm.cuentaId} onValueChange={(v) => setMovForm((f) => ({ ...f, cuentaId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Elegir cuenta" /></SelectTrigger>
-                <SelectContent>
-                  {cuentas.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Tipo</Label>
                 <Select
                   value={movForm.tipo}
-                  onValueChange={(v) => setMovForm((f) => ({ ...f, tipo: v as "ingreso" | "egreso" }))}
+                  onValueChange={(v) => {
+                    const tipo = v as "ingreso" | "egreso";
+                    setMovForm((f) => ({
+                      ...f,
+                      tipo,
+                      concepto: tipo === "ingreso" ? "trabajo" : "gastos",
+                    }));
+                  }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ingreso">Ingreso</SelectItem>
                     <SelectItem value="egreso">Egreso</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Cómo se paga</Label>
+                <Select
+                  value={movForm.metodo}
+                  onValueChange={(v) => setMovForm((f) => ({ ...f, metodo: v as MetodoPago }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {METODOS_PAGO.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Concepto</Label>
+                <Select
+                  value={movForm.concepto}
+                  onValueChange={(v) =>
+                    setMovForm((f) => ({
+                      ...f,
+                      concepto: v as Exclude<ConceptoMovimiento, "transferencia">,
+                    }))
+                  }
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {conceptosDisponibles.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -500,27 +526,31 @@ export function VistaFinanzas() {
       <Dialog open={dialogTransf} onOpenChange={setDialogTransf}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Transferir entre cuentas</DialogTitle>
+            <DialogTitle>Mover entre formas de pago</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Cuenta origen</Label>
+              <Label>Desde</Label>
               <Select value={transfForm.origenId} onValueChange={(v) => setTransfForm((f) => ({ ...f, origenId: v }))}>
                 <SelectTrigger><SelectValue placeholder="Origen" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {etiquetaFormaPago(c.tipo)} {c.moneda.toUpperCase()}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Cuenta destino</Label>
+              <Label>Hacia</Label>
               <Select value={transfForm.destinoId} onValueChange={(v) => setTransfForm((f) => ({ ...f, destinoId: v }))}>
                 <SelectTrigger><SelectValue placeholder="Destino" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                    <SelectItem key={c.id} value={c.id}>
+                      {etiquetaFormaPago(c.tipo)} {c.moneda.toUpperCase()}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -560,37 +590,6 @@ export function VistaFinanzas() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogCierre} onOpenChange={setDialogCierre}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cierre de caja</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3 text-sm">
-            <p>
-              Saldo calculado al {cierreForm.fecha}:{" "}
-              <span className="font-semibold tabular-nums">
-                {cierreForm.saldoCalculado != null ? cierreForm.saldoCalculado.toLocaleString("es-AR") : "…"}
-              </span>
-            </p>
-            <div className="space-y-1">
-              <Label>Arqueo físico (opcional)</Label>
-              <Input
-                value={cierreForm.saldoArqueo}
-                onChange={(e) => setCierreForm((f) => ({ ...f, saldoArqueo: e.target.value }))}
-                placeholder="Monto contado en caja"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Notas</Label>
-              <Textarea rows={2} value={cierreForm.notas} onChange={(e) => setCierreForm((f) => ({ ...f, notas: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogCierre(false)}>Cancelar</Button>
-            <Button disabled={busy} onClick={() => void onRegistrarCierre()}>Registrar cierre</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

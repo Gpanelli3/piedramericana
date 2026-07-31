@@ -7,6 +7,81 @@ export type CierreCajaRow = Database["public"]["Tables"]["cierres_caja"]["Row"];
 export type SaldoCuentaRow = Database["public"]["Views"]["v_saldos_cuentas"]["Row"];
 
 export type TipoMovimiento = MovimientoCajaRow["tipo"];
+export type ConceptoMovimiento = MovimientoCajaRow["concepto"];
+export type MetodoPago = MovimientoCajaRow["metodo"];
+
+/** Métodos oficiales del libro interno. */
+export const METODOS_PAGO: { value: MetodoPago; label: string }[] = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque", label: "Cheque" },
+  { value: "tarjeta", label: "Tarjeta" },
+];
+
+/** Métodos en UI de cobro (Mercado Pago imputa a Transferencia). */
+export const METODOS_COBRO_UI: { value: string; label: string; metodoLibro: MetodoPago }[] = [
+  { value: "efectivo", label: "Efectivo", metodoLibro: "efectivo" },
+  { value: "transferencia", label: "Transferencia", metodoLibro: "transferencia" },
+  { value: "cheque", label: "Cheque", metodoLibro: "cheque" },
+  { value: "tarjeta", label: "Tarjeta", metodoLibro: "tarjeta" },
+  { value: "mercadopago", label: "Mercado Pago", metodoLibro: "transferencia" },
+];
+
+export const CONCEPTOS_MOVIMIENTO: {
+  value: ConceptoMovimiento;
+  label: string;
+  para: "ingreso" | "egreso" | "ambos";
+}[] = [
+  { value: "trabajo", label: "Trabajo / cobro", para: "ingreso" },
+  { value: "insumos", label: "Insumos", para: "egreso" },
+  { value: "gastos", label: "Gastos", para: "egreso" },
+  { value: "sueldos", label: "Sueldos / adelantos", para: "egreso" },
+  { value: "otro", label: "Otro", para: "ambos" },
+];
+
+export function etiquetaConcepto(c: ConceptoMovimiento | null | undefined): string {
+  switch (c) {
+    case "trabajo":
+      return "Trabajo";
+    case "insumos":
+      return "Insumos";
+    case "gastos":
+      return "Gastos";
+    case "sueldos":
+      return "Sueldos";
+    case "transferencia":
+      return "Transferencia";
+    default:
+      return "Otro";
+  }
+}
+
+export function etiquetaMetodo(m: string | null | undefined): string {
+  switch ((m ?? "").toLowerCase()) {
+    case "efectivo":
+      return "Efectivo";
+    case "transferencia":
+      return "Transferencia";
+    case "cheque":
+      return "Cheque";
+    case "tarjeta":
+      return "Tarjeta";
+    case "mercadopago":
+      return "Mercado Pago";
+    default:
+      return m?.trim() || "—";
+  }
+}
+
+/** Normaliza método de UI/cobro al método del libro (4 valores). */
+export function normalizarMetodoLibro(metodo: string): MetodoPago {
+  const m = metodo.toLowerCase().trim();
+  if (m === "efectivo") return "efectivo";
+  if (m === "cheque") return "cheque";
+  if (m === "tarjeta" || m.includes("pos")) return "tarjeta";
+  if (m === "mercadopago" || m.includes("transfer") || m.includes("banco")) return "transferencia";
+  return "transferencia";
+}
 
 export async function listCuentasActivas(): Promise<{
   data: CuentaFinancieraRow[];
@@ -51,23 +126,34 @@ export async function listMovimientos(opts?: {
 }
 
 export async function registrarMovimientoManual(opts: {
-  cuentaId: string;
   tipo: "ingreso" | "egreso";
   monto: number;
   moneda: "ars" | "usd";
   fecha: string;
+  metodo: MetodoPago;
+  concepto?: Exclude<ConceptoMovimiento, "transferencia">;
   descripcion?: string;
   created_by?: string | null;
 }): Promise<{ error: Error | null }> {
   if (!Number.isFinite(opts.monto) || opts.monto <= 0) {
     return { error: new Error("Monto inválido.") };
   }
+  const metodo = normalizarMetodoLibro(opts.metodo);
+  const cuentas = await listCuentasActivas();
+  if (cuentas.error) return { error: cuentas.error };
+  const cuentaId = sugerirCuentaPorMetodo(metodo, opts.moneda, cuentas.data);
+  if (!cuentaId) {
+    return { error: new Error(`No hay destino para ${metodo} ${opts.moneda.toUpperCase()}.`) };
+  }
+  const concepto = opts.concepto ?? (opts.tipo === "ingreso" ? "trabajo" : "gastos");
   const { error } = await supabase.from("movimientos_caja").insert({
-    cuenta_id: opts.cuentaId,
+    cuenta_id: cuentaId,
     tipo: opts.tipo,
     monto: opts.monto,
     moneda: opts.moneda,
     fecha: opts.fecha,
+    metodo,
+    concepto,
     descripcion: opts.descripcion?.trim() || null,
     referencia_tipo: "manual",
     created_by: opts.created_by ?? null,
@@ -100,6 +186,8 @@ export async function transferirEntreCuentas(opts: {
     monto: opts.monto,
     moneda: opts.moneda,
     fecha: opts.fecha,
+    metodo: "transferencia",
+    concepto: "transferencia",
     descripcion: desc,
     referencia_tipo: "transferencia",
     cuenta_contraparte_id: opts.cuentaDestinoId,
@@ -114,6 +202,8 @@ export async function transferirEntreCuentas(opts: {
     monto: opts.monto,
     moneda: opts.moneda,
     fecha: opts.fecha,
+    metodo: "transferencia",
+    concepto: "transferencia",
     descripcion: desc,
     referencia_tipo: "transferencia",
     cuenta_contraparte_id: opts.cuentaOrigenId,
@@ -132,15 +222,19 @@ export async function registrarMovimientoPorCobro(opts: {
   monto: number;
   moneda: "ars" | "usd";
   fecha: string;
+  metodo: string;
   descripcion: string;
   created_by?: string | null;
 }): Promise<{ error: Error | null }> {
+  const metodo = normalizarMetodoLibro(opts.metodo);
   const { error } = await supabase.from("movimientos_caja").insert({
     cuenta_id: opts.cuentaId,
     tipo: "ingreso",
     monto: opts.monto,
     moneda: opts.moneda,
     fecha: opts.fecha,
+    metodo,
+    concepto: "trabajo",
     descripcion: opts.descripcion,
     referencia_tipo: "venta_pago",
     referencia_id: opts.pagoId,
@@ -252,21 +346,30 @@ export async function resumenCajaDelDia(fecha: string): Promise<{
   };
 }
 
-/** Sugiere cuenta destino según método de cobro. */
+/** Resuelve destino interno según método de pago + moneda (1:1). */
 export function sugerirCuentaPorMetodo(
   metodo: string,
   moneda: "ars" | "usd",
   cuentas: CuentaFinancieraRow[],
 ): string | null {
-  const m = metodo.toLowerCase();
-  if (m.includes("tarjeta") || m.includes("pos")) {
-    const t = cuentas.find((c) => c.tipo === "tarjeta" && c.moneda === moneda);
-    if (t) return t.id;
+  const libro = normalizarMetodoLibro(metodo);
+  const tipoDestino: CuentaFinancieraRow["tipo"] =
+    libro === "efectivo"
+      ? "caja"
+      : libro === "cheque"
+        ? "cheque"
+        : libro === "tarjeta"
+          ? "tarjeta"
+          : "banco";
+
+  const exacta = cuentas.find((c) => c.tipo === tipoDestino && c.moneda === moneda && c.activa);
+  if (exacta) return exacta.id;
+
+  // Tarjeta USD: fallback a transferencia USD si no hay cajón tarjeta USD
+  if (libro === "tarjeta" && moneda === "usd") {
+    const transf = cuentas.find((c) => c.tipo === "banco" && c.moneda === "usd" && c.activa);
+    if (transf) return transf.id;
   }
-  if (m.includes("transfer") || m.includes("banco")) {
-    const b = cuentas.find((c) => c.tipo === "banco" && c.moneda === moneda);
-    if (b) return b.id;
-  }
-  const caja = cuentas.find((c) => c.tipo === "caja" && c.moneda === moneda);
-  return caja?.id ?? cuentas.find((c) => c.moneda === moneda)?.id ?? null;
+
+  return cuentas.find((c) => c.moneda === moneda && c.activa)?.id ?? null;
 }

@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
-import { registrarMovimientoPorCobro } from "@/lib/finanzas-api";
+import {
+  listCuentasActivas,
+  registrarMovimientoPorCobro,
+  sugerirCuentaPorMetodo,
+} from "@/lib/finanzas-api";
 import type {
   Database,
   EtapaOtKanban,
@@ -350,6 +354,17 @@ export async function registrarPagoSena(opts: {
   const venta = ventaRes.data;
   if (!venta) return { error: new Error("No se pudo obtener la venta.") };
 
+  if (!opts.metodo?.trim()) {
+    return { error: new Error("Indicá cómo se paga: efectivo, transferencia, cheque o tarjeta.") };
+  }
+
+  let cuentaId = opts.cuenta_id ?? null;
+  if (!cuentaId) {
+    const cuentas = await listCuentasActivas();
+    if (cuentas.error) return { error: cuentas.error };
+    cuentaId = sugerirCuentaPorMetodo(opts.metodo, opts.moneda, cuentas.data);
+  }
+
   const pIns = await supabase.from("ventas_pagos").insert({
     venta_id: venta.id,
     monto: opts.monto,
@@ -357,18 +372,19 @@ export async function registrarPagoSena(opts: {
     fecha: opts.fecha,
     metodo: opts.metodo,
     nota: opts.nota ?? null,
-    cuenta_id: opts.cuenta_id ?? null,
+    cuenta_id: cuentaId,
     created_by: opts.created_by ?? null,
   }).select("id").single();
   if (pIns.error) return { error: new Error(pIns.error.message) };
 
-  if (opts.cuenta_id && pIns.data?.id) {
+  if (cuentaId && pIns.data?.id) {
     const mov = await registrarMovimientoPorCobro({
-      cuentaId: opts.cuenta_id,
+      cuentaId,
       pagoId: pIns.data.id,
       monto: opts.monto,
       moneda: opts.moneda,
       fecha: opts.fecha,
+      metodo: opts.metodo,
       descripcion: `Cobro ${presCast.numero} · ${opts.metodo}`,
       created_by: opts.created_by ?? null,
     });

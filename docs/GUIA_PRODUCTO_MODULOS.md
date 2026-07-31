@@ -448,19 +448,25 @@ Hoy: kanban `medicion → corte → produccion → despacho` — evolucionar sem
 
 # M15 — Finanzas
 
-**Para qué existe:** ver dónde está la plata y registrar movimientos reales (más allá del cobro de venta).
+**Para qué existe:** libro **interno** de plata del taller: registrar ingresos/egresos ARS/USD sin conectar bancos ni APIs externas.
 
-### M15.F1 — Cuentas (caja/banco/ARS/USD) `PARCIAL` (jul 2026)
-- **Hecho:** tablas `cuentas_financieras`, vista `v_saldos_cuentas`, UI módulo Finanzas, cuentas seed.
-- **Falta:** edición/alta de cuentas desde UI.
+**Regla de producto (jul 2026):**
+- Siempre indicar **cómo se paga / cómo entra** la plata: `efectivo` | `transferencia` | `cheque` | `tarjeta`.
+- Los “destinos” son cajones derivados del método + moneda (no se eligen a mano en cobros).
+- **Plata de procesos normales NO se carga a mano en Finanzas:** trabajo / seña / cobro de venta → módulo Ventas; pago de boleta / compra / insumos → proceso de compras (cuando exista el cableado). El botón “Ajuste manual” es solo para excepciones fuera de proceso.
+- No open banking / no saldo bancario real.
+- Mercado Pago en cobros imputa al cajón Transferencia.
+
+### M15.F1 — Saldos por forma de pago `PARCIAL` (jul 2026)
+- **Hecho:** cajones Efectivo / Transferencia / Cheque / Tarjeta × moneda; vista `v_saldos_cuentas`; UI “Por forma de pago”.
+- **Falta:** alta/edición de cajones desde UI (no prioritario).
 
 ### M15.F2 — Movimientos `PARCIAL` (jul 2026)
-- **Hecho:** ingreso/egreso manual, transferencia entre cuentas, movimiento automático al cobrar con cuenta destino.
-- **Falta:** egresos vinculados a compras/proveedores.
+- **Hecho:** `metodo` obligatorio en `movimientos_caja`; cobro de venta → movimiento `trabajo` con método; transferencia entre cajones; ajuste manual (excepciones).
+- **Falta:** egresos automáticos desde compras/remitos/boletas (proceso, no carga manual en Finanzas).
 
-### M15.F3 — Cierre de caja del día `PARCIAL` (jul 2026)
-- **Hecho:** registro de cierre con saldo calculado + arqueo opcional.
-- **Falta:** bloqueo de edición post-cierre.
+### M15.F3 — Cierre de caja del día `LUEGO`
+- API/tabla existen; UI de cierre por cuenta se sacó (ruido). Reintroducir solo si el dueño lo pide como arqueo de fin de día.
 
 ### M15.F4 — Cheques `PENDIENTE`
 - Recibidos / propios; estados (en cartera, depositado, rechazado, cobrado).
@@ -611,6 +617,8 @@ Matriz de brechas frente al estado del código al 31/07/2026. Usar tags de la le
 - No abrir módulo contable completo por “faltan informes contables”.
 - No mezclar caja comercial de ventas con caja física sin modelo de cuentas (M15).
 - No tratar `branch_code` del remito como multi-sucursal.
+- No conectar bancos / open banking / saldo real de cuenta bancaria — Finanzas es libro interno.
+- No pedir “cuenta destino” aparte del método de pago: el método define el cajón.
 
 ---
 

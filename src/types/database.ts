@@ -1170,7 +1170,7 @@ export interface Database {
         Row: {
           id: string;
           nombre: string;
-          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          tipo: "caja" | "banco" | "tarjeta" | "cheque" | "otro";
           moneda: "ars" | "usd";
           saldo_inicial: number;
           activa: boolean;
@@ -1180,7 +1180,7 @@ export interface Database {
         Insert: {
           id?: string;
           nombre: string;
-          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          tipo: "caja" | "banco" | "tarjeta" | "cheque" | "otro";
           moneda: "ars" | "usd";
           saldo_inicial?: number;
           activa?: boolean;
@@ -1190,7 +1190,7 @@ export interface Database {
         Update: {
           id?: string;
           nombre?: string;
-          tipo?: "caja" | "banco" | "tarjeta" | "otro";
+          tipo?: "caja" | "banco" | "tarjeta" | "cheque" | "otro";
           moneda?: "ars" | "usd";
           saldo_inicial?: number;
           activa?: boolean;
@@ -1208,6 +1208,8 @@ export interface Database {
           moneda: "ars" | "usd";
           fecha: string;
           descripcion: string | null;
+          concepto: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          metodo: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo: string | null;
           referencia_id: string | null;
           cuenta_contraparte_id: string | null;
@@ -1223,6 +1225,8 @@ export interface Database {
           moneda: "ars" | "usd";
           fecha: string;
           descripcion?: string | null;
+          concepto?: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          metodo: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo?: string | null;
           referencia_id?: string | null;
           cuenta_contraparte_id?: string | null;
@@ -1238,6 +1242,8 @@ export interface Database {
           moneda?: "ars" | "usd";
           fecha?: string;
           descripcion?: string | null;
+          concepto?: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          metodo?: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo?: string | null;
           referencia_id?: string | null;
           cuenta_contraparte_id?: string | null;
@@ -1302,7 +1308,7 @@ export interface Database {
         Row: {
           cuenta_id: string;
           nombre: string;
-          tipo: "caja" | "banco" | "tarjeta" | "otro";
+          tipo: "caja" | "banco" | "tarjeta" | "cheque" | "otro";
           moneda: "ars" | "usd";
           saldo_inicial: number;
           movimientos_neto: number;

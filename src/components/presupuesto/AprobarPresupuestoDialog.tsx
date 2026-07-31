@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { METODOS_COBRO_UI } from "@/lib/finanzas-api";
 
 export type PresupuestoRowAprobacion = {
   id: string;
@@ -72,7 +73,7 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
       totalAprobado: total,
       montoSenia: sena,
       fecha,
-      metodo: metodo || "Sin especificar",
+      metodo: metodo || "transferencia",
       nota: nota.trim(),
     });
   };
@@ -139,18 +140,17 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
                 <Input id="ap-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label>Método</Label>
+                <Label>Cómo se paga</Label>
                 <Select value={metodo} onValueChange={setMetodo}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                    <SelectItem value="mercadopago">Mercado Pago</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                    <SelectItem value="otro">Otro</SelectItem>
+                    {METODOS_COBRO_UI.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

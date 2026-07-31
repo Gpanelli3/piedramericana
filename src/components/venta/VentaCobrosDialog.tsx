@@ -31,11 +31,7 @@ import {
   pasarAProduccion,
   registrarPagoSena,
 } from "@/lib/ventas-api";
-import {
-  listCuentasActivas,
-  sugerirCuentaPorMetodo,
-  type CuentaFinancieraRow,
-} from "@/lib/finanzas-api";
+import { METODOS_COBRO_UI, etiquetaMetodo } from "@/lib/finanzas-api";
 import type { PresupuestoRowList } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -141,8 +137,6 @@ export function VentaCobrosDialog({
   const [pagoMetodo, setPagoMetodo] = useState("transferencia");
   const [pagoFecha, setPagoFecha] = useState("");
   const [pagoNota, setPagoNota] = useState("");
-  const [pagoCuentaId, setPagoCuentaId] = useState("");
-  const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
   const [notasMedicion, setNotasMedicion] = useState("");
   const [placasOt, setPlacasOt] = useState<ChapaInventarioRow[]>([]);
 
@@ -179,19 +173,8 @@ export function VentaCobrosDialog({
     setPagoNota("");
     setNotasMedicion("");
     if (rowResumen?.moneda) setPagoMoneda(rowResumen.moneda);
-    if (isSupabaseConfigured) {
-      void listCuentasActivas().then(({ data }) => setCuentas(data));
-    } else {
-      setCuentas([]);
-    }
     void cargar(presupuestoId);
   }, [open, presupuestoId, rowResumen?.moneda, cargar]);
-
-  useEffect(() => {
-    if (!open || cuentas.length === 0) return;
-    const sugerida = sugerirCuentaPorMetodo(pagoMetodo, pagoMoneda, cuentas);
-    if (sugerida) setPagoCuentaId(sugerida);
-  }, [open, pagoMetodo, pagoMoneda, cuentas]);
 
   const onRegistrarPago = useCallback(async () => {
     if (!presupuestoId || pagoBusy) return;
@@ -199,6 +182,10 @@ export function VentaCobrosDialog({
       const n = Number(String(montoDigitado).replace(",", ".").trim());
       if (!Number.isFinite(n) || n <= 0) {
         toast.error("Ingresá un monto válido para registrar el pago.");
+        return;
+      }
+      if (!pagoMetodo.trim()) {
+        toast.error("Indicá cómo se paga: efectivo, transferencia, cheque o tarjeta.");
         return;
       }
       if (
@@ -216,9 +203,8 @@ export function VentaCobrosDialog({
         monto: n,
         moneda: pagoMoneda,
         fecha: pagoFecha,
-        metodo: pagoMetodo || "Sin especificar",
+        metodo: pagoMetodo,
         nota: pagoNota.trim() ? pagoNota.trim() : undefined,
-        cuenta_id: pagoCuentaId || null,
         created_by: null,
       });
       if (res.error) { toast.error(res.error.message); return; }
@@ -248,7 +234,6 @@ export function VentaCobrosDialog({
     pagoFecha,
     pagoMetodo,
     pagoNota,
-    pagoCuentaId,
     rowResumen?.saldo_misma_moneda,
     ventaCabecera,
     cargar,
@@ -415,37 +400,19 @@ export function VentaCobrosDialog({
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Método</Label>
+                  <Label>Cómo se paga</Label>
                   <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="transferencia">Transferencia</SelectItem>
-                      <SelectItem value="efectivo">Efectivo</SelectItem>
-                      <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                      <SelectItem value="mercadopago">Mercado Pago</SelectItem>
-                      <SelectItem value="cheque">Cheque</SelectItem>
-                      <SelectItem value="otro">Otro</SelectItem>
+                      {METODOS_COBRO_UI.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              {cuentas.length > 0 ? (
-                <div className="space-y-1.5">
-                  <Label>Cuenta destino</Label>
-                  <Select value={pagoCuentaId} onValueChange={setPagoCuentaId}>
-                    <SelectTrigger><SelectValue placeholder="Dónde entra el cobro" /></SelectTrigger>
-                    <SelectContent>
-                      {cuentas
-                        .filter((c) => c.moneda === pagoMoneda)
-                        .map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.nombre}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
               <div className="space-y-1.5">
                 <Label htmlFor="vc-nota">Nota (opcional)</Label>
                 <Textarea id="vc-nota" rows={2} value={pagoNota} onChange={(e) => setPagoNota(e.target.value)} />
@@ -495,7 +462,7 @@ export function VentaCobrosDialog({
                         <span className="font-semibold tabular-nums text-foreground">
                           {montoTxt} {p.moneda.toUpperCase()}
                         </span>
-                        <span className="text-muted-foreground truncate max-w-[8rem]">{p.metodo}</span>
+                        <span className="text-muted-foreground truncate max-w-[8rem]">{etiquetaMetodo(p.metodo)}</span>
                       </div>
                     );
                   })
