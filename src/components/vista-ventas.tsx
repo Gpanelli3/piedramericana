@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Printer } from "lucide-react";
+import { Download, Pencil, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { PresupuestoWizard } from "@/components/presupuesto/PresupuestoWizard";
 import {
@@ -58,6 +58,7 @@ export function VistaVentas() {
 
   const pv = searchParams.get("pv");
   const vista = pv === "nuevo" ? "wizard" : "lista";
+  const editPresupuestoId = searchParams.get("id");
   const tab = useMemo(() => parseTab(searchParams.get("ft")), [searchParams]);
 
   const [rows, setRows] = useState<PresupuestoRowLista[]>([]);
@@ -222,12 +223,36 @@ export function VistaVentas() {
           n.set("pv", "list");
           n.set("ft", "pendientes");
           n.set("rid", id);
+          n.delete("id");
           return n;
         },
         { replace: true },
       );
     },
     [refreshLista, setSearchParams],
+  );
+
+  const irAEditar = useCallback(
+    (id: string) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("pv", "nuevo");
+          n.set("id", id);
+          n.delete("rid");
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const descargarPdf = useCallback(
+    (id: string) => {
+      navigate(`/presupuestos/${id}/imprimir?descargar=1`);
+    },
+    [navigate],
   );
 
   const origenLabelResumen = useMemo(() => {
@@ -309,7 +334,11 @@ export function VistaVentas() {
 
       <main className="p-8 [scrollbar-gutter:stable]">
         {vista === "wizard" ? (
-          <PresupuestoWizard onPersisted={persistidoDesdeWizard} />
+          <PresupuestoWizard
+            key={editPresupuestoId ?? "nuevo"}
+            presupuestoId={editPresupuestoId}
+            onPersisted={persistidoDesdeWizard}
+          />
         ) : (
           <PresupuestosLista
             loading={listaCargando}
@@ -318,6 +347,8 @@ export function VistaVentas() {
             navigate={navigate}
             statusBusyId={statusBusyId}
             onVerResumen={(id) => void abrirResumenPorId(id)}
+            onEditar={irAEditar}
+            onDescargarPdf={descargarPdf}
             onAprobar={async (id) => iniciarAprobacion(id)}
             onRechazar={onRechazar}
           />
@@ -325,33 +356,51 @@ export function VistaVentas() {
       </main>
 
       <Dialog open={resumenAbierto} onOpenChange={(o) => !o && cerrarResumen()}>
-        <DialogContent className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden" showCloseButton>
+        <DialogContent
+          className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
+          showCloseButton
+        >
           <DialogHeader className="border-b bg-muted/30 px-5 py-4 shrink-0 space-y-1 print:hidden">
-            <DialogTitle className="text-lg font-bold tracking-tight">Resumen del presupuesto</DialogTitle>
-            <DialogDescription>
-              {filaResumen ? (
-                <>
-                  <span className="font-semibold text-foreground">{filaResumen.numero}</span>
-                  {" · "}
-                  {filaResumen.cliente}
-                  {" · "}
-                  Estado:{" "}
-                  <span className="text-foreground">
-                    {filaResumen.status === "pendiente"
-                      ? "Pendiente"
-                      : filaResumen.status === "aprobado"
-                        ? "Aprobado"
-                        : "Rechazado"}
-                  </span>
-                </>
-              ) : (
-                "—"
-              )}
+            <DialogTitle className="text-lg font-bold tracking-tight">
+              Resumen del presupuesto
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                {filaResumen ? (
+                  <>
+                    <span className="font-semibold text-foreground tabular-nums">
+                      {filaResumen.numero}
+                    </span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="text-foreground">{filaResumen.cliente}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span
+                      className={
+                        filaResumen.status === "pendiente"
+                          ? "text-amber-800"
+                          : filaResumen.status === "aprobado"
+                            ? "text-emerald-800"
+                            : "text-rose-800"
+                      }
+                    >
+                      {filaResumen.status === "pendiente"
+                        ? "Pendiente"
+                        : filaResumen.status === "aprobado"
+                          ? "Aprobado"
+                          : "Rechazado"}
+                    </span>
+                  </>
+                ) : (
+                  <span>—</span>
+                )}
+              </div>
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-y-auto px-4 py-4 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
+          <div className="overflow-y-auto px-4 py-5 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
             {!filaResumen || resumenCargando || docCatalogoCargando ? (
-              <div className="text-sm text-muted-foreground py-10 text-center">Cargando…</div>
+              <div className="text-sm text-muted-foreground py-10 text-center">
+                Cargando…
+              </div>
             ) : !payload ? (
               <div className="text-sm text-muted-foreground py-10 text-center">
                 El detalle guardado no es compatible con esta vista de resumen.
@@ -385,26 +434,57 @@ export function VistaVentas() {
                     : 0
                 }
                 obsMec={payload.obsServiciosMec}
-                className="mx-auto max-w-3xl shadow-sm border border-neutral-200 print:shadow-none print:border-0"
+                className="mx-auto max-w-3xl bg-white p-4 sm:p-5 shadow-sm border border-neutral-200 print:shadow-none print:border-0 print:p-0"
               />
             )}
           </div>
-          <DialogFooter className="border-t px-6 py-4 gap-2 print:hidden">
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              disabled={!filaResumen}
-              onClick={() => navigate(`/presupuestos/${filaResumen!.id}/imprimir`)}
-            >
-              <Printer className="h-4 w-4" />
-              Vista de impresión
-            </Button>
+          <DialogFooter className="border-t bg-background px-4 py-3 sm:px-5 print:hidden sm:justify-between gap-3">
             <DialogClose asChild>
-              <Button type="button" variant="outline" onClick={cerrarResumen}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="order-last sm:order-first"
+                onClick={cerrarResumen}
+              >
                 Cerrar
               </Button>
             </DialogClose>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {filaResumen?.status === "pendiente" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    const id = filaResumen.id;
+                    cerrarResumen();
+                    irAEditar(id);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Editar
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5"
+                disabled={!filaResumen}
+                onClick={() => navigate(`/presupuestos/${filaResumen!.id}/imprimir`)}
+              >
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </Button>
+              <Button
+                type="button"
+                className="gap-1.5"
+                disabled={!filaResumen}
+                onClick={() => descargarPdf(filaResumen!.id)}
+              >
+                <Download className="h-4 w-4" />
+                Descargar PDF
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

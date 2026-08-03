@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { formatMetraje, formatToneladas } from "@/lib/presupuesto-calculos";
 
 export type LineaResumenMoneda = {
   id: string;
@@ -212,18 +213,12 @@ export function PresupuestoResumenInterior({
           <p className="text-xs font-semibold text-foreground">Piedra natural (no mármol) — referencia</p>
           <p className="text-sm tabular-nums text-foreground">
             <span className="text-muted-foreground">Superficie material:</span>{" "}
-            {materialM2Presupuesto.toLocaleString("es-AR", {
-              minimumFractionDigits: 3,
-              maximumFractionDigits: 3,
-            })}{" "}
+            {formatMetraje(materialM2Presupuesto)}{" "}
             m²
           </p>
           <p className="text-sm font-semibold tabular-nums text-primary">
             ≈{" "}
-            {materialTonEstimadoPresupuesto.toLocaleString("es-AR", {
-              minimumFractionDigits: 3,
-              maximumFractionDigits: 3,
-            })}{" "}
+            {formatToneladas(materialTonEstimadoPresupuesto)}{" "}
             ton (según peso/kg m² del maestro)
           </p>
         </div>

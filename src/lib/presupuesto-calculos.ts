@@ -194,6 +194,25 @@ export function labelUnidad(u: UnidadArticuloDb): string {
   }
 }
 
+/**
+ * Formato es-AR para m² / ml.
+ * Usa 2–3 decimales con coma (`4,00`), nunca `4,000` que se lee como cuatro mil.
+ */
+export function formatMetraje(n: number): string {
+  return n.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 3,
+  });
+}
+
+/** Formato es-AR para toneladas estimadas. */
+export function formatToneladas(n: number): string {
+  return n.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
+
 export function computePresupuestoTotalM2(
   ordenes: OrdenTrabajoWizard[],
   articulos: ArticuloConPrecio[],

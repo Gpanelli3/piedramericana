@@ -5,6 +5,7 @@ import {
   articuloConPrecioToMock,
   buildLineaCalcInput,
   computeLineaPresupuesto,
+  formatMetraje,
   labelUnidad,
   parseDecimalInput,
 } from "@/lib/presupuesto-calculos";
@@ -51,14 +52,7 @@ function formatMoney(n: number, moneda: "ars" | "usd"): string {
 }
 
 function formatQty(n: number): string {
-  try {
-    return n.toLocaleString("es-AR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 3,
-    });
-  } catch {
-    return String(n);
-  }
+  return formatMetraje(n);
 }
 
 function formatDim(n: number): string {
@@ -406,6 +400,20 @@ export function PresupuestoDocumento({
           No incluye bachas u otros artículos de stock salvo que figuren como ítem en alguna OT.
         </p>
       </footer>
+
+      {/* Firmas (impresión) */}
+      <div className="mt-10 grid grid-cols-2 gap-8 sm:gap-16 print:mt-14">
+        <div className="flex flex-col items-center pt-2">
+          <div className="mb-2 h-14 w-full max-w-[14rem] border-b border-neutral-800" />
+          <p className="text-xs font-semibold text-neutral-900">Piedra Americana</p>
+          <p className="mt-0.5 text-[10px] text-neutral-500">Firma y aclaración</p>
+        </div>
+        <div className="flex flex-col items-center pt-2">
+          <div className="mb-2 h-14 w-full max-w-[14rem] border-b border-neutral-800" />
+          <p className="text-xs font-semibold text-neutral-900">Cliente</p>
+          <p className="mt-0.5 text-[10px] text-neutral-500">Firma y aclaración</p>
+        </div>
+      </div>
     </div>
   );
 }

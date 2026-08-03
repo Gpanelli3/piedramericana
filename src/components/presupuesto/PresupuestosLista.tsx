@@ -1,8 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
-import { Printer, Eye } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Printer,
+  Eye,
+  Pencil,
+  Download,
+  MoreHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -12,6 +19,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { PresupuestoEstado } from "@/types/database";
 import type { PresupuestoRowLista } from "@/lib/presupuestos-api";
 import { cn } from "@/lib/utils";
@@ -94,6 +107,8 @@ type Props = {
   tab: PresupuestoFiltroTab;
   navigate: NavigateFunction;
   onVerResumen: (id: string) => void;
+  onEditar: (id: string) => void;
+  onDescargarPdf: (id: string) => void;
   statusBusyId: string | null;
   onAprobar: (id: string) => Promise<void>;
   onRechazar: (id: string) => Promise<void>;
@@ -105,18 +120,29 @@ export function PresupuestosLista({
   tab,
   navigate,
   onVerResumen,
+  onEditar,
+  onDescargarPdf,
   statusBusyId,
   onAprobar,
   onRechazar,
 }: Props) {
+  const [q, setQ] = useState("");
   const estadoFiltro = estadoDesdeTab(tab);
-  const visibles = useMemo(
-    () =>
-      estadoFiltro === undefined ? rows : rows.filter((r) => r.status === estadoFiltro),
-    [rows, estadoFiltro],
-  );
+
+  const visibles = useMemo(() => {
+    const porEstado =
+      estadoFiltro === undefined ? rows : rows.filter((r) => r.status === estadoFiltro);
+    const needle = q.trim().toLowerCase();
+    if (!needle) return porEstado;
+    return porEstado.filter(
+      (r) =>
+        r.numero.toLowerCase().includes(needle) ||
+        r.cliente.toLowerCase().includes(needle),
+    );
+  }, [rows, estadoFiltro, q]);
 
   const estadoVacioMsj = (): string => {
+    if (q.trim()) return "Ningún presupuesto coincide con la búsqueda.";
     if (tab === "pendientes") return "No hay presupuestos pendientes de revisión.";
     if (tab === "aprobados") return "Todavía no hay presupuestos aprobados.";
     if (tab === "rechazados") return "No hay presupuestos rechazados.";
@@ -125,7 +151,21 @@ export function PresupuestosLista({
 
   return (
     <div className="space-y-5">
-      <h2 className="text-lg font-semibold tracking-tight text-foreground">{tituloFiltro(tab)}</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+          {tituloFiltro(tab)}
+        </h2>
+        <div className="w-full sm:max-w-xs">
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar por número o cliente…"
+            className="h-9"
+            aria-label="Buscar presupuestos"
+          />
+        </div>
+      </div>
 
       {loading ? (
         <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground">
@@ -140,79 +180,118 @@ export function PresupuestosLista({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-muted/40">
-                <TableHead>Número</TableHead>
+                <TableHead className="pl-4">Número</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead className="whitespace-nowrap">Fecha</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="whitespace-nowrap">Estado</TableHead>
-                <TableHead className="text-right w-[260px]">Acciones</TableHead>
+                <TableHead className="pr-4 text-right w-[1%] whitespace-nowrap">
+                  Acciones
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibles.map((r) => (
-                <TableRow key={r.id} className="hover:bg-muted/30">
-                  <TableCell className="font-medium tabular-nums">{r.numero}</TableCell>
-                  <TableCell className="max-w-[10rem] sm:max-w-none truncate">{r.cliente}</TableCell>
-                  <TableCell className="text-muted-foreground whitespace-nowrap text-sm tabular-nums">
-                    {formatoFecha(r.created_at)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums text-sm">
-                    {formatoTotal(r)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn("font-medium text-[11px] sm:text-xs", badgeTone(r.status))}>
-                      {statusLabel(r.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <Button
-                        type="button"
+              {visibles.map((r) => {
+                const busy = statusBusyId === r.id;
+                const pendiente = r.status === "pendiente";
+                return (
+                  <TableRow key={r.id} className="hover:bg-muted/30">
+                    <TableCell className="pl-4 font-medium tabular-nums">
+                      {r.numero}
+                    </TableCell>
+                    <TableCell className="max-w-[12rem] truncate">{r.cliente}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap text-sm tabular-nums">
+                      {formatoFecha(r.created_at)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums text-sm whitespace-nowrap">
+                      {formatoTotal(r)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
                         variant="outline"
-                        size="sm"
-                        className="h-8 gap-1 text-xs"
-                        onClick={() => onVerResumen(r.id)}
+                        className={cn(
+                          "font-medium text-[11px] sm:text-xs",
+                          badgeTone(r.status),
+                        )}
                       >
-                        <Eye className="h-3.5 w-3.5" aria-hidden />
-                        Ver resumen
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1 text-xs"
-                        onClick={() => navigate(`/presupuestos/${r.id}/imprimir`)}
-                      >
-                        <Printer className="h-3.5 w-3.5" aria-hidden />
-                        Imprimir
-                      </Button>
-                      {r.status === "pendiente" ? (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 text-xs bg-emerald-700 text-white hover:bg-emerald-800"
-                            disabled={statusBusyId === r.id}
-                            onClick={() => void onAprobar(r.id)}
-                          >
-                            Aprobar
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            className="h-8 text-xs"
-                            disabled={statusBusyId === r.id}
-                            onClick={() => void onRechazar(r.id)}
-                          >
-                            Rechazar
-                          </Button>
-                        </>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                        {statusLabel(r.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-4">
+                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 px-2.5 text-xs"
+                          onClick={() => onVerResumen(r.id)}
+                        >
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                          Ver
+                        </Button>
+
+                        {pendiente ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 px-2.5 text-xs bg-emerald-700 text-white hover:bg-emerald-800"
+                              disabled={busy}
+                              onClick={() => void onAprobar(r.id)}
+                            >
+                              Aprobar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="h-8 px-2.5 text-xs"
+                              disabled={busy}
+                              onClick={() => void onRechazar(r.id)}
+                            >
+                              Rechazar
+                            </Button>
+                          </>
+                        ) : null}
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              aria-label="Más acciones"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {pendiente ? (
+                              <DropdownMenuItem onClick={() => onEditar(r.id)}>
+                                <Pencil className="h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem
+                              onClick={() =>
+                                navigate(`/presupuestos/${r.id}/imprimir`)
+                              }
+                            >
+                              <Printer className="h-4 w-4" />
+                              Imprimir
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onDescargarPdf(r.id)}>
+                              <Download className="h-4 w-4" />
+                              Descargar PDF
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>

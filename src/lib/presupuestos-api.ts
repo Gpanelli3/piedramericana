@@ -96,6 +96,34 @@ export async function insertPresupuestoRow(input: {
     .single();
 }
 
+/** Actualiza un presupuesto solo si sigue en estado `pendiente`. */
+export async function updatePresupuestoRow(
+  id: string,
+  input: {
+    cliente: string;
+    client_id?: string | null;
+    total: number;
+    moneda: "ars" | "usd";
+    payload: PresupuestoPayloadV1;
+  },
+) {
+  const now = new Date().toISOString();
+  return supabase
+    .from("presupuestos")
+    .update({
+      cliente: input.cliente,
+      client_id: input.client_id ?? null,
+      total: input.total,
+      moneda: input.moneda,
+      payload: input.payload,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .eq("status", "pendiente")
+    .select("id, numero")
+    .maybeSingle();
+}
+
 export async function patchPresupuestoStatus(id: string, status: PresupuestoEstado) {
   const now = new Date().toISOString();
   return supabase.from("presupuestos").update({ status, updated_at: now }).eq("id", id);

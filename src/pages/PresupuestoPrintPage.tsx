@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { Printer } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Download, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
@@ -30,6 +30,9 @@ type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 export function PresupuestoPrintPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const autoDescargar = searchParams.get("descargar") === "1";
+  const autoPrintDone = useRef(false);
 
   const [cargando, setCargando] = useState(true);
   const [fila, setFila] = useState<PresupuestoRow | null>(null);
@@ -79,6 +82,15 @@ export function PresupuestoPrintPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    if (!autoDescargar || cargando || !fila || autoPrintDone.current) return;
+    autoPrintDone.current = true;
+    const t = window.setTimeout(() => {
+      window.print();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [autoDescargar, cargando, fila]);
+
   const payload =
     fila?.payload && isPresupuestoPayloadV1(fila.payload)
       ? hydratePresupuestoPayloadV1(fila.payload)
@@ -100,6 +112,16 @@ export function PresupuestoPrintPage() {
     <div className="min-h-dvh bg-neutral-100 text-foreground print:bg-white">
       <div className="print:hidden border-b bg-background flex flex-wrap items-center gap-2 px-6 py-3">
         <Button type="button" size="sm" className="gap-1.5" onClick={() => window.print()}>
+          <Download className="h-4 w-4" aria-hidden />
+          Descargar PDF
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => window.print()}
+        >
           <Printer className="h-4 w-4" aria-hidden />
           Imprimir
         </Button>

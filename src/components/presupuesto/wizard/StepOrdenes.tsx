@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { formatMetraje, formatToneladas } from "@/lib/presupuesto-calculos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
@@ -200,7 +201,6 @@ export function StepOrdenes({
                                     <TableHead>Unidad</TableHead>
                                     <TableHead>Cant.</TableHead>
                                     <TableHead>P. unit.</TableHead>
-                                    <TableHead className="text-right">Total $</TableHead>
                                     <TableHead
                                       className="whitespace-nowrap"
                                       title="Alto en metros (m² por dimensiones o metro lineal)."
@@ -219,6 +219,7 @@ export function StepOrdenes({
                                     <TableHead className="text-right" title="Superficie de material calculada.">
                                       m²
                                     </TableHead>
+                                    <TableHead className="text-right">Total $</TableHead>
                                     <TableHead className="w-12 p-1.5 text-center">
                                       <span className="sr-only">Quitar</span>
                                     </TableHead>
@@ -228,18 +229,7 @@ export function StepOrdenes({
                                   {ot.items.length === 0 ? (
                                     <TableRow className="hover:bg-transparent bg-muted/10">
                                       <TableCell colSpan={11} className="py-6 px-4 text-center">
-                                        <p className="text-sm text-foreground/90">Todavía no hay ítems</p>
-                                        <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
-                                          Usá <span className="font-medium text-foreground/80">Agregar ítem</span> abajo
-                                          para cargar la primera línea de esta OT.
-                                        </p>
-                                        <button
-                                          type="button"
-                                          className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
-                                          onClick={() => addItem(ot.key)}
-                                        >
-                                          Agregar ítem ahora
-                                        </button>
+                                        <p className="text-sm text-muted-foreground">Todavía no hay ítems</p>
                                       </TableCell>
                                     </TableRow>
                                   ) : (
@@ -284,21 +274,18 @@ export function StepOrdenes({
                           <div className="sm:ml-auto">
                             <p className="text-[10px] text-muted-foreground uppercase tracking-wide">m²</p>
                             <p className="font-medium tabular-nums text-primary">
-                              {totalesItems.porOt
-                                .find((p) => p.key === ot.key)
-                                ?.m2.toLocaleString("es-AR", {
-                                  minimumFractionDigits: 3,
-                                }) ?? "0"}
+                              {formatMetraje(
+                                totalesItems.porOt.find((p) => p.key === ot.key)?.m2 ?? 0,
+                              )}
                             </p>
                           </div>
                           {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0) > 0 ? (
                             <div>
                               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ton (~)</p>
                               <p className="font-medium tabular-nums text-sky-800 dark:text-sky-200">
-                                {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0).toLocaleString("es-AR", {
-                                  minimumFractionDigits: 3,
-                                  maximumFractionDigits: 3,
-                                })}
+                                {formatToneladas(
+                                  totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0,
+                                )}
                               </p>
                             </div>
                           ) : null}

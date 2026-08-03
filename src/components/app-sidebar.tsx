@@ -179,10 +179,12 @@ export function AppSidebar() {
             n.set("pv", "nuevo");
             n.delete("ft");
             n.delete("rid");
+            n.delete("id");
           } else {
             n.set("pv", "list");
             n.set("ft", filt);
             n.delete("rid");
+            n.delete("id");
           }
           return n;
         },

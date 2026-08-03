@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -33,17 +32,55 @@ import {
 import {
   createArticulo,
   fetchArticulos,
+  fetchListasPrecio,
+  fetchPreciosDeArticulo,
+  syncPreciosArticulo,
   updateArticulo,
   type ArticuloUpsertInput,
 } from "@/lib/articulos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { ArticuloConPrecio } from "@/types/articulos";
+import type { ArticuloConPrecio, ListaPrecioRow } from "@/types/articulos";
 import type { UnidadArticuloDb } from "@/types/database";
 
 const UNIDADES: { value: UnidadArticuloDb; label: string }[] = [
   { value: "M2", label: "m²" },
   { value: "ML", label: "metro lineal" },
   { value: "UNI", label: "unidad" },
+];
+
+/** UI simplificada; se mapea a calcula_material / prefer_modo_manual / medida_estandar_m2. */
+type TipoCalculo = "sin_material" | "dimensiones" | "m2_manual" | "medida_fija";
+
+const TIPOS_CALCULO: {
+  value: TipoCalculo;
+  label: string;
+  hint: string;
+  unidades: UnidadArticuloDb[] | "todas";
+}[] = [
+  {
+    value: "sin_material",
+    label: "No calcula material",
+    hint: "Bacha, grifería, etc. Solo cantidad × precio; no suma m².",
+    unidades: "todas",
+  },
+  {
+    value: "dimensiones",
+    label: "Por dimensiones",
+    hint: "Pide alto × ancho (m²) o alto (ml) en el presupuesto.",
+    unidades: ["M2", "ML"],
+  },
+  {
+    value: "m2_manual",
+    label: "Por m² totales",
+    hint: "En el presupuesto se cargan m² a mano, sin alto/ancho.",
+    unidades: ["M2"],
+  },
+  {
+    value: "medida_fija",
+    label: "Medida fija por unidad",
+    hint: "Cada unidad aporta un m² fijo (ej. 0,25).",
+    unidades: "todas",
+  },
 ];
 
 function emptyDraft(): ArticuloUpsertInput {
@@ -62,27 +99,103 @@ function labelUnidad(u: UnidadArticuloDb): string {
   return UNIDADES.find((x) => x.value === u)?.label ?? u;
 }
 
+function draftToTipo(d: Pick<ArticuloUpsertInput, "calcula_material" | "medida_estandar_m2" | "prefer_modo_manual" | "unidad">): TipoCalculo {
+  if (!d.calcula_material) return "sin_material";
+  if (d.medida_estandar_m2 != null && d.medida_estandar_m2 > 0) return "medida_fija";
+  if (d.prefer_modo_manual && d.unidad === "M2") return "m2_manual";
+  return "dimensiones";
+}
+
+function labelTipoCalculo(art: ArticuloConPrecio): string {
+  const tipo = draftToTipo(art);
+  return TIPOS_CALCULO.find((t) => t.value === tipo)?.label ?? tipo;
+}
+
+function applyTipo(
+  d: ArticuloUpsertInput,
+  tipo: TipoCalculo,
+): ArticuloUpsertInput {
+  switch (tipo) {
+    case "sin_material":
+      return {
+        ...d,
+        calcula_material: false,
+        medida_estandar_m2: null,
+        prefer_modo_manual: false,
+      };
+    case "dimensiones":
+      return {
+        ...d,
+        calcula_material: true,
+        medida_estandar_m2: null,
+        prefer_modo_manual: false,
+        unidad: d.unidad === "UNI" ? "M2" : d.unidad,
+      };
+    case "m2_manual":
+      return {
+        ...d,
+        calcula_material: true,
+        medida_estandar_m2: null,
+        prefer_modo_manual: true,
+        unidad: "M2",
+      };
+    case "medida_fija":
+      return {
+        ...d,
+        calcula_material: true,
+        prefer_modo_manual: false,
+        medida_estandar_m2: d.medida_estandar_m2,
+      };
+  }
+}
+
+function tiposDisponibles(unidad: UnidadArticuloDb) {
+  return TIPOS_CALCULO.filter(
+    (t) => t.unidades === "todas" || t.unidades.includes(unidad),
+  );
+}
+
 export function ArticulosCatalogo() {
   const [articulos, setArticulos] = useState<ArticuloConPrecio[]>([]);
+  const [listas, setListas] = useState<ListaPrecioRow[]>([]);
   const [cargando, setCargando] = useState(true);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [draft, setDraft] = useState<ArticuloUpsertInput>(emptyDraft);
+  /** Precio por lista_precio_id (string del input). */
+  const [preciosDraft, setPreciosDraft] = useState<Record<string, string>>({});
+
+  const tipoActual = useMemo(() => draftToTipo(draft), [draft]);
+  const tiposOk = useMemo(() => tiposDisponibles(draft.unidad), [draft.unidad]);
+  const tipoSelect = useMemo(() => {
+    if (tiposOk.some((t) => t.value === tipoActual)) return tipoActual;
+    return tiposOk[0]?.value ?? "sin_material";
+  }, [tipoActual, tiposOk]);
 
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setArticulos([]);
+      setListas([]);
       setCargando(false);
       return;
     }
     setCargando(true);
-    const { data, error } = await fetchArticulos();
-    if (error) {
-      toast.error(error.message);
+    const [artsRes, listasRes] = await Promise.all([
+      fetchArticulos(),
+      fetchListasPrecio(),
+    ]);
+    if (artsRes.error) {
+      toast.error(artsRes.error.message);
       setArticulos([]);
     } else {
-      setArticulos(data ?? []);
+      setArticulos(artsRes.data ?? []);
+    }
+    if (listasRes.error) {
+      toast.error(listasRes.error.message);
+      setListas([]);
+    } else {
+      setListas(listasRes.data ?? []);
     }
     setCargando(false);
   }, []);
@@ -91,15 +204,22 @@ export function ArticulosCatalogo() {
     void recargar();
   }, [recargar]);
 
+  const initPreciosVacios = useCallback((listasActivas: ListaPrecioRow[]) => {
+    const map: Record<string, string> = {};
+    for (const l of listasActivas) map[l.id] = "";
+    return map;
+  }, []);
+
   const abrirNuevo = () => {
     setEditandoId(null);
     setDraft(emptyDraft());
+    setPreciosDraft(initPreciosVacios(listas));
     setDialogAbierto(true);
   };
 
-  const abrirEditar = (art: ArticuloConPrecio) => {
+  const abrirEditar = async (art: ArticuloConPrecio) => {
     setEditandoId(art.id);
-    setDraft({
+    let next: ArticuloUpsertInput = {
       codigo: art.codigo,
       descripcion: art.descripcion,
       unidad: art.unidad,
@@ -107,7 +227,26 @@ export function ArticulosCatalogo() {
       medida_estandar_m2: art.medida_estandar_m2,
       prefer_modo_manual: art.prefer_modo_manual,
       sort_order: art.sort_order,
-    });
+    };
+    const tipo = draftToTipo(next);
+    if (!tiposDisponibles(next.unidad).some((t) => t.value === tipo)) {
+      next = applyTipo(
+        next,
+        next.unidad === "UNI" ? "sin_material" : "dimensiones",
+      );
+    }
+    setDraft(next);
+    const base = initPreciosVacios(listas);
+    const { data, error } = await fetchPreciosDeArticulo(art.id);
+    if (error) {
+      toast.error(error.message);
+      setPreciosDraft(base);
+    } else {
+      for (const p of data ?? []) {
+        base[p.lista_precio_id] = String(p.precio);
+      }
+      setPreciosDraft(base);
+    }
     setDialogAbierto(true);
   };
 
@@ -115,6 +254,30 @@ export function ArticulosCatalogo() {
     setDialogAbierto(false);
     setEditandoId(null);
     setDraft(emptyDraft());
+    setPreciosDraft({});
+  };
+
+  const setUnidad = (unidad: UnidadArticuloDb) => {
+    setDraft((prev) => {
+      let next = { ...prev, unidad };
+      const tipo = draftToTipo(next);
+      const ok = tiposDisponibles(unidad).some((t) => t.value === tipo);
+      if (!ok) {
+        // Unidad incompatible con el tipo actual → default sensato
+        next = applyTipo(
+          next,
+          unidad === "UNI" ? "sin_material" : "dimensiones",
+        );
+      }
+      if (tipo === "m2_manual" && unidad !== "M2") {
+        next = applyTipo(next, "dimensiones");
+      }
+      return next;
+    });
+  };
+
+  const setTipo = (tipo: TipoCalculo) => {
+    setDraft((prev) => applyTipo(prev, tipo));
   };
 
   const handleGuardar = async () => {
@@ -122,34 +285,61 @@ export function ArticulosCatalogo() {
       toast.error("Completá código y descripción.");
       return;
     }
+    if (tipoSelect === "medida_fija") {
+      const m = draft.medida_estandar_m2;
+      if (m == null || !(m > 0) || !Number.isFinite(m)) {
+        toast.error("Indicá la medida fija en m² (mayor a 0).");
+        return;
+      }
+    }
     if (!isSupabaseConfigured) {
       toast.error("Supabase no está configurado.");
       return;
     }
 
+    const payload: ArticuloUpsertInput = applyTipo(draft, tipoSelect);
+    if (tipoSelect !== "medida_fija") {
+      payload.medida_estandar_m2 = null;
+    }
+
     setGuardando(true);
     try {
+      let articuloId = editandoId;
       if (editandoId) {
-        const { error } = await updateArticulo(editandoId, draft);
+        const { error } = await updateArticulo(editandoId, payload);
         if (error) {
           toast.error(error.message);
           return;
         }
-        toast.success("Artículo actualizado.");
       } else {
-        const { error } = await createArticulo(draft);
-        if (error) {
-          toast.error(error.message);
+        const { data, error } = await createArticulo(payload);
+        if (error || !data) {
+          toast.error(error?.message ?? "No se pudo crear el artículo.");
           return;
         }
-        toast.success("Artículo creado.");
+        articuloId = data.id;
       }
+
+      if (articuloId && Object.keys(preciosDraft).length > 0) {
+        const { error: errPrecios } = await syncPreciosArticulo(
+          articuloId,
+          preciosDraft,
+        );
+        if (errPrecios) {
+          toast.error(errPrecios.message);
+          return;
+        }
+      }
+
+      toast.success(editandoId ? "Artículo actualizado." : "Artículo creado.");
       cerrarDialog();
       await recargar();
     } finally {
       setGuardando(false);
     }
   };
+
+  const hintTipo = TIPOS_CALCULO.find((t) => t.value === tipoSelect)?.hint;
 
   return (
     <div className="space-y-5">
@@ -173,9 +363,7 @@ export function ArticulosCatalogo() {
                 <TableHead>Código</TableHead>
                 <TableHead>Descripción</TableHead>
                 <TableHead>Unidad</TableHead>
-                <TableHead>Calcula mat.</TableHead>
-                <TableHead>Std m²</TableHead>
-                <TableHead>Modo manual</TableHead>
+                <TableHead>Cálculo</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
@@ -185,11 +373,14 @@ export function ArticulosCatalogo() {
                   <TableCell className="font-mono text-xs">{art.codigo}</TableCell>
                   <TableCell>{art.descripcion}</TableCell>
                   <TableCell>{labelUnidad(art.unidad)}</TableCell>
-                  <TableCell>{art.calcula_material ? "Sí" : "No"}</TableCell>
-                  <TableCell className="tabular-nums">
-                    {art.medida_estandar_m2 != null ? art.medida_estandar_m2 : "—"}
+                  <TableCell className="text-sm text-muted-foreground">
+                    {labelTipoCalculo(art)}
+                    {art.calcula_material &&
+                    art.medida_estandar_m2 != null &&
+                    art.medida_estandar_m2 > 0
+                      ? ` (${art.medida_estandar_m2} m²)`
+                      : ""}
                   </TableCell>
-                  <TableCell>{art.prefer_modo_manual ? "Sí" : "No"}</TableCell>
                   <TableCell>
                     <Button
                       type="button"
@@ -210,12 +401,11 @@ export function ArticulosCatalogo() {
       )}
 
       <Dialog open={dialogAbierto} onOpenChange={(o) => !o && cerrarDialog()}>
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" showCloseButton>
           <DialogHeader>
             <DialogTitle>{editandoId ? "Editar artículo" : "Nuevo artículo"}</DialogTitle>
             <DialogDescription>
-              Unidad y flags de cálculo determinan los campos habilitados en presupuestos (alto,
-              ancho, m²).
+              Definí el cálculo y los precios por lista (los usa el presupuesto).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -232,9 +422,7 @@ export function ArticulosCatalogo() {
                 <Label className="text-xs">Unidad</Label>
                 <Select
                   value={draft.unidad}
-                  onValueChange={(v) =>
-                    setDraft((d) => ({ ...d, unidad: v as UnidadArticuloDb }))
-                  }
+                  onValueChange={(v) => setUnidad(v as UnidadArticuloDb)}
                 >
                   <SelectTrigger className="h-9 text-sm">
                     <SelectValue />
@@ -257,48 +445,82 @@ export function ArticulosCatalogo() {
                 onChange={(e) => setDraft((d) => ({ ...d, descripcion: e.target.value }))}
               />
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo de cálculo</Label>
+              <Select value={tipoSelect} onValueChange={(v) => setTipo(v as TipoCalculo)}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tiposOk.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {hintTipo ? (
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{hintTipo}</p>
+              ) : null}
+            </div>
+            {tipoSelect === "medida_fija" ? (
+              <div className="space-y-1">
+                <Label className="text-xs">m² por cada unidad</Label>
+                <Input
+                  className="h-9 text-sm tabular-nums"
+                  inputMode="decimal"
+                  placeholder="Ej. 0,25"
+                  value={
+                    draft.medida_estandar_m2 != null ? String(draft.medida_estandar_m2) : ""
+                  }
+                  onChange={(e) => {
+                    const t = e.target.value.trim().replace(",", ".");
+                    setDraft((d) => ({
+                      ...d,
+                      calcula_material: true,
+                      prefer_modo_manual: false,
+                      medida_estandar_m2: t === "" ? null : Number.parseFloat(t),
+                    }));
+                  }}
+                />
+              </div>
+            ) : null}
+
+            <div className="space-y-2 rounded-md border border-border/70 px-3 py-3">
               <div>
-                <Label className="text-xs">Calcula material</Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Habilita alto/ancho y suma m² al presupuesto.
+                <Label className="text-xs">Precios por lista</Label>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Vacío = sin precio en esa lista. Se usa al armar el presupuesto.
                 </p>
               </div>
-              <Switch
-                checked={draft.calcula_material}
-                onCheckedChange={(v) => setDraft((d) => ({ ...d, calcula_material: v }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Medida estándar (m² por unidad)</Label>
-              <Input
-                className="h-9 text-sm tabular-nums"
-                inputMode="decimal"
-                placeholder="Vacío = sin estándar"
-                value={
-                  draft.medida_estandar_m2 != null ? String(draft.medida_estandar_m2) : ""
-                }
-                onChange={(e) => {
-                  const t = e.target.value.trim().replace(",", ".");
-                  setDraft((d) => ({
-                    ...d,
-                    medida_estandar_m2: t === "" ? null : Number.parseFloat(t),
-                  }));
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-              <div>
-                <Label className="text-xs">Preferir m² totales (manual)</Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Solo artículos M2 sin medida estándar.
+              {listas.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No hay listas activas. Creá una en la pestaña Listas de precio.
                 </p>
-              </div>
-              <Switch
-                checked={draft.prefer_modo_manual}
-                disabled={draft.unidad !== "M2" || !draft.calcula_material}
-                onCheckedChange={(v) => setDraft((d) => ({ ...d, prefer_modo_manual: v }))}
-              />
+              ) : (
+                <div className="grid gap-2">
+                  {listas.map((l) => (
+                    <div key={l.id} className="grid grid-cols-[1fr_7rem] items-center gap-2">
+                      <Label className="text-xs font-normal text-muted-foreground">
+                        {l.label}{" "}
+                        <span className="tabular-nums">({l.moneda.toUpperCase()})</span>
+                      </Label>
+                      <Input
+                        className="h-8 text-sm tabular-nums"
+                        inputMode="decimal"
+                        placeholder="—"
+                        value={preciosDraft[l.id] ?? ""}
+                        onChange={(e) =>
+                          setPreciosDraft((prev) => ({
+                            ...prev,
+                            [l.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>

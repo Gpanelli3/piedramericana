@@ -4,6 +4,7 @@ import {
   buildLineaCalcInput,
   computeLineaPresupuesto,
   computePresupuestoTotalM2,
+  formatMetraje,
 } from "@/lib/presupuesto-calculos";
 import { normalizeLineaItemFromPayload } from "@/lib/presupuesto-payload-normalize";
 import type { ArticuloConPrecio } from "@/types/articulos";
@@ -220,5 +221,16 @@ describe("normalizeLineaItemFromPayload", () => {
     });
     expect(line.altoM).toBe("2");
     expect(line.anchoM).toBe("2.5");
+  });
+});
+
+describe("formatMetraje", () => {
+  it("muestra 4 m² como 4,00 y no como 4,000", () => {
+    expect(formatMetraje(4)).toBe("4,00");
+    expect(formatMetraje(4)).not.toBe("4,000");
+  });
+
+  it("conserva hasta 3 decimales útiles", () => {
+    expect(formatMetraje(4.125)).toBe("4,125");
   });
 });

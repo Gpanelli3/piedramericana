@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
-import type { ArticuloConPrecio, ListaPrecioRow } from "@/types/articulos";
+import type {
+  ArticuloConPrecio,
+  ListaPrecioRow,
+  PrecioArticuloLista,
+} from "@/types/articulos";
 
 export async function fetchListasPrecio(): Promise<{
   data: ListaPrecioRow[] | null;
@@ -8,7 +12,7 @@ export async function fetchListasPrecio(): Promise<{
   try {
     const { data, error } = await supabase
       .from("listas_precio")
-      .select("id, codigo, label, moneda, descripcion, sort_order")
+      .select("id, codigo, label, moneda, descripcion, sort_order, activa")
       .eq("activa", true)
       .order("sort_order");
 
@@ -24,6 +28,259 @@ export async function fetchListasPrecio(): Promise<{
         error instanceof Error
           ? error
           : new Error("No se pudieron cargar las listas de precio."),
+    };
+  }
+}
+
+/** Todas las listas (activas e inactivas) para administración. */
+export async function fetchListasPrecioTodas(): Promise<{
+  data: ListaPrecioRow[] | null;
+  error: Error | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("listas_precio")
+      .select("id, codigo, label, moneda, descripcion, sort_order, activa")
+      .order("sort_order");
+
+    if (error) {
+      return { data: null, error: new Error(error.message) };
+    }
+
+    return { data: (data ?? []) as ListaPrecioRow[], error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("No se pudieron cargar las listas de precio."),
+    };
+  }
+}
+
+export type ListaPrecioUpsertInput = {
+  codigo: string;
+  label: string;
+  moneda: "ars" | "usd";
+  descripcion?: string | null;
+  activa?: boolean;
+  sort_order?: number;
+};
+
+export async function createListaPrecio(input: ListaPrecioUpsertInput): Promise<{
+  data: ListaPrecioRow | null;
+  error: Error | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("listas_precio")
+      .insert({
+        codigo: input.codigo.trim(),
+        label: input.label.trim(),
+        moneda: input.moneda,
+        descripcion: input.descripcion?.trim() || null,
+        activa: input.activa ?? true,
+        sort_order: input.sort_order ?? 0,
+      })
+      .select("id, codigo, label, moneda, descripcion, sort_order, activa")
+      .single();
+
+    if (error) return { data: null, error: new Error(error.message) };
+    return { data: data as ListaPrecioRow, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error : new Error("No se pudo crear la lista."),
+    };
+  }
+}
+
+export async function updateListaPrecio(
+  id: string,
+  input: ListaPrecioUpsertInput,
+): Promise<{ error: Error | null }> {
+  try {
+    const { error } = await supabase
+      .from("listas_precio")
+      .update({
+        codigo: input.codigo.trim(),
+        label: input.label.trim(),
+        moneda: input.moneda,
+        descripcion: input.descripcion?.trim() || null,
+        activa: input.activa ?? true,
+        sort_order: input.sort_order ?? 0,
+      })
+      .eq("id", id);
+
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo actualizar la lista."),
+    };
+  }
+}
+
+export async function fetchPreciosDeArticulo(articuloId: string): Promise<{
+  data: PrecioArticuloLista[] | null;
+  error: Error | null;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from("listas_precio_items")
+      .select("lista_precio_id, articulo_id, precio, activo")
+      .eq("articulo_id", articuloId)
+      .eq("activo", true);
+
+    if (error) return { data: null, error: new Error(error.message) };
+    return { data: (data ?? []) as PrecioArticuloLista[], error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("No se pudieron cargar los precios del artículo."),
+    };
+  }
+}
+
+export type PrecioListaArticuloRow = {
+  articulo_id: string;
+  codigo: string;
+  descripcion: string;
+  unidad: ArticuloConPrecio["unidad"];
+  precio: number | null;
+  item_id: string | null;
+};
+
+/** Artículos activos con el precio (si hay) de una lista. */
+export async function fetchArticulosPreciosDeLista(listaId: string): Promise<{
+  data: PrecioListaArticuloRow[] | null;
+  error: Error | null;
+}> {
+  try {
+    const [artsRes, itemsRes] = await Promise.all([
+      supabase
+        .from("articulos")
+        .select("id, codigo, descripcion, unidad")
+        .eq("activo", true)
+        .order("sort_order"),
+      supabase
+        .from("listas_precio_items")
+        .select("id, articulo_id, precio, activo")
+        .eq("lista_precio_id", listaId)
+        .eq("activo", true),
+    ]);
+
+    if (artsRes.error) {
+      return { data: null, error: new Error(artsRes.error.message) };
+    }
+    if (itemsRes.error) {
+      return { data: null, error: new Error(itemsRes.error.message) };
+    }
+
+    const byArt = new Map(
+      (itemsRes.data ?? []).map((i) => [i.articulo_id, i] as const),
+    );
+
+    const rows: PrecioListaArticuloRow[] = (artsRes.data ?? []).map((a) => {
+      const item = byArt.get(a.id);
+      return {
+        articulo_id: a.id,
+        codigo: a.codigo,
+        descripcion: a.descripcion,
+        unidad: a.unidad,
+        precio: item != null ? Number(item.precio) : null,
+        item_id: item?.id ?? null,
+      };
+    });
+
+    return { data: rows, error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("No se pudieron cargar los precios de la lista."),
+    };
+  }
+}
+
+/**
+ * Upsert precios de un artículo en varias listas.
+ * `precios`: mapa listaId → string/number; vacío o inválido elimina/desactiva el ítem.
+ */
+export async function syncPreciosArticulo(
+  articuloId: string,
+  precios: Record<string, string>,
+): Promise<{ error: Error | null }> {
+  try {
+    const entries = Object.entries(precios);
+    for (const [listaId, raw] of entries) {
+      const t = raw.trim().replace(",", ".");
+      if (t === "") {
+        await supabase
+          .from("listas_precio_items")
+          .update({ activo: false })
+          .eq("articulo_id", articuloId)
+          .eq("lista_precio_id", listaId);
+        continue;
+      }
+      const n = Number.parseFloat(t);
+      if (!Number.isFinite(n) || n < 0) {
+        return { error: new Error("Hay un precio inválido.") };
+      }
+      const { error } = await supabase.from("listas_precio_items").upsert(
+        {
+          articulo_id: articuloId,
+          lista_precio_id: listaId,
+          precio: n,
+          activo: true,
+        },
+        { onConflict: "lista_precio_id,articulo_id" },
+      );
+      if (error) return { error: new Error(error.message) };
+    }
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudieron guardar los precios."),
+    };
+  }
+}
+
+export async function upsertPrecioListaArticulo(input: {
+  lista_precio_id: string;
+  articulo_id: string;
+  precio: number | null;
+}): Promise<{ error: Error | null }> {
+  try {
+    if (input.precio == null || !Number.isFinite(input.precio)) {
+      const { error } = await supabase
+        .from("listas_precio_items")
+        .update({ activo: false })
+        .eq("lista_precio_id", input.lista_precio_id)
+        .eq("articulo_id", input.articulo_id);
+      if (error) return { error: new Error(error.message) };
+      return { error: null };
+    }
+    const { error } = await supabase.from("listas_precio_items").upsert(
+      {
+        lista_precio_id: input.lista_precio_id,
+        articulo_id: input.articulo_id,
+        precio: input.precio,
+        activo: true,
+      },
+      { onConflict: "lista_precio_id,articulo_id" },
+    );
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo guardar el precio."),
     };
   }
 }

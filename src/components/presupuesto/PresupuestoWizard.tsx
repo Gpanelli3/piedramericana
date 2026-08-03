@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,9 +18,15 @@ import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { insertPresupuestoRow } from "@/lib/presupuestos-api";
+import {
+  getPresupuestoById,
+  insertPresupuestoRow,
+  updatePresupuestoRow,
+} from "@/lib/presupuestos-api";
 import {
   PRESUPUESTO_PAYLOAD_VERSION,
+  hydratePresupuestoPayloadV1,
+  isPresupuestoPayloadV1,
   type PresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
 import {
@@ -43,10 +49,10 @@ import {
   buildLineaCalcInput,
   computeLineaPresupuesto,
   dimensionesHabilitadas,
+  formatMetraje,
+  formatToneladas,
   labelUnidad,
   materialPesoEstimadoDesdeOt,
-  permiteModoManualCantidadM2,
-  type ModoIngresoM2,
 } from "@/lib/presupuesto-calculos";
 import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
@@ -93,7 +99,9 @@ function formatMontoFooter(n: number, moneda: "ars" | "usd"): string {
 }
 
 export type PresupuestoWizardProps = {
-  /** Tras INSERT en Supabase: vuelta al listado y apertura de resumen desde el padre. */
+  /** Si viene, abre el wizard hidratado para editar un pendiente existente. */
+  presupuestoId?: string | null;
+  /** Tras INSERT/UPDATE en Supabase: vuelta al listado y apertura de resumen desde el padre. */
   onPersisted?: (result: { id: string; numero: string }) => void | Promise<void>;
 };
 
@@ -165,9 +173,15 @@ function buildPresupuestoPayloadV1(opts: {
 }
 
 export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
-  const { onPersisted } = props;
+  const { onPersisted, presupuestoId = null } = props;
   const { user } = useAuth();
   const dolarHoy = 1250.5;
+  const editando = Boolean(presupuestoId);
+  /** En la 1ª carga de artículos en edición no pisamos precios guardados. */
+  const omitirSyncPreciosRef = useRef(editando);
+  const [editCargando, setEditCargando] = useState(editando);
+  const [editNumero, setEditNumero] = useState<string | null>(null);
+  const [editLoadError, setEditLoadError] = useState<string | null>(null);
 
   /** Solo MEC único para todo el presupuesto (no hay modo por OT en UI). */
   const mecScope = "global" as const;
@@ -205,6 +219,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
   // Cuando llegan las listas reales desde BD, inicializar el ID con la primera
   useEffect(() => {
+    if (editCargando) return;
     if (listasPrecios.length === 0) return;
 
     const listaActualSigueDisponible = listasPrecios.some(
@@ -214,7 +229,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     if (!listaPrecioId || !listaActualSigueDisponible) {
       setListaPrecioId(listasPrecios[0]!.id);
     }
-  }, [listaPrecioId, listasPrecios]);
+  }, [listaPrecioId, listasPrecios, editCargando]);
 
   const [materials, setMaterials] = useState<MaterialWizardRow[]>([]);
   const [materialesCargando, setMateriaesCargando] =
@@ -338,6 +353,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
   useEffect(() => {
     if (articulosBd.length === 0) return;
+    if (omitirSyncPreciosRef.current) {
+      omitirSyncPreciosRef.current = false;
+      return;
+    }
 
     setOrdenes((prev) => {
       let changed = false;
@@ -361,6 +380,78 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       return changed ? next : prev;
     });
   }, [articulosBd]);
+
+  useEffect(() => {
+    if (!presupuestoId) {
+      setEditCargando(false);
+      setEditNumero(null);
+      setEditLoadError(null);
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      setEditCargando(false);
+      setEditLoadError("Supabase no está configurado; no se puede editar.");
+      return;
+    }
+
+    let cancelled = false;
+    async function loadEdit() {
+      setEditCargando(true);
+      setEditLoadError(null);
+      omitirSyncPreciosRef.current = true;
+      const { data, error } = await getPresupuestoById(presupuestoId!);
+      if (cancelled) return;
+      if (error || !data) {
+        setEditLoadError(error?.message ?? "No se pudo cargar el presupuesto.");
+        setEditCargando(false);
+        return;
+      }
+      if (data.status !== "pendiente") {
+        setEditLoadError("Solo se pueden editar presupuestos pendientes.");
+        setEditCargando(false);
+        return;
+      }
+      const raw = data.payload;
+      if (!raw || !isPresupuestoPayloadV1(raw)) {
+        setEditLoadError("El detalle guardado no es compatible con el wizard.");
+        setEditCargando(false);
+        return;
+      }
+      const payload = hydratePresupuestoPayloadV1(raw);
+      setEditNumero(data.numero);
+      setClienteSeleccionadoId(payload.clienteId ?? data.client_id ?? null);
+      setContacto(payload.contacto ?? "");
+      setOrigenVentas(payload.origenVentas ?? "");
+      setTel(payload.tel ?? "");
+      setEmail(payload.email ?? "");
+      setDireccion(payload.direccion ?? "");
+      setObsCabecera(payload.obsCabecera ?? "");
+      setListaPrecioId(payload.listaPrecioId ?? "");
+      setMonedaPresupuesto(payload.monedaPresupuesto === "ars" ? "ars" : "usd");
+      setOrdenes(
+        payload.ordenes.length > 0 ? payload.ordenes : [newOrdenTrabajo("")],
+      );
+      setDescuentoGlobalPct(payload.descuentoGlobalPct ?? "");
+      setLogistica({
+        fechaCoord: payload.logistica?.fechaCoord ?? "",
+        fechaEntrega: payload.logistica?.fechaEntrega ?? "",
+        observacion: payload.logistica?.observacion ?? "",
+      });
+      setMMedicionGlobal(Boolean(payload.mMedicionGlobal));
+      setMEntregaGlobal(Boolean(payload.mEntregaGlobal));
+      setMColocacionGlobal(Boolean(payload.mColocacionGlobal));
+      setTotalMecGlobal(payload.totalMecGlobal ?? "0");
+      setObsServiciosMec(payload.obsServiciosMec ?? "");
+      if (payload.lineasResumen?.length) {
+        setLineasResumen(payload.lineasResumen.map((ln) => ({ ...ln })));
+      }
+      setEditCargando(false);
+    }
+    void loadEdit();
+    return () => {
+      cancelled = true;
+    };
+  }, [presupuestoId]);
 
   const clienteSeleccionado = useMemo(
     () =>
@@ -690,6 +781,33 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     });
     const nombreCliente = clienteSeleccionado?.nombre?.trim() || "Sin cliente";
     setGuardando(true);
+
+    if (presupuestoId) {
+      const { data, error } = await updatePresupuestoRow(presupuestoId, {
+        cliente: nombreCliente,
+        client_id: clienteSeleccionadoId,
+        total: totalPresupuesto,
+        moneda: monedaPresupuesto,
+        payload,
+      });
+      setGuardando(false);
+      if (error) {
+        const msg = error.message;
+        toast.error(msg);
+        setGrabarError(msg);
+        return;
+      }
+      if (!data) {
+        const msg = "Solo se pueden editar presupuestos pendientes.";
+        toast.error(msg);
+        setGrabarError(msg);
+        return;
+      }
+      toast.success(`Presupuesto ${data.numero} actualizado.`);
+      if (onPersisted) await Promise.resolve(onPersisted({ id: data.id, numero: data.numero }));
+      return;
+    }
+
     let lastMsg: string | null = null;
     for (let i = 0; i < 15; i++) {
       const numero = generarNumeroPresupuesto();
@@ -839,9 +957,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         (art.unidad === "M2" || art.unidad === "ML"),
     );
     const showM2Col = Boolean(hasArt && art && art.calculaMaterial);
-    const puedeToggleManual = Boolean(
-      hasArt && art && permiteModoManualCantidadM2(art),
-    );
     const todosEnMetros = Boolean(hasArt && art && (art.unidad === "M2" || art.unidad === "ML"));
 
     return (
@@ -872,47 +987,23 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           )}
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle min-w-[5.5rem]">
-          <div className="flex flex-col gap-1">
-            <Input
-              className={cn(
-                "h-8 text-xs tabular-nums px-2",
-                "border-border bg-background shadow-sm",
-                "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-              )}
-              inputMode="decimal"
-              title={
-                manualM2
-                  ? "Superficie total de material en m² (precio unitario $/m²)"
-                  : "Cantidad según unidad del artículo"
-              }
-              value={line.cantidad}
-              onChange={(e) =>
-                patchItem(ot.key, line.key, { cantidad: e.target.value })
-              }
-            />
-            {puedeToggleManual ? (
-              <button
-                type="button"
-                className="max-w-[7rem] text-left text-[10px] leading-tight text-primary font-medium underline-offset-2 hover:underline"
-                onClick={() => {
-                  const next: ModoIngresoM2 =
-                    line.modoIngreso === "manual"
-                      ? "dimensiones"
-                      : "manual";
-                  patchItem(ot.key, line.key, {
-                    modoIngreso: next,
-                    ...(next === "manual"
-                      ? { altoM: "", anchoM: "", desperdicioPct: "" }
-                      : {}),
-                  });
-                }}
-              >
-                {line.modoIngreso === "manual"
-                  ? "Por alto × ancho"
-                  : "Por m² totales"}
-              </button>
-            ) : null}
-          </div>
+          <Input
+            className={cn(
+              "h-8 text-xs tabular-nums px-2",
+              "border-border bg-background shadow-sm",
+              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
+            )}
+            inputMode="decimal"
+            title={
+              manualM2
+                ? "Superficie total de material en m² (precio unitario $/m²)"
+                : "Cantidad según unidad del artículo"
+            }
+            value={line.cantidad}
+            onChange={(e) =>
+              patchItem(ot.key, line.key, { cantidad: e.target.value })
+            }
+          />
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle w-[4.75rem]">
           <Input
@@ -927,18 +1018,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               patchItem(ot.key, line.key, { precioUnitario: e.target.value })
             }
           />
-        </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle text-right">
-          <span
-            className={cn(
-              "text-xs font-semibold tabular-nums leading-none",
-              !hasArt && "text-muted-foreground/35",
-            )}
-          >
-            {hasArt
-              ? subL.toLocaleString("es-AR", { maximumFractionDigits: 2 })
-              : "–"}
-          </span>
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle min-w-[4rem]">
           <Input
@@ -1000,13 +1079,22 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle text-right text-xs font-semibold tabular-nums whitespace-nowrap text-foreground">
           {showM2Col ? (
-            m2Linea.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 3,
-            })
+            formatMetraje(m2Linea)
           ) : (
             <span className="font-medium text-muted-foreground/35">–</span>
           )}
+        </TableCell>
+        <TableCell className="px-2.5 py-2 align-middle text-right">
+          <span
+            className={cn(
+              "text-xs font-semibold tabular-nums leading-none",
+              !hasArt && "text-muted-foreground/35",
+            )}
+          >
+            {hasArt
+              ? subL.toLocaleString("es-AR", { maximumFractionDigits: 2 })
+              : "–"}
+          </span>
         </TableCell>
         <TableCell className="w-12 px-1.5 py-2 align-middle text-center last:pr-3">
           <div className="flex justify-center">
@@ -1026,9 +1114,34 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     );
   };
 
+  if (editCargando) {
+    return (
+      <div className="mx-auto max-w-6xl px-3 py-16 text-center text-sm text-muted-foreground sm:px-4">
+        Cargando presupuesto para editar…
+      </div>
+    );
+  }
+
+  if (editLoadError) {
+    return (
+      <div className="mx-auto max-w-lg space-y-3 px-3 py-16 text-center sm:px-4">
+        <p className="text-sm text-destructive">{editLoadError}</p>
+        <p className="text-xs text-muted-foreground">
+          Volvé al listado e intentá con un presupuesto pendiente.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-none pb-44">
       <div className="mx-auto max-w-6xl space-y-6 px-3 sm:px-4 lg:px-0 pb-8">
+        {editando && editNumero ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950">
+            Editando <span className="font-semibold tabular-nums">{editNumero}</span>
+            {" — "}se conserva el mismo número al guardar.
+          </div>
+        ) : null}
         <PresupuestoStepper step={wizardStep} />
 
         <div className="min-h-[260px]">
@@ -1292,9 +1405,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             <span>
               m²{" "}
               <strong className="text-foreground">
-                {totalesItems.totalM2.toLocaleString("es-AR", {
-                  maximumFractionDigits: 3,
-                })}
+                {formatMetraje(totalesItems.totalM2)}
               </strong>
             </span>
             {totalesItems.totalTon > 0 ? (
@@ -1303,10 +1414,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                 <span>
                   ton{" "}
                   <strong className="text-foreground">
-                    {totalesItems.totalTon.toLocaleString("es-AR", {
-                      minimumFractionDigits: 3,
-                      maximumFractionDigits: 4,
-                    })}
+                    {formatToneladas(totalesItems.totalTon)}
                   </strong>
                 </span>
               </>
@@ -1362,7 +1470,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                   onClick={() => void handleGrabar()}
                 >
                   <Save className="h-4 w-4" />
-                  Guardar
+                  {editando ? "Guardar cambios" : "Guardar"}
                 </Button>
               </>
             )}

@@ -27,4 +27,13 @@ export interface ListaPrecioRow {
   moneda: "ars" | "usd";
   descripcion: string | null;
   sort_order: number;
+  activa?: boolean;
+}
+
+/** Precio de un artículo en una lista. */
+export interface PrecioArticuloLista {
+  lista_precio_id: string;
+  articulo_id: string;
+  precio: number;
+  activo: boolean;
 }

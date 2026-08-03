@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { formatMetraje, formatToneladas } from "@/lib/presupuesto-calculos";
 import { mecAlgunoActivo } from "./validacion";
 import type { LogisticaPresupuesto } from "./types";
 import { SectionPresupuesto } from "./fields";
@@ -124,10 +125,8 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
               >
                 <span className="min-w-0 truncate font-medium">{i}: {p.titulo}</span>
                 <span className="tabular-nums shrink-0 text-muted-foreground text-xs">
-                  {p.cantLineas} líneas · {p.m2.toLocaleString("es-AR", { minimumFractionDigits: 3 })} m²
-                  {p.ton > 0
-                    ? ` · ${p.ton.toLocaleString("es-AR", { minimumFractionDigits: 3 })} ton ~`
-                    : ""}{" "}
+                  {p.cantLineas} líneas · {formatMetraje(p.m2)} m²
+                  {p.ton > 0 ? ` · ${formatToneladas(p.ton)} ton ~` : ""}{" "}
                   · ${p.subtotal.toFixed(2)}
                 </span>
               </li>
@@ -267,7 +266,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
             <Input
               readOnly
               className="h-9 text-sm font-bold tabular-nums text-primary"
-              value={totalesTotalM2.toLocaleString("es-AR", { minimumFractionDigits: 3 })}
+              value={formatMetraje(totalesTotalM2)}
             />
           </div>
           <div className="space-y-1">
@@ -277,14 +276,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
             <Input
               readOnly
               className="h-9 text-sm font-semibold tabular-nums text-sky-900 dark:text-sky-50"
-              value={
-                totalesTotalTon > 0
-                  ? totalesTotalTon.toLocaleString("es-AR", {
-                      minimumFractionDigits: 3,
-                      maximumFractionDigits: 4,
-                    })
-                  : "—"
-              }
+              value={totalesTotalTon > 0 ? formatToneladas(totalesTotalTon) : "—"}
             />
           </div>
         </div>
