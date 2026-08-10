@@ -4,6 +4,7 @@ import {
   registrarMovimientoPorCobro,
   sugerirCuentaPorMetodo,
 } from "@/lib/finanzas-api";
+import { reservarChapasAOt } from "@/lib/stock-ot-api";
 import type {
   Database,
   EtapaOtKanban,
@@ -13,6 +14,21 @@ import type {
 } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+
+export type ChapaReservaPendiente = {
+  otId: string;
+  ordenKey: string;
+  chapaIdFallida: string;
+  bulto: string;
+  materialLabel: string;
+};
+
+export type ResultadoSenia = {
+  error: Error | null;
+  /** Chapas señaladas que ya no estaban Disponibles; hay que elegir reemplazo. */
+  chapasPendientes?: ChapaReservaPendiente[];
+  otId?: string | null;
+};
 
 type OrdenTrabajoRow = Database["public"]["Tables"]["ordenes_trabajo"]["Row"];
 type VentaRow = Database["public"]["Tables"]["ventas"]["Row"];
@@ -49,7 +65,7 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
   metodo: string;
   nota?: string;
   created_by?: string | null;
-}): Promise<{ error: Error | null }> {
+}): Promise<ResultadoSenia> {
   const presRes = await supabase.from("presupuestos").select("*").eq("id", opts.presupuestoId).maybeSingle();
   if (presRes.error) return { error: new Error(presRes.error.message) };
   const pres = presRes.data as PresupuestoRow | null;
@@ -76,7 +92,7 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
   if (uErr) return { error: new Error(uErr.message) };
 
   const ev = await ensureVentaForPresupuestoAprobado(opts.presupuestoId);
-  if (ev.error) return ev;
+  if (ev.error) return { error: ev.error };
 
   if (opts.montoSenia <= 0) return { error: null };
 
@@ -221,32 +237,109 @@ async function crearJobOtSiAusente(opts: {
   presupuestoNumero: string;
   clienteNombre: string;
   payload: Json;
-}): Promise<{ error: Error | null }> {
+}): Promise<{ otId: string | null; error: Error | null }> {
   const exist = await supabase
     .from("ordenes_trabajo")
     .select("id")
     .eq("venta_id", opts.ventaId)
     .maybeSingle();
-  if (exist.error) return { error: new Error(exist.error.message) };
-  if (exist.data?.id) return { error: null };
+  if (exist.error) return { otId: null, error: new Error(exist.error.message) };
+  if (exist.data?.id) return { otId: exist.data.id, error: null };
 
   const id_cliente = await resolveClientId(opts.payload, opts.clienteNombre);
   const titulo = `OT · ${opts.presupuestoNumero}`;
   const now = new Date().toISOString();
-  const ins = await supabase.from("ordenes_trabajo").insert({
-    titulo,
-    id_cotizacion: null,
-    venta_id: opts.ventaId,
-    id_cliente,
-    estado: "pending",
-    fecha_programada: null,
-    notas: `OT desde venta (${opts.presupuestoNumero}).`,
-    actualizado_en: now,
-    etapa: "medicion",
-    pausada: false,
-  });
-  if (ins.error) return { error: new Error(ins.error.message) };
-  return { error: null };
+  const ins = await supabase
+    .from("ordenes_trabajo")
+    .insert({
+      titulo,
+      id_cotizacion: null,
+      venta_id: opts.ventaId,
+      id_cliente,
+      estado: "pending",
+      fecha_programada: null,
+      notas: `OT desde venta (${opts.presupuestoNumero}).`,
+      actualizado_en: now,
+      etapa: "medicion",
+      pausada: false,
+      requiere_reserva_stock: true,
+    })
+    .select("id")
+    .single();
+  if (ins.error) return { otId: null, error: new Error(ins.error.message) };
+  return { otId: ins.data?.id ?? null, error: null };
+}
+
+/**
+ * Intenta reservar las chapas señaladas en el payload.
+ * Las que ya no están Disponibles vuelven en `pendientes` para que la UI pida reemplazo.
+ */
+export async function intentarReservarChapasSenaladas(opts: {
+  otId: string;
+  payload: Json;
+  created_by?: string | null;
+}): Promise<{ error: Error | null; pendientes: ChapaReservaPendiente[]; reservadas: number }> {
+  const parsed = parsePayload(opts.payload);
+  const ordenes = parsed?.ordenes ?? [];
+  const pendientes: ChapaReservaPendiente[] = [];
+  let reservadas = 0;
+
+  for (const ot of ordenes) {
+    const chapaId = typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null;
+    if (!chapaId) continue;
+
+    const { data: chapa, error: cErr } = await supabase
+      .from("chapas_inventario")
+      .select("id,bulto,material_label,estado,ot_reserva_id")
+      .eq("id", chapaId)
+      .maybeSingle();
+    if (cErr) return { error: new Error(cErr.message), pendientes, reservadas };
+
+    const bulto =
+      (typeof ot.chapaSugeridaBulto === "string" && ot.chapaSugeridaBulto) ||
+      chapa?.bulto ||
+      "—";
+    const materialLabel =
+      (typeof ot.chapaSugeridaLabel === "string" && ot.chapaSugeridaLabel) ||
+      chapa?.material_label ||
+      "Material";
+
+    if (chapa?.estado === "Reservada" && chapa.ot_reserva_id === opts.otId) {
+      reservadas += 1;
+      continue;
+    }
+
+    if (!chapa || chapa.estado !== "Disponible") {
+      pendientes.push({
+        otId: opts.otId,
+        ordenKey: ot.key,
+        chapaIdFallida: chapaId,
+        bulto,
+        materialLabel,
+      });
+      continue;
+    }
+
+    const res = await reservarChapasAOt({
+      otId: opts.otId,
+      chapaIds: [chapaId],
+      permitirMezclaLotes: true,
+      created_by: opts.created_by ?? null,
+    });
+    if (res.error) {
+      pendientes.push({
+        otId: opts.otId,
+        ordenKey: ot.key,
+        chapaIdFallida: chapaId,
+        bulto,
+        materialLabel,
+      });
+      continue;
+    }
+    reservadas += 1;
+  }
+
+  return { error: null, pendientes, reservadas };
 }
 
 async function getOrCreateVentaParaPago(
@@ -324,7 +417,7 @@ async function repairOrdenesTrabajoFaltantes(): Promise<{ error: Error | null }>
       clienteNombre: row.cliente,
       payload: row.payload as Json,
     });
-    if (r.error) return r;
+    if (r.error) return { error: r.error };
   }
   return { error: null };
 }
@@ -338,7 +431,7 @@ export async function registrarPagoSena(opts: {
   nota?: string;
   cuenta_id?: string | null;
   created_by?: string | null;
-}): Promise<{ error: Error | null }> {
+}): Promise<ResultadoSenia> {
   const { data: pres, error: pErr } = await supabase
     .from("presupuestos")
     .select("*")
@@ -388,10 +481,15 @@ export async function registrarPagoSena(opts: {
       descripcion: `Cobro ${presCast.numero} · ${opts.metodo}`,
       created_by: opts.created_by ?? null,
     });
-    if (mov.error) return mov;
+    if (mov.error) return { error: mov.error };
   }
 
-  const nextEstado: VentaEstado = venta.estado ? (venta.estado as VentaEstado) : "senado";
+  /** Con seña el taller puede trabajar: la venta pasa a producción (cobros parciales OK). */
+  const estadoActual = (venta.estado as VentaEstado | null) ?? null;
+  const nextEstado: VentaEstado =
+    estadoActual === "finalizado" || estadoActual === "entregado"
+      ? estadoActual
+      : "en_produccion";
 
   const now = new Date().toISOString();
   if (nextEstado !== venta.estado) {
@@ -402,12 +500,28 @@ export async function registrarPagoSena(opts: {
     if (updV.error) return { error: new Error(updV.error.message) };
   }
 
-  return crearJobOtSiAusente({
+  const otRes = await crearJobOtSiAusente({
     ventaId: venta.id,
     presupuestoNumero: presCast.numero,
     clienteNombre: presCast.cliente,
     payload: presCast.payload as Json,
   });
+  if (otRes.error) return { error: otRes.error, otId: otRes.otId };
+
+  if (!otRes.otId) return { error: null, otId: null };
+
+  const reserva = await intentarReservarChapasSenaladas({
+    otId: otRes.otId,
+    payload: presCast.payload as Json,
+    created_by: opts.created_by ?? null,
+  });
+  if (reserva.error) return { error: reserva.error, otId: otRes.otId };
+
+  return {
+    error: null,
+    otId: otRes.otId,
+    chapasPendientes: reserva.pendientes.length > 0 ? reserva.pendientes : undefined,
+  };
 }
 
 function etapaOtValida(raw: unknown): EtapaOtKanban {
@@ -438,18 +552,6 @@ export async function persistJobOtProduccion(opts: {
     typeof opts.patch.pausada === "boolean" ? opts.patch.pausada : Boolean(ot.pausada);
   const nextStatus: JobStatus = opts.patch.status ?? (ot.estado as JobStatus);
 
-  const estaBloqueada = etapaActual === "medicion";
-  const intentaMoverEtapa = typeof opts.patch.etapa !== "undefined" && nextEtapa !== "medicion";
-  const intentaCambiarEstadoTrabajo =
-    typeof opts.patch.status !== "undefined" && nextStatus !== (ot.estado as JobStatus);
-  if (estaBloqueada && (intentaMoverEtapa || intentaCambiarEstadoTrabajo)) {
-    return {
-      error: new Error(
-        "La OT sigue bloqueada en medición. Registrá el pago del saldo desde Ventas para liberarla.",
-      ),
-    };
-  }
-
   const now = new Date().toISOString();
   const up = await supabase
     .from("ordenes_trabajo")
@@ -476,6 +578,13 @@ export async function persistJobOtProduccion(opts: {
   let ventaPatch: VentaEstado | null = null;
   if (nextStatus === "done" && vEst !== "finalizado" && vEst !== "entregado") {
     ventaPatch = "finalizado";
+  } else if (
+    (vEst === "senado" || vEst === "en_medicion") &&
+    nextStatus !== "done" &&
+    nextStatus !== "cancelled"
+  ) {
+    /** Seña ya habilitó taller: alinear estado comercial con producción. */
+    ventaPatch = "en_produccion";
   }
 
   if (!ventaPatch || ventaPatch === vEst) return { error: null };
@@ -484,120 +593,6 @@ export async function persistJobOtProduccion(opts: {
   if (vUp.error) return { error: new Error(vUp.error.message) };
 
   return { error: null };
-}
-
-/**
- * Confirma las medidas de una venta en estado "senado".
- * Pasa la venta a "en_medicion" pero mantiene la OT bloqueada
- * en la etapa "medicion" hasta registrar el pago del saldo.
- */
-export async function confirmarMedicionVenta(opts: {
-  ventaId: string;
-  notasMedicion?: string;
-  confirmadoPor?: string | null;
-}): Promise<{ error: Error | null }> {
-  try {
-    const { data, error: fetchErr } = await supabase
-      .from("ventas")
-      .select("estado")
-      .eq("id", opts.ventaId)
-      .maybeSingle();
-    if (fetchErr) return { error: new Error(fetchErr.message) };
-    if (!data) return { error: new Error("Venta no encontrada.") };
-
-    const estado = data.estado as VentaEstado;
-    if (estado !== "senado") {
-      return {
-        error: new Error(
-          `Solo se pueden confirmar medidas de ventas en estado "senado". Estado actual: "${estado}".`,
-        ),
-      };
-    }
-
-    const now = new Date().toISOString();
-    const upVenta = await supabase
-      .from("ventas")
-      .update({
-        estado: "en_medicion" as VentaEstado,
-        fecha_confirmacion_medidas: now,
-        confirmado_por: opts.confirmadoPor ?? null,
-        notas_medicion: opts.notasMedicion?.trim() || null,
-        updated_at: now,
-      })
-      .eq("id", opts.ventaId);
-    if (upVenta.error) return { error: new Error(upVenta.error.message) };
-    return { error: null };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error("No se pudo confirmar la medicion."),
-    };
-  }
-}
-
-export const confirmarMedidasVenta = confirmarMedicionVenta;
-
-/**
- * Pasa la venta de "en_medicion" a "en_produccion".
- * También marca la OT como medidas_confirmadas = true y la pone en etapa "corte".
- */
-export async function pasarAProduccion(opts: {
-  ventaId: string;
-  confirmadoPor?: string | null;
-}): Promise<{ error: Error | null }> {
-  try {
-    const { data, error: fetchErr } = await supabase
-      .from("ventas")
-      .select("estado")
-      .eq("id", opts.ventaId)
-      .maybeSingle();
-    if (fetchErr) return { error: new Error(fetchErr.message) };
-    if (!data) return { error: new Error("Venta no encontrada.") };
-
-    const estado = data.estado as VentaEstado;
-    if (estado !== "en_medicion") {
-      return {
-        error: new Error(
-          `Solo se puede pasar a producción desde "en_medicion". Estado actual: "${estado}".`,
-        ),
-      };
-    }
-
-    const now = new Date().toISOString();
-    const upVenta = await supabase
-      .from("ventas")
-      .update({ estado: "en_produccion" as VentaEstado, updated_at: now })
-      .eq("id", opts.ventaId);
-    if (upVenta.error) return { error: new Error(upVenta.error.message) };
-
-    const { data: ot, error: otErr } = await supabase
-      .from("ordenes_trabajo")
-      .select("id")
-      .eq("venta_id", opts.ventaId)
-      .maybeSingle();
-    if (otErr) return { error: new Error(otErr.message) };
-
-    if (ot?.id) {
-      const upOt = await supabase
-        .from("ordenes_trabajo")
-        .update({
-          medidas_confirmadas: true,
-          fecha_medidas_confirmadas: now,
-          etapa: "corte",
-          estado: "in_progress",
-          pausada: false,
-          requiere_reserva_stock: true,
-          actualizado_en: now,
-        })
-        .eq("id", ot.id);
-      if (upOt.error) return { error: new Error(upOt.error.message) };
-    }
-
-    return { error: null };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error : new Error("No se pudo pasar la venta a produccion."),
-    };
-  }
 }
 
 export async function marcarVentaEntregado(ventaId: string): Promise<{ error: Error | null }> {

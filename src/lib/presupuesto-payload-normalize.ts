@@ -44,6 +44,9 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
       fechaMedicion: typeof ot.fechaMedicion === "string" ? ot.fechaMedicion : "",
       fechaEntrega: typeof ot.fechaEntrega === "string" ? ot.fechaEntrega : "",
       materialId: typeof ot.materialId === "string" ? ot.materialId : "",
+      chapaSugeridaId: typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null,
+      chapaSugeridaBulto: typeof ot.chapaSugeridaBulto === "string" ? ot.chapaSugeridaBulto : "",
+      chapaSugeridaLabel: typeof ot.chapaSugeridaLabel === "string" ? ot.chapaSugeridaLabel : "",
       tipoColocacion:
         ot.tipoColocacion === "sobre" || ot.tipoColocacion === "ras" || ot.tipoColocacion === "bajo"
           ? ot.tipoColocacion

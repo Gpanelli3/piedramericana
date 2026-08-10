@@ -431,12 +431,14 @@ export interface Database {
           material_id: string | null;
           material_label: string;
           qty_slabs: number;
-          largo_cm: number;
-          ancho_cm: number;
+          largo_cm: number | null;
+          ancho_cm: number | null;
           precio_unitario: number | null;
           sort_order: number;
           lote_codigo: string | null;
           origen_placa: OrigenPlaca;
+          modo_medidas: "iguales" | "distintas";
+          m2_total: number;
         };
         Insert: {
           id?: string;
@@ -444,12 +446,14 @@ export interface Database {
           material_id?: string | null;
           material_label: string;
           qty_slabs: number;
-          largo_cm: number;
-          ancho_cm: number;
+          largo_cm?: number | null;
+          ancho_cm?: number | null;
           precio_unitario?: number | null;
           sort_order?: number;
           lote_codigo?: string | null;
           origen_placa?: OrigenPlaca;
+          modo_medidas?: "iguales" | "distintas";
+          m2_total?: number;
         };
         Update: {
           id?: string;
@@ -457,12 +461,14 @@ export interface Database {
           material_id?: string | null;
           material_label?: string;
           qty_slabs?: number;
-          largo_cm?: number;
-          ancho_cm?: number;
+          largo_cm?: number | null;
+          ancho_cm?: number | null;
           precio_unitario?: number | null;
           sort_order?: number;
           lote_codigo?: string | null;
           origen_placa?: OrigenPlaca;
+          modo_medidas?: "iguales" | "distintas";
+          m2_total?: number;
         };
         Relationships: [
           {

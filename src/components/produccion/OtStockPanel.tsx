@@ -294,7 +294,8 @@ export function OtStockPanel({
       ) : reservadas.length === 0 && usadas.length === 0 ? (
         !reservaPendiente ? (
           <p className="text-xs text-muted-foreground">
-            Sin placas asignadas. Reservá chapas al pasar a corte para no venderlas a otro cliente.
+            Sin placas asignadas. Si señalaste una chapa en el presupuesto, se reserva al señar; si no,
+            podés reservar acá.
           </p>
         ) : null
       ) : (

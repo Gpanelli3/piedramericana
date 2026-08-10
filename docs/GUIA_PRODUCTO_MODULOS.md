@@ -349,6 +349,10 @@ Hoy: kanban `medicion → corte → produccion → despacho` — evolucionar sem
 ### M09.F2 — Remitos de ingreso `HECHO`
 - **Qué:** remito proveedor + líneas + alta de chapas en transacción.
 - **Aceptación:** no duplicar bultos; historial con detalle.
+- **Dos modos de medidas (por línea):**
+  - **Medidas iguales** — sintético/estándar (ej. China): cantidad + un L×A → N chapas idénticas.
+  - **Medidas distintas** — artesanal/natural del lote: lista de L×A por placa → N chapas con medidas propias.
+- **Reglas:** lote obligatorio en ambos modos; origen (`nacional` / `importado` / `cantera` / `otro`) es independiente del modo de medidas.
 
 ### M09.F3 — Vista agregada por material `PARCIAL`
 - **Qué:** planchas, m² disp., m² retazo, # retazos, costo.

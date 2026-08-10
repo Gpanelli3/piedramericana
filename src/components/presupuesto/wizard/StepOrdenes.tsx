@@ -23,6 +23,7 @@ import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 import { PickMaterial, SectionPresupuesto } from "./fields";
+import { PickChapaParaOt } from "./PickChapaParaOt";
 import type { LineaItemOT, OrdenTrabajoWizard } from "./types";
 
 type PorOtRes = {
@@ -176,20 +177,38 @@ export function StepOrdenes({
                             />
                           </div>
                           <div className="space-y-1.5 min-w-0">
-                            <Label className="text-xs font-medium">Material (chapa)</Label>
+                            <Label className="text-xs font-medium">Material</Label>
                             <PickMaterial
                               materials={materials}
                               value={ot.materialId}
-                              onChange={(id) => patchOrden(ot.key, { materialId: id })}
+                              onChange={(id) =>
+                                patchOrden(ot.key, {
+                                  materialId: id,
+                                  chapaSugeridaId: null,
+                                  chapaSugeridaBulto: "",
+                                  chapaSugeridaLabel: "",
+                                })
+                              }
                               loading={materialesCargando}
                             />
                             <ConversionesMaestroHints parentMaterialId={ot.materialId} />
                           </div>
+                          <PickChapaParaOt
+                            materialNombre={materialRow?.name}
+                            valueId={ot.chapaSugeridaId}
+                            onChange={(ch) =>
+                              patchOrden(ot.key, {
+                                chapaSugeridaId: ch.id,
+                                chapaSugeridaBulto: ch.bulto,
+                                chapaSugeridaLabel: ch.label,
+                              })
+                            }
+                          />
                         </div>
 
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">
                           <div className="mb-2">
-                            <p className="text-xs font-medium text-foreground">Ítems de la OT</p>
+                            <p className="text-xs font-medium text-foreground">Sub-ítems de la OT</p>
                           </div>
                           <div className="overflow-hidden rounded-md border border-border/60 bg-card">
                             <div className="overflow-x-auto bg-muted/20">
@@ -229,7 +248,7 @@ export function StepOrdenes({
                                   {ot.items.length === 0 ? (
                                     <TableRow className="hover:bg-transparent bg-muted/10">
                                       <TableCell colSpan={11} className="py-6 px-4 text-center">
-                                        <p className="text-sm text-muted-foreground">Todavía no hay ítems</p>
+                                        <p className="text-sm text-muted-foreground">Todavía no hay sub-ítems</p>
                                       </TableCell>
                                     </TableRow>
                                   ) : (
@@ -247,7 +266,7 @@ export function StepOrdenes({
                                 onClick={() => addItem(ot.key)}
                               >
                                 <Plus className="h-3.5 w-3.5" />
-                                Agregar ítem
+                                Agregar sub-ítem
                               </Button>
                             </div>
                           </div>

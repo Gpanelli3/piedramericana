@@ -48,9 +48,9 @@ function etiquetaEstadoVenta(e: VentaEstado | null): string {
     case null:
       return "Sin seña";
     case "senado":
-      return "Señado";
+      return "Con seña";
     case "en_medicion":
-      return "En medición";
+      return "En producción";
     case "en_produccion":
       return "En producción";
     case "finalizado":

@@ -143,6 +143,9 @@ describe("computePresupuestoTotalM2", () => {
         fechaMedicion: "",
         fechaEntrega: "",
         materialId: "mat",
+        chapaSugeridaId: null,
+        chapaSugeridaBulto: "",
+        chapaSugeridaLabel: "",
         tipoColocacion: "bajo",
         bachaId: "sin",
         items: [
@@ -171,6 +174,9 @@ describe("computePresupuestoTotalM2", () => {
         fechaMedicion: "",
         fechaEntrega: "",
         materialId: "mat",
+        chapaSugeridaId: null,
+        chapaSugeridaBulto: "",
+        chapaSugeridaLabel: "",
         tipoColocacion: "bajo",
         bachaId: "sin",
         items: [

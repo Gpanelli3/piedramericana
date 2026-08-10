@@ -41,6 +41,13 @@ export type OrdenTrabajoWizard = {
   fechaMedicion: string;
   fechaEntrega: string;
   materialId: string;
+  /**
+   * Chapa señalada del inventario (sigue Disponible hasta la seña).
+   * Al señar se intenta reservar; si ya no está, se pide otra del mismo material.
+   */
+  chapaSugeridaId: string | null;
+  chapaSugeridaBulto: string;
+  chapaSugeridaLabel: string;
   tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
   bachaId: string;
   items: LineaItemOT[];
@@ -73,6 +80,9 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     fechaMedicion: "",
     fechaEntrega: "",
     materialId: materialIdDefault,
+    chapaSugeridaId: null,
+    chapaSugeridaBulto: "",
+    chapaSugeridaLabel: "",
     tipoColocacion: "bajo",
     bachaId: MODELOS_BACHA[0]!.value,
     items: [],

@@ -10,8 +10,8 @@ function fechaArchivo(): string {
 function etiquetaEstadoVenta(e: string | null): string {
   if (!e) return "Sin seña";
   const map: Record<string, string> = {
-    senado: "Señado",
-    en_medicion: "En medición",
+    senado: "Con seña",
+    en_medicion: "En producción",
     en_produccion: "En producción",
     finalizado: "Finalizado",
     entregado: "Entregado",
@@ -140,6 +140,7 @@ export async function exportRemitosDetalleCsv(): Promise<{ error: Error | null }
     "Proveedor",
     "Origen",
     "Material",
+    "Modo medidas",
     "Placas",
     "Largo cm",
     "Ancho cm",
@@ -153,16 +154,23 @@ export async function exportRemitosDetalleCsv(): Promise<{ error: Error | null }
     const lines = await fetchRemitoLines(r.id);
     const numero = `${r.branch_code}-${r.serial_code}`;
     for (const l of lines) {
-      const m2 = (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100) * l.qty_slabs;
+      const modo = l.modo_medidas ?? "iguales";
+      const m2 =
+        l.m2_total != null && Number.isFinite(Number(l.m2_total))
+          ? Number(l.m2_total)
+          : l.largo_cm != null && l.ancho_cm != null
+            ? (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100) * l.qty_slabs
+            : 0;
       rows.push([
         r.issue_date,
         numero,
         r.supplier_name ?? "",
         l.origen_placa ?? r.origen_placa ?? "nacional",
         l.material_label,
+        modo === "distintas" ? "distintas" : "iguales",
         l.qty_slabs,
-        l.largo_cm,
-        l.ancho_cm,
+        modo === "distintas" ? "variables" : (l.largo_cm ?? ""),
+        modo === "distintas" ? "variables" : (l.ancho_cm ?? ""),
         m2.toFixed(3),
         l.precio_unitario ?? "",
         l.lote_codigo ?? "",

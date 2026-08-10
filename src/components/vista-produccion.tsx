@@ -31,7 +31,6 @@ import {
   ArrowRight,
   GripVertical,
   PlayCircle,
-  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -44,6 +43,7 @@ import {
 } from "@/lib/ventas-api";
 import type { JobStatus } from "@/types/database";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
+import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import {
   bajaChapaPorRotura,
   listChapasDisponibles,
@@ -65,7 +65,7 @@ interface OT {
   columna: EtapaId;
   prioridad: "alta" | "normal" | "baja";
   pausada?: boolean;
-  bloqueada: boolean;
+  medidasConfirmadas: boolean;
   status: JobStatus;
   requiereReservaStock: boolean;
 }
@@ -88,7 +88,7 @@ function tarjetaToOtUi(t: OtTarjeta): OT {
     columna: coalesceEtapa(t.orden.etapa),
     prioridad: "normal",
     pausada: Boolean(t.orden.pausada),
-    bloqueada: coalesceEtapa(t.orden.etapa) === "medicion",
+    medidasConfirmadas: Boolean(t.orden.medidas_confirmadas),
     status: (t.orden.estado as JobStatus) ?? "pending",
     requiereReservaStock: Boolean(t.orden.requiere_reserva_stock),
   };
@@ -171,8 +171,7 @@ export function VistaProduccion() {
   const moverAEtapa = useCallback(
     async (otId: string, nueva: EtapaId) => {
       const ot = ots.find((o) => o.id === otId);
-      if (!ot || ot.pausada || ot.bloqueada || ot.columna === nueva || ot.status === "done") return;
-      if (nueva === "medicion") return;
+      if (!ot || ot.pausada || ot.columna === nueva || ot.status === "done") return;
 
       let nextStatus: JobStatus = ot.status;
       if (ot.status === "pending") nextStatus = "in_progress";
@@ -204,7 +203,7 @@ export function VistaProduccion() {
   const avanzarEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || ot.bloqueada || ot.status === "done" || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
+      if (ot.pausada || ot.status === "done" || i < 0 || i >= ETAPAS_ORDEN.length - 1) return;
       void moverAEtapa(ot.id, ETAPAS_ORDEN[i + 1]!);
     },
     [moverAEtapa],
@@ -213,7 +212,7 @@ export function VistaProduccion() {
   const retrocederEtapa = useCallback(
     (ot: OT) => {
       const i = etapaIndex(ot.columna);
-      if (ot.pausada || ot.bloqueada || ot.status === "done" || i <= 0) return;
+      if (ot.pausada || ot.status === "done" || i <= 0) return;
       void moverAEtapa(ot.id, ETAPAS_ORDEN[i - 1]!);
     },
     [moverAEtapa],
@@ -416,29 +415,13 @@ export function VistaProduccion() {
       </main>
 
       <Dialog open={detalleOpen} onOpenChange={setDetalleOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-left">{otDetalle?.numero ?? "OT"}</DialogTitle>
-            <DialogDescription className="text-left">
-              Mover entre etapas del taller. Si la OT está pausada por rotura, reanudala antes de
-              avanzar.
-            </DialogDescription>
           </DialogHeader>
 
           {otDetalle && (
             <div className="space-y-4">
-              {otDetalle.bloqueada && (
-                <div className="flex items-start gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100">
-                  <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-medium">OT bloqueada en medición</p>
-                    <p className="text-xs opacity-90">
-                      Producción no puede mover esta OT hasta que Ventas registre el pago del saldo.
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {otDetalle.pausada && (
                 <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -474,6 +457,12 @@ export function VistaProduccion() {
                   <span className="font-medium text-foreground">{jobStatusEtiqueta(otDetalle.status)}</span>
                 </p>
               </div>
+
+              <OtMedidasPanel
+                otId={otDetalle.id}
+                destacado={otDetalle.columna === "medicion" || !otDetalle.medidasConfirmadas}
+                onSaved={() => void refreshBoard()}
+              />
 
               <OtStockPanel
                 otId={otDetalle.id}
@@ -513,7 +502,6 @@ export function VistaProduccion() {
                   className="flex-1 gap-1"
                   disabled={
                     otDetalle.pausada ||
-                    otDetalle.bloqueada ||
                     otDetalle.status === "done" ||
                     etapaIndex(otDetalle.columna) <= 0
                   }
@@ -527,7 +515,6 @@ export function VistaProduccion() {
                   className="flex-1 gap-1"
                   disabled={
                     otDetalle.pausada ||
-                    otDetalle.bloqueada ||
                     otDetalle.status === "done" ||
                     etapaIndex(otDetalle.columna) >= ETAPAS_ORDEN.length - 1
                   }
@@ -542,16 +529,14 @@ export function VistaProduccion() {
                 <Label className="text-xs">Mover directamente a</Label>
                 <Select
                   value={otDetalle.columna}
-                  disabled={otDetalle.pausada || otDetalle.bloqueada || otDetalle.status === "done"}
+                  disabled={otDetalle.pausada || otDetalle.status === "done"}
                   onValueChange={(v) => void moverAEtapa(otDetalle.id, v as EtapaId)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {columnas
-                      .filter((c) => c.id !== "medicion")
-                      .map((c) => (
+                    {columnas.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.label}
                       </SelectItem>
@@ -703,7 +688,7 @@ function OTCard({
   showRotura: boolean;
 }) {
   const prioridad = prioridadConfig[ot.prioridad];
-  const puedeArrastrar = !ot.pausada && !ot.bloqueada && ot.status !== "done";
+  const puedeArrastrar = !ot.pausada && ot.status !== "done";
 
   return (
     <div
@@ -722,8 +707,7 @@ function OTCard({
       className={cn(
         "space-y-3 rounded-lg border border-border bg-white p-4 shadow-sm transition-[box-shadow,transform] duration-150",
         puedeArrastrar && "cursor-grab active:cursor-grabbing",
-        ot.bloqueada && "opacity-70",
-        !puedeArrastrar && !ot.bloqueada && "opacity-90",
+        !puedeArrastrar && "opacity-90",
         draggingId === ot.id &&
           "z-10 border-primary/40 shadow-md ring-2 ring-primary/30 ring-offset-2 ring-offset-background"
       )}
@@ -752,10 +736,9 @@ function OTCard({
               Pausada
             </Badge>
           ) : null}
-          {ot.bloqueada ? (
-            <Badge variant="secondary" className="gap-1 text-[10px] text-slate-800">
-              <Lock className="h-3 w-3" />
-              Bloqueada
+          {ot.columna === "medicion" && !ot.medidasConfirmadas ? (
+            <Badge variant="outline" className="text-[10px] text-blue-700">
+              Medidas opc.
             </Badge>
           ) : null}
         </div>

@@ -10,6 +10,8 @@ import {
   type PresupuestoFiltroTab,
 } from "@/components/presupuesto/PresupuestosLista";
 import { AprobarPresupuestoDialog } from "@/components/presupuesto/AprobarPresupuestoDialog";
+import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
+import type { ChapaReservaPendiente } from "@/lib/ventas-api";
 import {
   Dialog,
   DialogClose,
@@ -72,6 +74,8 @@ export function VistaVentas() {
   const [aprobDialogAbierto, setAprobDialogAbierto] = useState(false);
   const [aprobDialogRow, setAprobDialogRow] = useState<PresupuestoRowLista | null>(null);
   const [aprobBusy, setAprobBusy] = useState(false);
+  const [chapasPendientes, setChapasPendientes] = useState<ChapaReservaPendiente[]>([]);
+  const [reemplazoOpen, setReemplazoOpen] = useState(false);
 
   const [docArticulos, setDocArticulos] = useState<ArticuloConPrecio[]>([]);
   const [docMaterials, setDocMaterials] = useState<MaterialWizardRow[]>([]);
@@ -297,13 +301,19 @@ export function VistaVentas() {
         toast.error(res.error.message);
         return;
       }
-      toast.success(
-        payload.montoSenia > 0
-          ? "Aprobado: venta creada con la seña indicada. El resto de cobros se gestiona en Ventas."
-          : "Aprobado. Podés registrar la primera seña cuando quieras desde Ventas.",
-      );
       setAprobDialogAbierto(false);
       setAprobDialogRow(null);
+      if (res.chapasPendientes && res.chapasPendientes.length > 0) {
+        toast.warning("Algunas chapas señaladas ya no están disponibles. Elegí reemplazo.");
+        setChapasPendientes(res.chapasPendientes);
+        setReemplazoOpen(true);
+      } else {
+        toast.success(
+          payload.montoSenia > 0
+            ? "Aprobado con seña. Chapas señaladas reservadas si había stock."
+            : "Aprobado. Podés registrar la primera seña cuando quieras desde Ventas.",
+        );
+      }
       await refreshLista();
     },
     [aprobDialogRow, refreshLista],
@@ -508,6 +518,19 @@ export function VistaVentas() {
         }
         busy={aprobBusy}
         onConfirm={onConfirmacionAprobar}
+      />
+
+      <ElegirChapaReemplazoDialog
+        open={reemplazoOpen}
+        onOpenChange={(o) => {
+          setReemplazoOpen(o);
+          if (!o) setChapasPendientes([]);
+        }}
+        pendientes={chapasPendientes}
+        onResuelto={async () => {
+          setChapasPendientes([]);
+          await refreshLista();
+        }}
       />
     </div>
   );

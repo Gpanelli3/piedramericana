@@ -45,9 +45,23 @@ function etiquetaOrigen(o: string | null | undefined): string {
   }
 }
 
-function m2Line(l: Pick<RemitoLineDetail, "qty_slabs" | "largo_cm" | "ancho_cm">): number {
+function m2Line(
+  l: Pick<RemitoLineDetail, "qty_slabs" | "largo_cm" | "ancho_cm" | "m2_total" | "modo_medidas">,
+): number {
+  if (l.m2_total != null && Number.isFinite(Number(l.m2_total))) {
+    return Number(l.m2_total);
+  }
+  if (l.largo_cm == null || l.ancho_cm == null) return 0;
   const piece = (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100);
   return piece * l.qty_slabs;
+}
+
+function textoMedidasLinea(l: RemitoLineDetail): string {
+  const modo = l.modo_medidas ?? "iguales";
+  if (modo === "distintas") {
+    return `${l.qty_slabs} chapas · medidas variables → ${formatM2Stock(m2Line(l))} m²`;
+  }
+  return `${l.qty_slabs} × ${l.largo_cm} × ${l.ancho_cm} cm → ${formatM2Stock(m2Line(l))} m²`;
 }
 
 type HistorialProps = {
@@ -269,7 +283,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
                 <li key={l.id} className="rounded-lg border border-border bg-card p-3 text-sm">
                   <p className="font-medium text-foreground">{l.material_label}</p>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {l.qty_slabs} × {l.largo_cm} × {l.ancho_cm} cm → {formatM2Stock(m2Line(l))} m²
+                    {textoMedidasLinea(l)}
                     {l.lote_codigo ? ` · lote ${l.lote_codigo}` : ""}
                     {l.origen_placa ? ` · ${etiquetaOrigen(l.origen_placa)}` : ""}
                   </p>

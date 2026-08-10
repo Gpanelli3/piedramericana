@@ -19,24 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Plus,
-  Trash2,
-  Copy,
-  UserRound,
-  Calendar as CalendarIcon,
-  PenSquare,
-} from "lucide-react";
+import { Plus, Trash2, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
-import type { MaterialOption, OrigenPlaca } from "@/lib/stock-api";
+import type { MaterialOption, ModoMedidasRemito, OrigenPlaca } from "@/lib/stock-api";
 import {
   fetchSuppliers,
   createRemitoWithSlabsViaRpc,
@@ -46,16 +31,32 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { NuevoProveedorDialog } from "./NuevoProveedorDialog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const MAX_NOTAS = 200;
+
+const PASOS = [
+  { kicker: "Remito", subtitle: "Proveedor y origen" },
+  { kicker: "Material", subtitle: "Lote y modo" },
+  { kicker: "Medidas", subtitle: "Cantidad o por placa" },
+  { kicker: "Confirmar", subtitle: "Revisar y guardar" },
+] as const;
+
+type MedidaDraft = {
+  key: string;
+  largo_cm: string;
+  ancho_cm: string;
+};
 
 type LineDraft = {
   key: string;
   material_id: string | null;
   material_other: string;
+  modo_medidas: ModoMedidasRemito;
   qty_slabs: string;
   largo_cm: string;
   ancho_cm: string;
+  medidas: MedidaDraft[];
   bulto_inicio: string;
   precio: string;
   lote_codigo: string;
@@ -67,14 +68,20 @@ function newLineKey() {
     : `l-${Math.random().toString(36).slice(2)}`;
 }
 
+function blankMedida(): MedidaDraft {
+  return { key: newLineKey(), largo_cm: "", ancho_cm: "" };
+}
+
 function blankLine(): LineDraft {
   return {
     key: newLineKey(),
     material_id: null,
     material_other: "",
+    modo_medidas: "iguales",
     qty_slabs: "1",
     largo_cm: "",
     ancho_cm: "",
+    medidas: [blankMedida()],
     bulto_inicio: "",
     precio: "",
     lote_codigo: "",
@@ -87,11 +94,54 @@ function m2Teoricos(qty: number, largoCm: number, anchoCm: number): number {
     qty <= 0 ||
     !Number.isFinite(largoCm) ||
     largoCm <= 0 ||
-    !Number.isFinite(anchoCm)
+    !Number.isFinite(anchoCm) ||
+    anchoCm <= 0
   ) {
     return 0;
   }
   return (largoCm / 100) * (anchoCm / 100) * qty;
+}
+
+function m2MedidasDistintas(medidas: MedidaDraft[]): number {
+  let total = 0;
+  for (const m of medidas) {
+    const largo = Number(m.largo_cm.replace(",", "."));
+    const ancho = Number(m.ancho_cm.replace(",", "."));
+    if (Number.isFinite(largo) && largo > 0 && Number.isFinite(ancho) && ancho > 0) {
+      total += (largo / 100) * (ancho / 100);
+    }
+  }
+  return total;
+}
+
+function m2Linea(ln: LineDraft): number {
+  if (ln.modo_medidas === "distintas") return m2MedidasDistintas(ln.medidas);
+  const qty = parseInt(ln.qty_slabs.replace(/\s/g, ""), 10) || 0;
+  const largo = Number(ln.largo_cm.replace(",", "."));
+  const ancho = Number(ln.ancho_cm.replace(",", "."));
+  return m2Teoricos(qty, largo, ancho);
+}
+
+function qtyLinea(ln: LineDraft): number {
+  if (ln.modo_medidas === "distintas") return ln.medidas.length;
+  return parseInt(ln.qty_slabs.replace(/\s/g, ""), 10) || 0;
+}
+
+function formatM2(n: number): string {
+  return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}
+
+function etiquetaOrigen(o: OrigenPlaca): string {
+  switch (o) {
+    case "importado":
+      return "Importado";
+    case "cantera":
+      return "Cantera";
+    case "otro":
+      return "Otro";
+    default:
+      return "Nacional";
+  }
 }
 
 type CrearRemitoDialogProps = {
@@ -124,6 +174,8 @@ export function CrearRemitoDialog({
   const [notes, setNotes] = useState("");
   const [origenPlaca, setOrigenPlaca] = useState<OrigenPlaca>("nacional");
   const [lines, setLines] = useState<LineDraft[]>(() => [blankLine()]);
+  const [activeLineIdx, setActiveLineIdx] = useState(0);
+  const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
@@ -147,6 +199,8 @@ export function CrearRemitoDialog({
   useEffect(() => {
     if (!open) return;
     setLines([blankLine()]);
+    setActiveLineIdx(0);
+    setStep(0);
     setNotes("");
     setBranchCode("");
     setSupplierId("");
@@ -154,6 +208,8 @@ export function CrearRemitoDialog({
     setIssueDate(new Date().toISOString().slice(0, 10));
     setSerialCode("000000");
   }, [open]);
+
+  const activeLine = lines[activeLineIdx] ?? lines[0]!;
 
   const materialLabelForLine = useCallback(
     (l: LineDraft) => {
@@ -166,95 +222,259 @@ export function CrearRemitoDialog({
     [materiales],
   );
 
-  const setLine = useCallback((key: string, patch: Partial<LineDraft>) => {
-    setLines((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const setActiveLine = useCallback(
+    (patch: Partial<LineDraft>) => {
+      setLines((prev) =>
+        prev.map((r, i) => (i === activeLineIdx ? { ...r, ...patch } : r)),
+      );
+    },
+    [activeLineIdx],
+  );
+
+  const setMedida = useCallback(
+    (medidaKey: string, patch: Partial<MedidaDraft>) => {
+      setLines((prev) =>
+        prev.map((r, i) =>
+          i === activeLineIdx
+            ? {
+                ...r,
+                medidas: r.medidas.map((m) => (m.key === medidaKey ? { ...m, ...patch } : m)),
+              }
+            : r,
+        ),
+      );
+    },
+    [activeLineIdx],
+  );
+
+  const addMedida = useCallback(() => {
+    setLines((prev) =>
+      prev.map((r, i) =>
+        i === activeLineIdx ? { ...r, medidas: [...r.medidas, blankMedida()] } : r,
+      ),
+    );
+  }, [activeLineIdx]);
+
+  const removeMedida = useCallback(
+    (medidaKey: string) => {
+      setLines((prev) =>
+        prev.map((r, i) => {
+          if (i !== activeLineIdx) return r;
+          if (r.medidas.length <= 1) return r;
+          return { ...r, medidas: r.medidas.filter((m) => m.key !== medidaKey) };
+        }),
+      );
+    },
+    [activeLineIdx],
+  );
+
+  const removeLineAt = useCallback((idx: number) => {
+    setLines((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((_, i) => i !== idx);
+      return next;
+    });
+    setActiveLineIdx((cur) => {
+      if (idx < cur) return cur - 1;
+      if (idx === cur) return Math.max(0, cur - 1);
+      return cur;
+    });
   }, []);
 
-  const addLine = useCallback(() => {
-    setLines((prev) => [...prev, blankLine()]);
-  }, []);
+  const supplierName = useMemo(
+    () => suppliers.find((s) => s.id === supplierId)?.name ?? null,
+    [suppliers, supplierId],
+  );
 
-  const removeLine = useCallback((key: string) => {
-    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== key)));
-  }, []);
+  const totalM2 = useMemo(() => lines.reduce((acc, ln) => acc + m2Linea(ln), 0), [lines]);
+  const totalPlacas = useMemo(() => lines.reduce((acc, ln) => acc + qtyLinea(ln), 0), [lines]);
 
-  const duplicateLine = useCallback((row: LineDraft) => {
-    setLines((prev) => [...prev, { ...row, key: newLineKey(), bulto_inicio: "" }]);
-  }, []);
-
-  const canSave = useMemo(() => notes.length <= MAX_NOTAS, [notes]);
-
-  const handleGrabar = async () => {
-    if (!canSave) {
-      toast.error(`Observación: máximo ${MAX_NOTAS} caracteres.`);
-      return;
+  const validateStep = (s: number): boolean => {
+    if (s === 0) {
+      if (isSupabaseConfigured && !supplierId) {
+        toast.error("Seleccioná un proveedor o creá uno nuevo.");
+        return false;
+      }
+      if (!issueDate) {
+        toast.error("Indicá la fecha del remito.");
+        return false;
+      }
+      if (notes.length > MAX_NOTAS) {
+        toast.error(`Observación: máximo ${MAX_NOTAS} caracteres.`);
+        return false;
+      }
+      return true;
     }
 
-    const labelLines: { draft: LineDraft; label: string }[] = [];
-    for (const d of lines) {
+    if (s === 1) {
+      const label = materialLabelForLine(activeLine);
+      if (!label) {
+        toast.error("Definí el material.");
+        return false;
+      }
+      if (!activeLine.lote_codigo.trim()) {
+        toast.error("El lote es obligatorio.");
+        return false;
+      }
+      const ini = parseInt(activeLine.bulto_inicio.trim().replace(/^#/, ""), 10);
+      if (!Number.isFinite(ini) || ini < 1) {
+        toast.error("Indicá el N° de bulto inicial (entero positivo).");
+        return false;
+      }
+      return true;
+    }
+
+    if (s === 2) {
+      if (activeLine.modo_medidas === "iguales") {
+        const qty = parseInt(activeLine.qty_slabs.replace(/\s/g, ""), 10);
+        const largo = Number(activeLine.largo_cm.replace(",", "."));
+        const ancho = Number(activeLine.ancho_cm.replace(",", "."));
+        if (!Number.isFinite(qty) || qty < 1) {
+          toast.error("Cantidad de chapas inválida.");
+          return false;
+        }
+        if (!Number.isFinite(largo) || largo <= 0 || !Number.isFinite(ancho) || ancho <= 0) {
+          toast.error("Largo y ancho deben ser mayores a 0.");
+          return false;
+        }
+      } else {
+        if (activeLine.medidas.length < 1) {
+          toast.error("Agregá al menos una placa con medida.");
+          return false;
+        }
+        for (const m of activeLine.medidas) {
+          const largo = Number(m.largo_cm.replace(",", "."));
+          const ancho = Number(m.ancho_cm.replace(",", "."));
+          if (!Number.isFinite(largo) || largo <= 0 || !Number.isFinite(ancho) || ancho <= 0) {
+            toast.error("Cada placa necesita largo y ancho en cm (mayores a 0).");
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((s) => Math.min(PASOS.length - 1, s + 1));
+  };
+
+  const goBack = () => {
+    setStep((s) => Math.max(0, s - 1));
+  };
+
+  const startAnotherLine = () => {
+    setLines((prev) => [...prev, blankLine()]);
+    setActiveLineIdx(lines.length);
+    setStep(1);
+  };
+
+  const editLine = (idx: number) => {
+    setActiveLineIdx(idx);
+    setStep(1);
+  };
+
+  const handleGrabar = async () => {
+    for (let i = 0; i < lines.length; i++) {
+      setActiveLineIdx(i);
+      // validate using the line at i directly
+      const d = lines[i]!;
       const label = materialLabelForLine(d);
       if (!label) {
-        toast.error("Definí el material en cada línea.");
+        toast.error(`Línea ${i + 1}: definí el material.`);
+        setStep(1);
         return;
       }
-      const qty = parseInt(d.qty_slabs.replace(/\s/g, ""), 10);
-      const largo = Number(d.largo_cm.replace(",", "."));
-      const ancho = Number(d.ancho_cm.replace(",", "."));
       const ini = parseInt(d.bulto_inicio.trim().replace(/^#/, ""), 10);
-
-      if (!Number.isFinite(qty) || qty < 1) {
-        toast.error("Cantidad de placas inválida.");
-        return;
-      }
-      if (!Number.isFinite(largo) || largo <= 0 || !Number.isFinite(ancho) || ancho <= 0) {
-        toast.error("Largo y ancho deben ser mayores a 0.");
-        return;
-      }
       if (!Number.isFinite(ini) || ini < 1) {
-        toast.error("Indicá N° inicial de bulto (entero positivo) por línea.");
+        toast.error(`Línea ${i + 1}: bulto inicial inválido.`);
+        setActiveLineIdx(i);
+        setStep(1);
         return;
       }
       if (!d.lote_codigo.trim()) {
-        toast.error("El código de lote es obligatorio en cada línea.");
+        toast.error(`Línea ${i + 1}: el lote es obligatorio.`);
+        setActiveLineIdx(i);
+        setStep(1);
         return;
       }
-
-      labelLines.push({
-        draft: {
-          ...d,
-          material_id: d.material_id,
-          material_other: d.material_id ? "" : label,
-        },
-        label,
-      });
+      if (d.modo_medidas === "iguales") {
+        const qty = parseInt(d.qty_slabs.replace(/\s/g, ""), 10);
+        const largo = Number(d.largo_cm.replace(",", "."));
+        const ancho = Number(d.ancho_cm.replace(",", "."));
+        if (!Number.isFinite(qty) || qty < 1 || !(largo > 0) || !(ancho > 0)) {
+          toast.error(`Línea ${i + 1}: revisá cantidad y medidas.`);
+          setActiveLineIdx(i);
+          setStep(2);
+          return;
+        }
+      } else {
+        for (const m of d.medidas) {
+          const largo = Number(m.largo_cm.replace(",", "."));
+          const ancho = Number(m.ancho_cm.replace(",", "."));
+          if (!(largo > 0) || !(ancho > 0)) {
+            toast.error(`Línea ${i + 1}: hay placas sin medida.`);
+            setActiveLineIdx(i);
+            setStep(2);
+            return;
+          }
+        }
+      }
     }
+
+    const labelLines = lines.map((d) => ({
+      draft: d,
+      label: materialLabelForLine(d),
+    }));
 
     if (isSupabaseConfigured) {
       if (!supplierId) {
         toast.error("Seleccioná un proveedor o creá uno nuevo.");
+        setStep(0);
         return;
       }
 
       const payloadLines = labelLines.map((x, idx) => {
         const draft = x.draft;
-        const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
-        const largo = Number(draft.largo_cm.replace(",", "."));
-        const ancho = Number(draft.ancho_cm.replace(",", "."));
         const ini = parseInt(draft.bulto_inicio.trim().replace(/^#/, ""), 10);
         const pu =
           draft.precio.trim() === "" ? null : Number(draft.precio.replace(",", "."));
 
+        if (draft.modo_medidas === "distintas") {
+          const medidas = draft.medidas.map((m) => ({
+            largo_cm: Number(m.largo_cm.replace(",", ".")),
+            ancho_cm: Number(m.ancho_cm.replace(",", ".")),
+          }));
+          return {
+            material_id: draft.material_id,
+            material_label: x.label,
+            qty_slabs: medidas.length,
+            bulto_numero_inicio: ini,
+            precio_unitario: pu !== null && Number.isFinite(pu) ? pu : null,
+            lote_codigo: draft.lote_codigo.trim(),
+            origen_placa: origenPlaca,
+            sort_order: idx,
+            modo_medidas: "distintas" as const,
+            medidas,
+          };
+        }
+
+        const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
         return {
           material_id: draft.material_id,
           material_label: x.label,
           qty_slabs: qty,
-          largo_cm: largo,
-          ancho_cm: ancho,
+          largo_cm: Number(draft.largo_cm.replace(",", ".")),
+          ancho_cm: Number(draft.ancho_cm.replace(",", ".")),
           bulto_numero_inicio: ini,
           precio_unitario: pu !== null && Number.isFinite(pu) ? pu : null,
           lote_codigo: draft.lote_codigo.trim(),
           origen_placa: origenPlaca,
           sort_order: idx,
+          modo_medidas: "iguales" as const,
         };
       });
 
@@ -270,7 +490,7 @@ export function CrearRemitoDialog({
           created_by: userId ?? null,
           lines: payloadLines,
         });
-        toast.success("Remito creado y stock actualizado.");
+        toast.success("Ingreso guardado. Chapas disponibles en inventario.");
         await reloadChapas();
         await refreshRemitos();
         onOpenChange(false);
@@ -278,7 +498,7 @@ export function CrearRemitoDialog({
         toast.error(
           err instanceof Error
             ? err.message
-            : "No se pudo grabar el remito (¿bultos duplicados o datos inválidos?).",
+            : "No se pudo guardar (¿bultos duplicados o datos inválidos?).",
         );
       } finally {
         setSaving(false);
@@ -289,29 +509,53 @@ export function CrearRemitoDialog({
     const nuevas: ChapaRow[] = [];
     for (const x of labelLines) {
       const draft = x.draft;
-      const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
-      const largo = Number(draft.largo_cm.replace(",", "."));
-      const ancho = Number(draft.ancho_cm.replace(",", "."));
       const ini = parseInt(draft.bulto_inicio.trim().replace(/^#/, ""), 10);
-      for (let i = 0; i < qty; i++) {
-        const bulto = `#${ini + i}`;
-        if (existingBultosLower.has(bulto.toLowerCase())) {
-          toast.error(`El bulto ${bulto} ya existe.`);
-          return;
+      if (draft.modo_medidas === "distintas") {
+        for (let i = 0; i < draft.medidas.length; i++) {
+          const m = draft.medidas[i]!;
+          const bulto = `#${ini + i}`;
+          if (existingBultosLower.has(bulto.toLowerCase())) {
+            toast.error(`El bulto ${bulto} ya existe.`);
+            return;
+          }
+          nuevas.push({
+            bulto,
+            material: x.label,
+            largoCm: Number(m.largo_cm.replace(",", ".")),
+            anchoCm: Number(m.ancho_cm.replace(",", ".")),
+            estado: "Disponible",
+            loteCodigo: draft.lote_codigo.trim(),
+            origenPlaca: origenPlaca,
+          });
         }
-        nuevas.push({
-          bulto,
-          material: x.label,
-          largoCm: largo,
-          anchoCm: ancho,
-          estado: "Disponible",
-        });
+      } else {
+        const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
+        const largo = Number(draft.largo_cm.replace(",", "."));
+        const ancho = Number(draft.ancho_cm.replace(",", "."));
+        for (let i = 0; i < qty; i++) {
+          const bulto = `#${ini + i}`;
+          if (existingBultosLower.has(bulto.toLowerCase())) {
+            toast.error(`El bulto ${bulto} ya existe.`);
+            return;
+          }
+          nuevas.push({
+            bulto,
+            material: x.label,
+            largoCm: largo,
+            anchoCm: ancho,
+            estado: "Disponible",
+            loteCodigo: draft.lote_codigo.trim(),
+            origenPlaca: origenPlaca,
+          });
+        }
       }
     }
     setChapas((prev) => [...prev, ...nuevas]);
-    toast.success("Demo: placas cargadas al inventario local (sin remito en servidor).");
+    toast.success("Demo: chapas cargadas al inventario local.");
     onOpenChange(false);
   };
+
+  const m2tot = m2Linea(activeLine);
 
   return (
     <>
@@ -324,304 +568,509 @@ export function CrearRemitoDialog({
       />
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[92vh] max-w-[min(64rem,calc(100vw-2rem))] flex-col gap-3 overflow-hidden p-4 sm:p-6">
-          <DialogHeader className="shrink-0 space-y-1 text-left">
-            <DialogTitle>Crear remito</DialogTitle>
+        <DialogContent className="flex max-h-[min(40rem,94vh)] w-full max-w-[min(28rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="shrink-0 space-y-2 border-b border-border px-4 pb-2.5 pt-4 pr-12 text-left sm:px-5">
+            <DialogTitle>Cargar chapas</DialogTitle>
+            <nav aria-label="Progreso del ingreso">
+              <ol className="flex items-center gap-1">
+                {PASOS.map((p, idx) => {
+                  const estado = idx < step ? "done" : idx === step ? "current" : "todo";
+                  return (
+                    <li key={p.kicker} className="flex min-w-0 flex-1 items-center gap-1">
+                      <div className="flex min-w-0 flex-col items-center gap-0.5">
+                        <span
+                          className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold tabular-nums",
+                            estado === "current" &&
+                              "border-primary bg-primary text-primary-foreground",
+                            estado === "done" &&
+                              "border-emerald-600 bg-emerald-600 text-white",
+                            estado === "todo" &&
+                              "border-muted-foreground/30 bg-muted/40 text-muted-foreground",
+                          )}
+                          aria-current={estado === "current" ? "step" : undefined}
+                        >
+                          {idx + 1}
+                        </span>
+                        <span
+                          className={cn(
+                            "truncate text-[10px] font-medium",
+                            estado === "current" ? "text-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {p.kicker}
+                        </span>
+                      </div>
+                      {idx < PASOS.length - 1 ? (
+                        <div
+                          className={cn(
+                            "mb-3.5 h-px min-w-[0.5rem] flex-1",
+                            idx < step ? "bg-emerald-600" : "bg-border",
+                          )}
+                          aria-hidden
+                        />
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+                Paso {step + 1} de {PASOS.length} — {PASOS[step]!.subtitle}
+                {step >= 1 && step <= 2 && lines.length > 1
+                  ? ` · Material ${activeLineIdx + 1}/${lines.length}`
+                  : ""}
+              </p>
+            </nav>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-            {loadErr ? <p className="text-xs text-destructive">{loadErr}</p> : null}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
+            {loadErr ? <p className="mb-3 text-xs text-destructive">{loadErr}</p> : null}
 
-            <div className="grid gap-3 sm:grid-cols-12">
-              <div className="space-y-1.5 sm:col-span-6">
-                <Label>N° remito — sucursal</Label>
-                <Input
-                  placeholder="Ej. 1"
-                  value={branchCode}
-                  onChange={(e) => setBranchCode(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-6">
-                <Label>N° remito — serie</Label>
-                <Input
-                  placeholder="000000"
-                  value={serialCode}
-                  onChange={(e) => setSerialCode(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-4">
-                <Label>Fecha</Label>
-                <div className="relative">
-                  <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    className="pr-10"
-                    value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
+            {step === 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Proveedor</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={supplierId || "__none__"}
+                      onValueChange={(v) => setSupplierId(v === "__none__" ? "" : v)}
+                    >
+                      <SelectTrigger className="min-w-0 flex-1">
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Seleccionar</SelectItem>
+                        {suppliers.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="h-10 w-10 shrink-0"
+                      aria-label="Nuevo proveedor"
+                      onClick={() => setProveedorDialog(true)}
+                      disabled={!isSupabaseConfigured}
+                    >
+                      <Plus className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Fecha</Label>
+                    <div className="relative">
+                      <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="date"
+                        className="pr-10"
+                        value={issueDate}
+                        onChange={(e) => setIssueDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Origen</Label>
+                    <Select
+                      value={origenPlaca}
+                      onValueChange={(v) => setOrigenPlaca(v as OrigenPlaca)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nacional">Nacional</SelectItem>
+                        <SelectItem value="importado">Importado</SelectItem>
+                        <SelectItem value="cantera">Cantera</SelectItem>
+                        <SelectItem value="otro">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>N° remito — sucursal</Label>
+                    <Input
+                      placeholder="Ej. 1"
+                      value={branchCode}
+                      onChange={(e) => setBranchCode(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>N° remito — serie</Label>
+                    <Input
+                      placeholder="000000"
+                      value={serialCode}
+                      onChange={(e) => setSerialCode(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="rem-obs">Observación (opcional)</Label>
+                  <Textarea
+                    id="rem-obs"
+                    placeholder={`Máximo ${MAX_NOTAS} caracteres`}
+                    className="min-h-[56px] resize-none"
+                    value={notes}
+                    maxLength={MAX_NOTAS}
+                    onChange={(e) => setNotes(e.target.value)}
                   />
                 </div>
               </div>
-              <div className="space-y-1.5 sm:col-span-4">
-                <Label>Origen de placa</Label>
-                <Select value={origenPlaca} onValueChange={(v) => setOrigenPlaca(v as OrigenPlaca)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nacional">Nacional</SelectItem>
-                    <SelectItem value="importado">Importado</SelectItem>
-                    <SelectItem value="cantera">Cantera</SelectItem>
-                    <SelectItem value="otro">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5 sm:col-span-4">
-                <Label>Proveedor</Label>
-                <div className="flex gap-2">
+            ) : null}
+
+            {step === 1 ? (
+              <div className="space-y-2.5">
+                <div className="space-y-1.5">
+                  <Label>Material</Label>
                   <Select
-                    value={supplierId || "__none__"}
-                    onValueChange={(v) => setSupplierId(v === "__none__" ? "" : v)}
+                    value={activeLine.material_id ? activeLine.material_id : "__otro__"}
+                    onValueChange={(v) => {
+                      if (v === "__otro__") {
+                        setActiveLine({ material_id: null });
+                        return;
+                      }
+                      const m = materiales.find((x) => x.id === v);
+                      setActiveLine({
+                        material_id: v,
+                        material_other: m?.name ?? "",
+                      });
+                    }}
                   >
-                    <SelectTrigger className="min-w-0 flex-1">
-                      <SelectValue placeholder="Seleccionar" />
+                    <SelectTrigger>
+                      <SelectValue placeholder="Elegir material…" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">Seleccionar</SelectItem>
-                      {suppliers.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
+                      {materiales.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {m.name}
                         </SelectItem>
                       ))}
+                      <SelectItem value="__otro__">Otro (escribir nombre)</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
-                    type="button"
-                    size="icon"
-                    className="h-10 w-10 shrink-0 bg-sky-600 text-white hover:bg-sky-700"
-                    aria-label="Nuevo proveedor"
-                    onClick={() => setProveedorDialog(true)}
-                    disabled={!isSupabaseConfigured}
-                  >
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    className="h-10 w-10 shrink-0 border-amber-500 text-amber-700 hover:bg-amber-50"
-                    aria-label="Editar proveedor"
-                    disabled
-                    title="Disponible en una siguiente versión"
-                  >
-                    <PenSquare className="h-4 w-4" />
-                  </Button>
+                  {!activeLine.material_id ? (
+                    <Input
+                      placeholder="Nombre del material"
+                      value={activeLine.material_other}
+                      onChange={(e) => setActiveLine({ material_other: e.target.value })}
+                    />
+                  ) : null}
                 </div>
-                {!isSupabaseConfigured ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Proveedores disponibles cuando Supabase esté configurado.
-                  </p>
-                ) : null}
+
+                <div className="space-y-1.5">
+                  <Label>Modo de medidas</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={activeLine.modo_medidas === "iguales" ? "default" : "outline"}
+                      className="h-auto flex-col items-start gap-0 px-3 py-2 text-left"
+                      onClick={() => setActiveLine({ modo_medidas: "iguales" })}
+                    >
+                      <span className="text-sm font-medium">Iguales</span>
+                      <span className="text-[10px] font-normal opacity-80">
+                        China / sintético
+                      </span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={activeLine.modo_medidas === "distintas" ? "default" : "outline"}
+                      className="h-auto flex-col items-start gap-0 px-3 py-2 text-left"
+                      onClick={() => setActiveLine({ modo_medidas: "distintas" })}
+                    >
+                      <span className="text-sm font-medium">Distintas</span>
+                      <span className="text-[10px] font-normal opacity-80">
+                        Cada placa su medida
+                      </span>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label>Lote *</Label>
+                    <Input
+                      placeholder="Código de lote"
+                      value={activeLine.lote_codigo}
+                      onChange={(e) => setActiveLine({ lote_codigo: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>N° bulto inicial</Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="9001"
+                      value={activeLine.bulto_inicio}
+                      onChange={(e) => setActiveLine({ bulto_inicio: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Precio unitario (opcional)</Label>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={activeLine.precio}
+                    onChange={(e) => setActiveLine({ precio: e.target.value })}
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="rem-obs">{`Observación (${notes.length}/${MAX_NOTAS})`}</Label>
-              <Textarea
-                id="rem-obs"
-                placeholder="Observaciones — máximo 200 caracteres"
-                className="min-h-[72px] resize-none"
-                value={notes}
-                maxLength={MAX_NOTAS}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
+            {step === 2 ? (
+              <div className="flex h-full min-h-0 flex-col gap-3">
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {materialLabelForLine(activeLine) || "Material"}
+                  </span>
+                  {" · "}
+                  lote {activeLine.lote_codigo || "—"}
+                  {" · "}
+                  {activeLine.modo_medidas === "iguales" ? "medidas iguales" : "medidas distintas"}
+                </div>
 
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <Table className="min-w-[760px] text-xs">
-                <TableHeader>
-                  <TableRow className="bg-muted/45 hover:bg-muted/45 [&_th]:py-2">
-                    <TableHead className="min-w-[200px]">Material</TableHead>
-                    <TableHead className="w-16 whitespace-nowrap">Cant.</TableHead>
-                    <TableHead className="w-24 whitespace-nowrap">Largo cm</TableHead>
-                    <TableHead className="w-24 whitespace-nowrap">Ancho cm</TableHead>
-                    <TableHead className="w-28 whitespace-nowrap">Precio u.</TableHead>
-                    <TableHead className="w-28 whitespace-nowrap">N° inicial</TableHead>
-                    <TableHead className="w-28 whitespace-nowrap" title="Código de lote del proveedor. Obligatorio. No mezclar lotes en una misma OT.">
-                      Lote *
-                    </TableHead>
-                    <TableHead className="w-24 whitespace-nowrap text-right">m² total</TableHead>
-                    <TableHead className="w-[88px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((ln) => {
-                    const qty = parseInt(ln.qty_slabs.replace(/\s/g, ""), 10) || 0;
-                    const largo = Number(ln.largo_cm.replace(",", "."));
-                    const ancho = Number(ln.ancho_cm.replace(",", "."));
-                    const m2tot =
-                      Number.isFinite(largo) && Number.isFinite(ancho) && Number.isFinite(qty)
-                        ? m2Teoricos(qty, largo, ancho)
-                        : 0;
-
-                    const label = ln.material_id
-                      ? materiales.find((x) => x.id === ln.material_id)?.name || ""
-                      : ln.material_other;
-
-                    return (
-                      <TableRow key={ln.key} className="align-top">
-                        <TableCell className="py-2">
-                          <div className="flex flex-col gap-1">
-                            <Select
-                              value={ln.material_id ? ln.material_id : "__otro__"}
-                              onValueChange={(v) => {
-                                if (v === "__otro__") {
-                                  setLine(ln.key, { material_id: null });
-                                  return;
-                                }
-                                const m = materiales.find((x) => x.id === v);
-                                setLine(ln.key, {
-                                  material_id: v,
-                                  material_other: m?.name ?? "",
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-[11px]">
-                                <UserRound className="mr-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                                <SelectValue placeholder="Material" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {materiales.map((m) => (
-                                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                                    {m.name}
-                                  </SelectItem>
-                                ))}
-                                <SelectItem value="__otro__" className="text-xs">
-                                  Otro (texto libre)
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {!ln.material_id ? (
+                {activeLine.modo_medidas === "iguales" ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1.5">
+                        <Label>Cantidad</Label>
+                        <Input
+                          inputMode="numeric"
+                          value={activeLine.qty_slabs}
+                          onChange={(e) => setActiveLine({ qty_slabs: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Largo (cm)</Label>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="320"
+                          value={activeLine.largo_cm}
+                          onChange={(e) => setActiveLine({ largo_cm: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Ancho (cm)</Label>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="160"
+                          value={activeLine.ancho_cm}
+                          onChange={(e) => setActiveLine({ ancho_cm: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground">m² totales</Label>
+                      <p className="text-sm font-semibold tabular-nums">
+                        {m2tot > 0 ? formatM2(m2tot) : "—"}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex min-h-0 flex-1 flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <Label>Medida por placa (cm)</Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Centímetros. Ej.: 320 × 160 → 5,12 m²
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {activeLine.medidas.length} placa
+                        {activeLine.medidas.length === 1 ? "" : "s"}
+                        {m2tot > 0 ? ` · ${formatM2(m2tot)} m²` : ""}
+                      </span>
+                    </div>
+                    <div className="min-h-0 max-h-[14rem] space-y-2 overflow-y-auto pr-0.5">
+                      {activeLine.medidas.map((m, mi) => {
+                        const largo = Number(m.largo_cm.replace(",", "."));
+                        const ancho = Number(m.ancho_cm.replace(",", "."));
+                        const m2Placa =
+                          Number.isFinite(largo) &&
+                          largo > 0 &&
+                          Number.isFinite(ancho) &&
+                          ancho > 0
+                            ? (largo / 100) * (ancho / 100)
+                            : 0;
+                        return (
+                        <div key={m.key} className="flex items-end gap-2">
+                          <span className="mb-2 w-5 shrink-0 text-xs text-muted-foreground tabular-nums">
+                            {mi + 1}.
+                          </span>
+                          <div className="grid min-w-0 flex-1 grid-cols-[1fr_1fr_auto] gap-2">
+                            <div className="space-y-1">
+                              {mi === 0 ? <Label className="text-xs">Largo (cm)</Label> : null}
                               <Input
-                                className="h-8 text-xs"
-                                placeholder="Nombre material"
-                                value={ln.material_other}
+                                inputMode="decimal"
+                                placeholder="320"
+                                value={m.largo_cm}
                                 onChange={(e) =>
-                                  setLine(ln.key, { material_other: e.target.value })
+                                  setMedida(m.key, { largo_cm: e.target.value })
                                 }
                               />
-                            ) : null}
+                            </div>
+                            <div className="space-y-1">
+                              {mi === 0 ? <Label className="text-xs">Ancho (cm)</Label> : null}
+                              <Input
+                                inputMode="decimal"
+                                placeholder="160"
+                                value={m.ancho_cm}
+                                onChange={(e) =>
+                                  setMedida(m.key, { ancho_cm: e.target.value })
+                                }
+                              />
+                            </div>
+                            <div className="mb-2 w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                              {m2Placa > 0 ? `${formatM2(m2Placa)} m²` : "—"}
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
-                            className="h-8 px-2 text-xs tabular-nums"
-                            inputMode="numeric"
-                            value={ln.qty_slabs}
-                            onChange={(e) => setLine(ln.key, { qty_slabs: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
-                            className="h-8 px-2 text-xs tabular-nums"
-                            inputMode="decimal"
-                            placeholder="320"
-                            value={ln.largo_cm}
-                            onChange={(e) => setLine(ln.key, { largo_cm: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
-                            className="h-8 px-2 text-xs tabular-nums"
-                            inputMode="decimal"
-                            placeholder="160"
-                            value={ln.ancho_cm}
-                            onChange={(e) => setLine(ln.key, { ancho_cm: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
-                            className="h-8 px-2 text-xs tabular-nums"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={ln.precio}
-                            onChange={(e) => setLine(ln.key, { precio: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
-                            className="h-8 px-2 text-xs tabular-nums"
-                            inputMode="numeric"
-                            placeholder="9001"
-                            value={ln.bulto_inicio}
-                            onChange={(e) => setLine(ln.key, { bulto_inicio: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <Input
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="mb-0.5 h-10 w-10 shrink-0 text-destructive"
+                            disabled={activeLine.medidas.length <= 1}
+                            onClick={() => removeMedida(m.key)}
+                            title="Quitar placa"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-1 border-dashed"
+                      onClick={addMedida}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar otra placa
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {step === 3 ? (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                  <p className="font-medium text-foreground">
+                    {supplierName ?? (isSupabaseConfigured ? "Sin proveedor" : "Demo local")}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {issueDate}
+                    {branchCode || serialCode
+                      ? ` · ${branchCode || "—"}-${serialCode || "—"}`
+                      : ""}
+                    {" · "}
+                    {etiquetaOrigen(origenPlaca)}
+                  </p>
+                  {notes ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Obs.: {notes}</p>
+                  ) : null}
+                  <p className="mt-2 text-xs font-medium text-foreground">
+                    {totalPlacas} placa{totalPlacas === 1 ? "" : "s"} · {formatM2(totalM2)} m²
+                  </p>
+                </div>
+
+                <ul className="space-y-2">
+                  {lines.map((ln, idx) => {
+                    const label = materialLabelForLine(ln) || `Material ${idx + 1}`;
+                    const q = qtyLinea(ln);
+                    const m2 = m2Linea(ln);
+                    return (
+                      <li
+                        key={ln.key}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{label}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                            {ln.modo_medidas === "distintas"
+                              ? `${q} chapas · medidas variables`
+                              : `${q} × ${ln.largo_cm} × ${ln.ancho_cm} cm`}
+                            {m2 > 0 ? ` → ${formatM2(m2)} m²` : ""}
+                            {ln.lote_codigo ? ` · lote ${ln.lote_codigo}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-0.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
                             className="h-8 px-2 text-xs"
-                            placeholder="Obligatorio"
-                            required
-                            title="Código de lote del proveedor (obligatorio)"
-                            value={ln.lote_codigo}
-                            onChange={(e) => setLine(ln.key, { lote_codigo: e.target.value })}
-                          />
-                        </TableCell>
-                        <TableCell className="py-2 text-right font-semibold tabular-nums text-muted-foreground">
-                          {label
-                            ? m2tot.toLocaleString("es-AR", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 3,
-                              })
-                            : "–"}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <div className="flex flex-col items-stretch gap-1">
+                            onClick={() => editLine(idx)}
+                          >
+                            Editar
+                          </Button>
+                          {lines.length > 1 ? (
                             <Button
                               type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 border-destructive/40 px-2 text-destructive"
-                              onClick={() => removeLine(ln.key)}
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => removeLineAt(idx)}
+                              title="Quitar"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-sky-700"
-                              onClick={() => duplicateLine(ln)}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                          ) : null}
+                        </div>
+                      </li>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </div>
+                </ul>
 
-            <div className="flex justify-center">
-              <Button
-                type="button"
-                className="h-9 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={addLine}
-              >
-                <Plus className="h-4 w-4" />
-                Agregar ítem
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1 border-dashed"
+                  onClick={startAnotherLine}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar otro material
+                </Button>
+              </div>
+            ) : null}
           </div>
 
-          <DialogFooter className="shrink-0 gap-2 border-t border-border pt-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cerrar
+          <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:flex-row sm:justify-between sm:space-x-0 sm:px-5">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => (step === 0 ? onOpenChange(false) : goBack())}
+              disabled={saving}
+            >
+              {step === 0 ? (
+                "Cancelar"
+              ) : (
+                <>
+                  <ChevronLeft className="h-4 w-4" />
+                  Atrás
+                </>
+              )}
             </Button>
-            <Button type="button" onClick={handleGrabar} disabled={saving}>
-              Grabar
-            </Button>
+            {step < PASOS.length - 1 ? (
+              <Button type="button" onClick={goNext}>
+                Siguiente
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button type="button" onClick={() => void handleGrabar()} disabled={saving}>
+                {saving ? "Guardando…" : "Guardar ingreso"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

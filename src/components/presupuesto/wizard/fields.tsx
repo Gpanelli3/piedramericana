@@ -329,6 +329,115 @@ export function PickMaterial({
   );
 }
 
+export type ChapaPickOption = {
+  id: string;
+  bulto: string;
+  material_label: string;
+  largo_cm: number;
+  ancho_cm: number;
+  lote_codigo?: string | null;
+};
+
+/** Señala una chapa Disponible sin reservarla (la reserva ocurre al señar). */
+export function PickChapaSugerida({
+  chapas,
+  valueId,
+  onChange,
+  loading,
+  disabled,
+  materialNombre,
+}: {
+  chapas: ChapaPickOption[];
+  valueId: string | null;
+  onChange: (chapa: ChapaPickOption | null) => void;
+  loading?: boolean;
+  disabled?: boolean;
+  materialNombre?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = chapas.find((c) => c.id === valueId);
+  const m2 = (l: number, a: number) => ((l / 100) * (a / 100)).toFixed(2);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled || loading || !materialNombre}
+          className="h-9 w-full justify-between px-3 text-sm font-normal"
+        >
+          <span className="truncate">
+            {loading
+              ? "Cargando chapas…"
+              : !materialNombre
+                ? "Elegí material primero…"
+                : selected
+                  ? `${selected.bulto} · ${selected.largo_cm}×${selected.ancho_cm} cm (${m2(selected.largo_cm, selected.ancho_cm)} m²)`
+                  : chapas.length === 0
+                    ? "Sin chapas disponibles"
+                    : "Señalar chapa (opcional)…"}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(100vw-2rem,28rem)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar bulto o lote…" />
+          <CommandList>
+            <CommandEmpty>
+              {chapas.length === 0
+                ? "No hay chapas Disponibles de este material."
+                : "Sin coincidencias."}
+            </CommandEmpty>
+            <CommandGroup>
+              {valueId ? (
+                <CommandItem
+                  value="__clear__"
+                  onSelect={() => {
+                    onChange(null);
+                    setOpen(false);
+                  }}
+                >
+                  Quitar chapa señalada
+                </CommandItem>
+              ) : null}
+              {chapas.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={`${c.bulto} ${c.lote_codigo ?? ""} ${c.material_label}`}
+                  onSelect={() => {
+                    onChange(c);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 shrink-0",
+                      valueId === c.id ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="flex flex-col gap-0">
+                    <span className="font-medium">
+                      {c.bulto} · {c.largo_cm}×{c.ancho_cm} cm
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {m2(c.largo_cm, c.ancho_cm)} m²
+                      {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""}
+                    </span>
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function PickArticulo({
   value,
   onChange,
@@ -360,18 +469,18 @@ export function PickArticulo({
               !selected && "text-muted-foreground",
             )}
           >
-            {selected?.descripcion ?? "Seleccionar"}
+            {selected?.descripcion ?? "Sub-ítem…"}
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[min(100vw-2rem,28rem)] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Buscar artículo…" />
+          <CommandInput placeholder="Buscar sub-ítem…" />
           <CommandList>
             <CommandEmpty>
               {articulos.length === 0
-                ? "Cargando artículos…"
+                ? "Cargando sub-ítems…"
                 : "Sin coincidencias."}
             </CommandEmpty>
             <CommandGroup>

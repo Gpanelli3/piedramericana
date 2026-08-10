@@ -2,6 +2,12 @@ import type { Database } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
+export type ModoMedidasRemito = "iguales" | "distintas";
+
+export type RemitoMedidaChapa = {
+  largo_cm: number;
+  ancho_cm: number;
+};
 
 export type ChapaRow = {
   id?: string;
@@ -105,13 +111,18 @@ export type RemitoLineInput = {
   material_id?: string | null;
   material_label: string;
   qty_slabs: number;
-  largo_cm: number;
-  ancho_cm: number;
+  /** Requerido si modo_medidas = iguales */
+  largo_cm?: number | null;
+  /** Requerido si modo_medidas = iguales */
+  ancho_cm?: number | null;
   bulto_numero_inicio: number;
   precio_unitario?: number | null;
   lote_codigo: string;
   origen_placa?: OrigenPlaca;
   sort_order?: number;
+  modo_medidas?: ModoMedidasRemito;
+  /** Requerido si modo_medidas = distintas; length === qty_slabs */
+  medidas?: RemitoMedidaChapa[];
 };
 
 export type CreateRemitoPayload = {
@@ -125,13 +136,43 @@ export type CreateRemitoPayload = {
   lines: RemitoLineInput[];
 };
 
+/** `remitos.created_by` FK → `usuarios.id` (no auth.users). Si no hay fila, null. */
+async function resolveUsuariosCreatedBy(userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from("usuarios")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data?.id) return null;
+  return data.id;
+}
+
 export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload): Promise<string> {
   if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
   for (const l of payload.lines) {
     if (!l.lote_codigo?.trim()) {
       throw new Error("lote_codigo es obligatorio en cada línea de remito");
     }
+    const modo: ModoMedidasRemito = l.modo_medidas ?? "iguales";
+    if (modo === "iguales") {
+      if (!(Number(l.largo_cm) > 0) || !(Number(l.ancho_cm) > 0)) {
+        throw new Error("largo_cm y ancho_cm son obligatorios en modo medidas iguales");
+      }
+    } else {
+      if (!l.medidas?.length || l.medidas.length !== l.qty_slabs) {
+        throw new Error("En modo medidas distintas, medidas[] debe coincidir con qty_slabs");
+      }
+      for (const m of l.medidas) {
+        if (!(m.largo_cm > 0) || !(m.ancho_cm > 0)) {
+          throw new Error("Cada placa en medidas distintas necesita largo y ancho > 0");
+        }
+      }
+    }
   }
+
+  const createdBy = await resolveUsuariosCreatedBy(payload.created_by);
+
   const body = {
     supplier_id: payload.supplier_id,
     branch_code: payload.branch_code?.trim() ?? "",
@@ -139,19 +180,24 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
     issue_date: payload.issue_date,
     notes: payload.notes?.slice(0, 200) ?? null,
     origen_placa: payload.origen_placa,
-    created_by: payload.created_by ?? null,
-    lines: payload.lines.map((l, i) => ({
-      material_id: l.material_id ?? null,
-      material_label: l.material_label.trim(),
-      qty_slabs: l.qty_slabs,
-      largo_cm: l.largo_cm,
-      ancho_cm: l.ancho_cm,
-      bulto_numero_inicio: l.bulto_numero_inicio,
-      precio_unitario: l.precio_unitario ?? null,
-      lote_codigo: l.lote_codigo.trim(),
-      origen_placa: l.origen_placa ?? payload.origen_placa,
-      sort_order: l.sort_order ?? i,
-    })),
+    created_by: createdBy,
+    lines: payload.lines.map((l, i) => {
+      const modo: ModoMedidasRemito = l.modo_medidas ?? "iguales";
+      return {
+        material_id: l.material_id ?? null,
+        material_label: l.material_label.trim(),
+        qty_slabs: l.qty_slabs,
+        largo_cm: modo === "iguales" ? l.largo_cm : null,
+        ancho_cm: modo === "iguales" ? l.ancho_cm : null,
+        bulto_numero_inicio: l.bulto_numero_inicio,
+        precio_unitario: l.precio_unitario ?? null,
+        lote_codigo: l.lote_codigo.trim(),
+        origen_placa: l.origen_placa ?? payload.origen_placa,
+        sort_order: l.sort_order ?? i,
+        modo_medidas: modo,
+        ...(modo === "distintas" && l.medidas ? { medidas: l.medidas } : {}),
+      };
+    }),
   };
 
   const { data, error } = await supabase.rpc("create_remito_with_slabs", {
@@ -196,12 +242,74 @@ export type RemitoListRow = RemitoRow & {
   total_m2: number;
 };
 
+type RemitoLineAgg = {
+  qty_slabs: number;
+  largo_cm: number | null;
+  ancho_cm: number | null;
+  m2_total?: number | null;
+  modo_medidas?: ModoMedidasRemito | null;
+};
+
+function mapRemitosListRows(remitos: unknown[]): RemitoListRow[] {
+  return remitos.map((raw) => {
+    const r = raw as {
+      remito_lines?: RemitoLineAgg[] | null;
+      suppliers?: { name: string | null } | { name: string | null }[] | null;
+    } & Omit<RemitoListRow, "supplier_name" | "total_slabs" | "total_m2">;
+    const lines = r.remito_lines ?? [];
+    let total_slabs = 0;
+    let total_m2 = 0;
+    for (const l of lines) {
+      total_slabs += l.qty_slabs;
+      if (l.m2_total != null && Number.isFinite(Number(l.m2_total))) {
+        total_m2 += Number(l.m2_total);
+      } else if (l.largo_cm != null && l.ancho_cm != null) {
+        const m2piece = (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100);
+        total_m2 += m2piece * l.qty_slabs;
+      }
+    }
+    const sn = r.suppliers;
+    const supplier_name = Array.isArray(sn) ? (sn[0]?.name ?? null) : (sn?.name ?? null);
+    return {
+      ...r,
+      supplier_name,
+      total_slabs,
+      total_m2,
+    };
+  });
+}
+
 export async function fetchRemitosList(): Promise<RemitoListRow[]> {
   if (!isSupabaseConfigured) return [];
+  const selectBase = `
+      id,
+      supplier_id,
+      branch_code,
+      serial_code,
+      issue_date,
+      notes,
+      origen_placa,
+      created_by,
+      created_at,
+      suppliers ( name ),
+      remito_lines (
+        qty_slabs,
+        largo_cm,
+        ancho_cm,
+        m2_total,
+        modo_medidas
+      )
+    `;
   const { data: remitos, error } = await supabase
     .from("remitos")
-    .select(
-      `
+    .select(selectBase)
+    .order("created_at", { ascending: false });
+  if (error) {
+    // Migración modo_medidas aún no aplicada
+    const fallback = await supabase
+      .from("remitos")
+      .select(
+        `
       id,
       supplier_id,
       branch_code,
@@ -218,39 +326,13 @@ export async function fetchRemitosList(): Promise<RemitoListRow[]> {
         ancho_cm
       )
     `,
-    )
-    .order("created_at", { ascending: false });
-  if (error) throw error;
+      )
+      .order("created_at", { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return mapRemitosListRows(fallback.data ?? []);
+  }
 
-  return (remitos ?? []).map((r) => {
-    const lines =
-      (
-        r as unknown as {
-          remito_lines: { qty_slabs: number; largo_cm: number; ancho_cm: number }[] | null;
-        }
-      ).remito_lines ?? [];
-    let total_slabs = 0;
-    let total_m2 = 0;
-    for (const l of lines) {
-      total_slabs += l.qty_slabs;
-      const m2piece = (Number(l.largo_cm) / 100) * (Number(l.ancho_cm) / 100);
-      total_m2 += m2piece * l.qty_slabs;
-    }
-    const sn = (
-      r as unknown as {
-        suppliers: { name: string | null } | { name: string | null }[] | null;
-      }
-    ).suppliers;
-    const supplier_name = Array.isArray(sn) ? (sn[0]?.name ?? null) : (sn?.name ?? null);
-
-    const base = r as unknown as Omit<RemitoListRow, "supplier_name" | "total_slabs" | "total_m2">;
-    return {
-      ...base,
-      supplier_name,
-      total_slabs,
-      total_m2,
-    };
-  }) as RemitoListRow[];
+  return mapRemitosListRows(remitos ?? []);
 }
 
 export async function fetchRemitoLines(remitoId: string): Promise<RemitoLineDetail[]> {
@@ -262,6 +344,73 @@ export async function fetchRemitoLines(remitoId: string): Promise<RemitoLineDeta
     .order("sort_order", { ascending: true });
   if (error) throw error;
   return (data ?? []) as RemitoLineDetail[];
+}
+
+export type MaterialStockAgregado = {
+  materialLabel: string;
+  planchasDisponibles: number;
+  planchasReservadas: number;
+  planchasTotalActivas: number;
+  m2Disponibles: number;
+  m2Reservados: number;
+  retazosCount: number;
+};
+
+function m2DeChapa(largoCm: number, anchoCm: number): number {
+  return (largoCm / 100) * (anchoCm / 100);
+}
+
+/** Agrupa chapas locales por material (vista Stock / pickers). */
+export function aggregateChapasPorMaterial(
+  chapas: ChapaRow[],
+  scrapsByLabel?: Map<string, number>,
+): MaterialStockAgregado[] {
+  const map = new Map<string, MaterialStockAgregado>();
+  for (const c of chapas) {
+    const key = c.material.trim() || "Sin material";
+    let row = map.get(key);
+    if (!row) {
+      row = {
+        materialLabel: key,
+        planchasDisponibles: 0,
+        planchasReservadas: 0,
+        planchasTotalActivas: 0,
+        m2Disponibles: 0,
+        m2Reservados: 0,
+        retazosCount: scrapsByLabel?.get(key) ?? 0,
+      };
+      map.set(key, row);
+    }
+    const m2 = m2DeChapa(c.largoCm, c.anchoCm);
+    if (c.estado === "Disponible") {
+      row.planchasDisponibles += 1;
+      row.planchasTotalActivas += 1;
+      row.m2Disponibles += m2;
+    } else if (c.estado === "Reservada") {
+      row.planchasReservadas += 1;
+      row.planchasTotalActivas += 1;
+      row.m2Reservados += m2;
+    }
+  }
+  return [...map.values()].sort((a, b) =>
+    a.materialLabel.localeCompare(b.materialLabel, "es"),
+  );
+}
+
+export async function fetchStockAgregadoPorMaterial(): Promise<MaterialStockAgregado[]> {
+  const chapas = await fetchInventorySlabs();
+  let scrapsByLabel = new Map<string, number>();
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from("stock_scraps").select("material_label");
+    if (!error && data) {
+      scrapsByLabel = new Map<string, number>();
+      for (const s of data) {
+        const k = (s.material_label ?? "").trim() || "Sin material";
+        scrapsByLabel.set(k, (scrapsByLabel.get(k) ?? 0) + 1);
+      }
+    }
+  }
+  return aggregateChapasPorMaterial(chapas, scrapsByLabel);
 }
 
 export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow[]> {
