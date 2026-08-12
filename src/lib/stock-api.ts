@@ -13,13 +13,16 @@ export type ChapaRow = {
   id?: string;
   bulto: string;
   material: string;
+  materialId?: string | null;
   largoCm: number;
   anchoCm: number;
+  espesorCm?: number | null;
   estado: "Disponible" | "Reservada" | "Usada" | "Baja";
   loteCodigo?: string | null;
   otReservaId?: string | null;
   motivoEstado?: string | null;
   origenPlaca?: OrigenPlaca | null;
+  chapaOrigenId?: string | null;
 };
 
 export type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
@@ -44,25 +47,31 @@ export function slabRowToChapa(row: {
   id: string;
   bulto: string;
   material_label: string;
+  material_id?: string | null;
   largo_cm: number;
   ancho_cm: number;
+  espesor_cm?: number | null;
   estado: ChapaRow["estado"];
   lote_codigo?: string | null;
   ot_reserva_id?: string | null;
   motivo_estado?: string | null;
   origen_placa?: OrigenPlaca | null;
+  chapa_origen_id?: string | null;
 }): ChapaRow {
   return {
     id: row.id,
     bulto: row.bulto,
     material: row.material_label,
+    materialId: row.material_id ?? null,
     largoCm: Number(row.largo_cm),
     anchoCm: Number(row.ancho_cm),
+    espesorCm: row.espesor_cm != null ? Number(row.espesor_cm) : null,
     estado: row.estado,
     loteCodigo: row.lote_codigo ?? null,
     otReservaId: row.ot_reserva_id ?? null,
     motivoEstado: row.motivo_estado ?? null,
     origenPlaca: row.origen_placa ?? null,
+    chapaOrigenId: row.chapa_origen_id ?? null,
   };
 }
 
@@ -71,22 +80,50 @@ export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
   const { data, error } = await supabase
     .from("chapas_inventario")
     .select(
-      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,created_at",
+      "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
     )
     .order("created_at", { ascending: false });
-  if (error) throw error;
+  if (error) {
+    // Columna espesor_cm aún no aplicada
+    const fallback = await supabase
+      .from("chapas_inventario")
+      .select(
+        "id,bulto,material_id,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
+      )
+      .order("created_at", { ascending: false });
+    if (fallback.error) throw fallback.error;
+    return (fallback.data ?? []).map((r) =>
+      slabRowToChapa({
+        id: r.id,
+        bulto: r.bulto,
+        material_label: r.material_label,
+        material_id: r.material_id,
+        largo_cm: Number(r.largo_cm),
+        ancho_cm: Number(r.ancho_cm),
+        estado: r.estado as ChapaRow["estado"],
+        lote_codigo: r.lote_codigo,
+        ot_reserva_id: r.ot_reserva_id,
+        motivo_estado: r.motivo_estado,
+        origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
+        chapa_origen_id: r.chapa_origen_id ?? null,
+      }),
+    );
+  }
   return (data ?? []).map((r) =>
     slabRowToChapa({
       id: r.id,
       bulto: r.bulto,
       material_label: r.material_label,
+      material_id: r.material_id,
       largo_cm: Number(r.largo_cm),
       ancho_cm: Number(r.ancho_cm),
+      espesor_cm: (r as { espesor_cm?: number | null }).espesor_cm ?? null,
       estado: r.estado as ChapaRow["estado"],
       lote_codigo: r.lote_codigo,
       ot_reserva_id: r.ot_reserva_id,
       motivo_estado: r.motivo_estado,
       origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
+      chapa_origen_id: r.chapa_origen_id ?? null,
     }),
   );
 }
@@ -209,7 +246,17 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
 
 export type MaterialOption = Pick<
   Database["public"]["Tables"]["materials"]["Row"],
-  "id" | "name" | "unit" | "material_kind" | "peso_por_m2_kg" | "bulk_stock_kg" | "stock_qty"
+  | "id"
+  | "name"
+  | "unit"
+  | "material_kind"
+  | "peso_por_m2_kg"
+  | "bulk_stock_kg"
+  | "stock_qty"
+  | "familia"
+  | "codigo"
+  | "costo_usd"
+  | "espesor_mm"
 >;
 
 const DEFAULT_MAT_OPT = (
@@ -220,20 +267,30 @@ const DEFAULT_MAT_OPT = (
   peso_por_m2_kg: null,
   bulk_stock_kg: 0,
   stock_qty: 0,
+  familia: null,
+  codigo: null,
+  costo_usd: null,
+  espesor_mm: null,
 });
 
 export async function fetchMaterialsForStock(): Promise<MaterialOption[]> {
   if (!isSupabaseConfigured) return [];
   const ext = await supabase
     .from("materials")
-    .select("id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg,stock_qty")
+    .select(
+      "id,name,unit,material_kind,peso_por_m2_kg,bulk_stock_kg,stock_qty,familia,codigo,costo_usd,espesor_mm",
+    )
     .order("name");
   if (ext.error) {
     const basic = await supabase.from("materials").select("id,name,unit").order("name");
     if (basic.error) throw basic.error;
     return (basic.data ?? []).map((r) => DEFAULT_MAT_OPT(r as { id: string; name: string; unit: string }));
   }
-  return (ext.data ?? []) as MaterialOption[];
+  return (ext.data ?? []).map((r) => ({
+    ...(r as MaterialOption),
+    costo_usd: r.costo_usd != null ? Number(r.costo_usd) : null,
+    espesor_mm: r.espesor_mm != null ? Number(r.espesor_mm) : null,
+  }));
 }
 
 export type RemitoListRow = RemitoRow & {
@@ -348,69 +405,216 @@ export async function fetchRemitoLines(remitoId: string): Promise<RemitoLineDeta
 
 export type MaterialStockAgregado = {
   materialLabel: string;
+  materialId: string | null;
+  familia: string | null;
+  codigo: string | null;
+  costoUsdUnit: number | null;
   planchasDisponibles: number;
   planchasReservadas: number;
   planchasTotalActivas: number;
   m2Disponibles: number;
   m2Reservados: number;
+  m2Retazo: number;
   retazosCount: number;
+  costoUsdTotal: number | null;
 };
 
 function m2DeChapa(largoCm: number, anchoCm: number): number {
   return (largoCm / 100) * (anchoCm / 100);
 }
 
+export type MaterialCatalogLookup = {
+  id: string;
+  name: string;
+  familia?: string | null;
+  codigo?: string | null;
+  costo_usd?: number | null;
+};
+
 /** Agrupa chapas locales por material (vista Stock / pickers). */
 export function aggregateChapasPorMaterial(
   chapas: ChapaRow[],
-  scrapsByLabel?: Map<string, number>,
+  catalog?: MaterialCatalogLookup[],
 ): MaterialStockAgregado[] {
+  const byId = new Map((catalog ?? []).map((m) => [m.id, m]));
+  const byName = new Map(
+    (catalog ?? []).map((m) => [m.name.trim().toLowerCase(), m]),
+  );
+
   const map = new Map<string, MaterialStockAgregado>();
   for (const c of chapas) {
     const key = c.material.trim() || "Sin material";
     let row = map.get(key);
     if (!row) {
+      const meta =
+        (c.materialId ? byId.get(c.materialId) : undefined) ??
+        byName.get(key.toLowerCase());
+      const costoUnit =
+        meta?.costo_usd != null && Number.isFinite(Number(meta.costo_usd))
+          ? Number(meta.costo_usd)
+          : null;
       row = {
         materialLabel: key,
+        materialId: meta?.id ?? c.materialId ?? null,
+        familia: meta?.familia?.trim() || null,
+        codigo: meta?.codigo?.trim() || null,
+        costoUsdUnit: costoUnit,
         planchasDisponibles: 0,
         planchasReservadas: 0,
         planchasTotalActivas: 0,
         m2Disponibles: 0,
         m2Reservados: 0,
-        retazosCount: scrapsByLabel?.get(key) ?? 0,
+        m2Retazo: 0,
+        retazosCount: 0,
+        costoUsdTotal: null,
       };
       map.set(key, row);
     }
     const m2 = m2DeChapa(c.largoCm, c.anchoCm);
+    const esRetazo = Boolean(c.chapaOrigenId);
     if (c.estado === "Disponible") {
       row.planchasDisponibles += 1;
       row.planchasTotalActivas += 1;
       row.m2Disponibles += m2;
+      if (esRetazo) {
+        row.retazosCount += 1;
+        row.m2Retazo += m2;
+      }
     } else if (c.estado === "Reservada") {
       row.planchasReservadas += 1;
       row.planchasTotalActivas += 1;
       row.m2Reservados += m2;
     }
   }
+
+  for (const row of map.values()) {
+    row.costoUsdTotal =
+      row.costoUsdUnit != null ? row.costoUsdUnit * row.m2Disponibles : null;
+  }
+
   return [...map.values()].sort((a, b) =>
     a.materialLabel.localeCompare(b.materialLabel, "es"),
   );
 }
 
 export async function fetchStockAgregadoPorMaterial(): Promise<MaterialStockAgregado[]> {
-  const chapas = await fetchInventorySlabs();
-  let scrapsByLabel = new Map<string, number>();
-  if (isSupabaseConfigured) {
-    const { data, error } = await supabase.from("stock_scraps").select("material_label");
-    if (!error && data) {
-      scrapsByLabel = new Map<string, number>();
-      for (const s of data) {
-        const k = (s.material_label ?? "").trim() || "Sin material";
-        scrapsByLabel.set(k, (scrapsByLabel.get(k) ?? 0) + 1);
-      }
-    }
+  const [chapas, materials] = await Promise.all([
+    fetchInventorySlabs(),
+    fetchMaterialsForStock(),
+  ]);
+  return aggregateChapasPorMaterial(chapas, materials);
+}
+
+export type CreateManualSlabsPayload = {
+  material_id: string;
+  material_label?: string;
+  modo_medidas?: "iguales" | "distintas";
+  /** Modo iguales */
+  qty_slabs?: number;
+  largo_cm?: number;
+  ancho_cm?: number;
+  espesor_cm?: number | null;
+  /** Modo distintas: una fila por plancha */
+  medidas?: Array<{
+    largo_cm: number;
+    ancho_cm: number;
+    espesor_cm?: number | null;
+  }>;
+  lote_codigo?: string | null;
+  costo_usd?: number | null;
+  origen_placa?: OrigenPlaca;
+  notes?: string | null;
+  created_by?: string | null;
+};
+
+export async function createManualSlabs(payload: CreateManualSlabsPayload): Promise<number> {
+  if (!isSupabaseConfigured) {
+    throw new Error("Supabase no está configurado");
   }
-  return aggregateChapasPorMaterial(chapas, scrapsByLabel);
+  const modo = payload.modo_medidas ?? "iguales";
+  const body =
+    modo === "distintas"
+      ? {
+          material_id: payload.material_id,
+          material_label: payload.material_label ?? "",
+          modo_medidas: "distintas",
+          medidas: (payload.medidas ?? []).map((m) => ({
+            largo_cm: m.largo_cm,
+            ancho_cm: m.ancho_cm,
+            espesor_cm: m.espesor_cm ?? null,
+          })),
+          lote_codigo: payload.lote_codigo ?? null,
+          costo_usd: payload.costo_usd ?? null,
+          origen_placa: payload.origen_placa ?? "otro",
+          notes: payload.notes ?? null,
+          created_by: payload.created_by ?? null,
+        }
+      : {
+          material_id: payload.material_id,
+          material_label: payload.material_label ?? "",
+          modo_medidas: "iguales",
+          qty_slabs: payload.qty_slabs ?? 1,
+          largo_cm: payload.largo_cm ?? 0,
+          ancho_cm: payload.ancho_cm ?? 0,
+          espesor_cm: payload.espesor_cm ?? null,
+          lote_codigo: payload.lote_codigo ?? null,
+          costo_usd: payload.costo_usd ?? null,
+          origen_placa: payload.origen_placa ?? "otro",
+          notes: payload.notes ?? null,
+          created_by: payload.created_by ?? null,
+        };
+  const { data, error } = await supabase.rpc("create_manual_slabs", {
+    p_payload: body,
+  });
+  if (error) throw new Error(error.message || "No se pudo cargar las planchas");
+  return Number(data ?? 0);
+}
+
+export type BachaClienteRow = Database["public"]["Tables"]["bachas_clientes"]["Row"];
+type BachaClienteInsert = Database["public"]["Tables"]["bachas_clientes"]["Insert"];
+
+export async function fetchBachasClientes(): Promise<BachaClienteRow[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("bachas_clientes")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as BachaClienteRow[];
+}
+
+export async function createBachaCliente(
+  input: Omit<BachaClienteInsert, "id" | "created_at">,
+): Promise<BachaClienteRow> {
+  if (!isSupabaseConfigured) {
+    throw new Error("Supabase no está configurado");
+  }
+  const { data, error } = await supabase
+    .from("bachas_clientes")
+    .insert({
+      cliente_nombre: input.cliente_nombre.trim(),
+      modelo: input.modelo?.trim() || null,
+      estado: input.estado ?? "pendiente",
+      ubicacion: input.ubicacion?.trim() || null,
+      ot_id: input.ot_id ?? null,
+      notas: input.notas?.trim() || null,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message || "No se pudo registrar la bacha");
+  return data as BachaClienteRow;
+}
+
+export async function updateBachaClienteEstado(
+  id: string,
+  estado: BachaClienteRow["estado"],
+): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const { error } = await supabase
+    .from("bachas_clientes")
+    .update({ estado })
+    .eq("id", id);
+  if (error) throw new Error(error.message || "No se pudo actualizar la bacha");
 }
 
 export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow[]> {

@@ -112,6 +112,9 @@ type FilaDoc = {
 type GrupoDoc = {
   key: string;
   titulo: string;
+  direccionObra?: string;
+  referenciaObra?: string;
+  planoNombre?: string;
   filas: FilaDoc[];
   subtotal: number;
 };
@@ -162,8 +165,7 @@ export function PresupuestoDocumento({
       const pu = parseDecimalInput(line.precioUnitario);
       const qty = parseDecimalInput(line.cantidad);
 
-      const usaM2 =
-        art.calculaMaterial && m2Linea > 0 && (art.unidad === "M2" || art.unidad === "ML");
+      const usaM2 = art.unidad === "M2" && art.calculaMaterial && m2Linea > 0;
 
       const cant = usaM2 ? m2Linea : qty > 0 ? qty : art.calculaMaterial ? m2Linea : 0;
       const unidad = usaM2 ? "m²" : labelUnidad(art.unidad);
@@ -183,7 +185,19 @@ export function PresupuestoDocumento({
     }
 
     if (filas.length > 0) {
-      grupos.push({ key: ot.key, titulo, filas, subtotal: subOt });
+      const direccion =
+        ot.obraFormattedAddress.trim() || ot.direccionObra.trim() || undefined;
+      const referencia = ot.referenciaObra.trim() || undefined;
+      const planoNombre = ot.planoAdjunto?.name.trim() || undefined;
+      grupos.push({
+        key: ot.key,
+        titulo,
+        direccionObra: direccion,
+        referenciaObra: referencia,
+        planoNombre,
+        filas,
+        subtotal: subOt,
+      });
     }
   }
 
@@ -291,7 +305,14 @@ export function PresupuestoDocumento({
               <Fragment key={g.key}>
                 <tr className="bg-neutral-100 border-t border-neutral-800">
                   <td colSpan={5} className="px-2 py-1.5 font-semibold">
-                    {g.titulo}
+                    <p>{g.titulo}</p>
+                    {g.direccionObra || g.referenciaObra || g.planoNombre ? (
+                      <div className="mt-0.5 space-y-0.5 text-[10px] font-normal text-neutral-600">
+                        {g.direccionObra ? <p>Obra: {g.direccionObra}</p> : null}
+                        {g.referenciaObra ? <p>Ref.: {g.referenciaObra}</p> : null}
+                        {g.planoNombre ? <p>Plano: {g.planoNombre}</p> : null}
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
                 {g.filas.map((f) => (

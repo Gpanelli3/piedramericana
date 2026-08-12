@@ -24,6 +24,7 @@ import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 import { PickMaterial, SectionPresupuesto } from "./fields";
 import { PickChapaParaOt } from "./PickChapaParaOt";
+import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
 import type { LineaItemOT, OrdenTrabajoWizard } from "./types";
 
 type PorOtRes = {
@@ -31,6 +32,7 @@ type PorOtRes = {
   titulo: string;
   subtotal: number;
   m2: number;
+  ml: number;
   ton: number;
   cantLineas: number;
 };
@@ -65,6 +67,18 @@ export function StepOrdenes({
 }: StepOrdenesProps) {
   return (
     <div className="space-y-6">
+      {ordenes.map((ot, idx) => (
+        <div key={`${ot.key}-ubicacion`} className="space-y-2">
+          {ordenes.length > 1 ? (
+            <p className="text-xs font-medium text-muted-foreground">
+              OT {idx + 1}
+              {ot.titulo.trim() ? ` · ${ot.titulo.trim()}` : ""}
+            </p>
+          ) : null}
+          <OtUbicacionYPlano ot={ot} patchOrden={patchOrden} />
+        </div>
+      ))}
+
       {catalogoCargando ? (
         <p className="text-sm text-muted-foreground border-b border-dashed border-border/80 pb-3">
           Cargando materiales…
@@ -295,6 +309,14 @@ export function StepOrdenes({
                             <p className="font-medium tabular-nums text-primary">
                               {formatMetraje(
                                 totalesItems.porOt.find((p) => p.key === ot.key)?.m2 ?? 0,
+                              )}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">ml</p>
+                            <p className="font-medium tabular-nums text-foreground">
+                              {formatMetraje(
+                                totalesItems.porOt.find((p) => p.key === ot.key)?.ml ?? 0,
                               )}
                             </p>
                           </div>

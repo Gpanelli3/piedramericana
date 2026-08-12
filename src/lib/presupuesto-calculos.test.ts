@@ -87,29 +87,31 @@ describe("computeLineaPresupuesto (OtFlex)", () => {
     expect(subtotal).toBe(225);
   });
 
-  it("ML cant. 1, alto 0,5 m → 0,5 m²", () => {
-    const zocalo = articuloConPrecioToMock(
-      art({ id: "4", codigo: "ZOC-ML", descripcion: "Zócalo", unidad: "ML" }),
+  it("ML se cobra por metro lineal y no suma m²", () => {
+    const inglete = articuloConPrecioToMock(
+      art({ id: "4", codigo: "ING", descripcion: "Inglete", unidad: "ML" }),
     );
-    const line = buildLineaCalcInput(zocalo, {
+    const line = buildLineaCalcInput(inglete, {
       articuloId: "4",
       modoIngreso: "dimensiones",
-      cantidad: "1",
+      cantidad: "2",
       precioUnitario: "35",
       altoM: "0.5",
       anchoM: "",
       desperdicioPct: "",
     });
-    const { m2Linea } = computeLineaPresupuesto(zocalo, line);
-    expect(m2Linea).toBeCloseTo(0.5, 3);
+    const { m2Linea, mlLinea, subtotal } = computeLineaPresupuesto(inglete, line);
+    expect(m2Linea).toBe(0);
+    expect(mlLinea).toBe(2);
+    expect(subtotal).toBe(70);
   });
 
-  it("UNI con medida estándar 3 → 3 m²", () => {
+  it("UNI no suma m² aunque tenga medida estándar", () => {
     const prueba = articuloConPrecioToMock(
       art({
         id: "5",
-        codigo: "PRU",
-        descripcion: "Prueba estándar",
+        codigo: "COR",
+        descripcion: "Corte",
         unidad: "UNI",
         medida_estandar_m2: 3,
       }),
@@ -117,14 +119,15 @@ describe("computeLineaPresupuesto (OtFlex)", () => {
     const line = buildLineaCalcInput(prueba, {
       articuloId: "5",
       modoIngreso: "dimensiones",
-      cantidad: "1",
+      cantidad: "2",
       precioUnitario: "50",
       altoM: "",
       anchoM: "",
       desperdicioPct: "",
     });
-    const { m2Linea } = computeLineaPresupuesto(prueba, line);
-    expect(m2Linea).toBe(3);
+    const { m2Linea, subtotal } = computeLineaPresupuesto(prueba, line);
+    expect(m2Linea).toBe(0);
+    expect(subtotal).toBe(100);
   });
 });
 
@@ -160,6 +163,12 @@ describe("computePresupuestoTotalM2", () => {
             desperdicioPct: "1",
           },
         ],
+        direccionObra: "",
+        obraLat: null,
+        obraLng: null,
+        obraFormattedAddress: "",
+        referenciaObra: "",
+        planoAdjunto: null,
         mMedicion: true,
         mEntrega: true,
         mColocacion: true,
@@ -201,6 +210,12 @@ describe("computePresupuestoTotalM2", () => {
             desperdicioPct: "",
           },
         ],
+        direccionObra: "",
+        obraLat: null,
+        obraLng: null,
+        obraFormattedAddress: "",
+        referenciaObra: "",
+        planoAdjunto: null,
         mMedicion: true,
         mEntrega: true,
         mColocacion: true,

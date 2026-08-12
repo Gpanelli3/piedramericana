@@ -115,10 +115,9 @@ export function validateOrdenesItems(
         continue;
       }
 
-      if (art.unidad === "ML") {
-        const alto = parseDecimalInput(line.altoM);
-        if (qty <= 0 || alto <= 0) {
-          return `Completá cantidad y alto (metros) en «${art.descripcion}» (OT «${titulo}»).`;
+      if (art.unidad === "ML" || art.unidad === "UNI") {
+        if (qty <= 0) {
+          return `Indicá la cantidad en «${art.descripcion}» (OT «${titulo}»).`;
         }
         continue;
       }

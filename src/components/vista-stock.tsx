@@ -9,7 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Package, History } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, History, Package, Plus } from "lucide-react";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
@@ -18,41 +25,46 @@ import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTa
 import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab";
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
+import { CargaManualPlanchasDialog } from "@/components/stock/CargaManualPlanchasDialog";
+import { BachasClientesTab } from "@/components/stock/BachasClientesTab";
 import {
+  aggregateChapasPorMaterial,
   fetchMaterialsForStock,
   type MaterialOption,
 } from "@/lib/stock-api";
+import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 export function VistaStock() {
   const { user } = useAuth();
   const { chapas, setChapas, reloadChapas, slabsLoading } = useStock();
   const [remitoOpen, setRemitoOpen] = useState(false);
+  const [cargaManualOpen, setCargaManualOpen] = useState(false);
   const [disponibilidadOpen, setDisponibilidadOpen] = useState(false);
   const [materialDisponibilidad, setMaterialDisponibilidad] = useState<string | null>(null);
   const [materialesCatalogo, setMaterialesCatalogo] = useState<MaterialOption[]>([]);
   const [historialBump, setHistorialBump] = useState(0);
   const [catalogoOpen, setCatalogoOpen] = useState(false);
   const [recortesOpen, setRecortesOpen] = useState(false);
-  const [tab, setTab] = useState("inventario");
+  const [historialOpen, setHistorialOpen] = useState(false);
+  const [tab, setTab] = useState("planchas");
 
-  useEffect(() => {
+  const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setMaterialesCatalogo([]);
       return;
     }
-    let cancel = false;
-    void fetchMaterialsForStock()
-      .then((m) => {
-        if (!cancel) setMaterialesCatalogo(m);
-      })
-      .catch(() => {
-        if (!cancel) setMaterialesCatalogo([]);
-      });
-    return () => {
-      cancel = true;
-    };
-  }, [chapas.length, historialBump]);
+    try {
+      setMaterialesCatalogo(await fetchMaterialsForStock());
+    } catch {
+      setMaterialesCatalogo([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadMateriales();
+  }, [reloadMateriales, chapas.length, historialBump]);
 
   const refreshHistorialRelated = useCallback(() => {
     setHistorialBump((n) => n + 1);
@@ -62,19 +74,14 @@ export function VistaStock() {
     refreshHistorialRelated();
   }, [refreshHistorialRelated]);
 
-  const m2Chapa = (largoCm: number, anchoCm: number) => (largoCm / 100) * (anchoCm / 100);
-
-  const formatM2 = (n: number) =>
-    n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const resumenPiedra = useMemo(() => {
+  const resumen = useMemo(() => {
     const disponibles = chapas.filter((c) => c.estado === "Disponible");
-    const reservadas = chapas.filter((c) => c.estado === "Reservada");
-    const m2Disp = disponibles.reduce((s, c) => s + m2Chapa(c.largoCm, c.anchoCm), 0);
+    const materiales = new Set(
+      disponibles.map((c) => c.material.trim() || "Sin material"),
+    );
     return {
-      bultosLibres: disponibles.length,
-      bultosReservados: reservadas.length,
-      m2Disponibles: m2Disp,
+      planchas: disponibles.length,
+      materiales: materiales.size,
     };
   }, [chapas]);
 
@@ -98,6 +105,10 @@ export function VistaStock() {
                 peso_por_m2_kg: null as number | null,
                 bulk_stock_kg: 0,
                 stock_qty: 0,
+                familia: null,
+                codigo: null,
+                costo_usd: null,
+                espesor_mm: null,
               } satisfies MaterialOption,
             ]),
           ).values(),
@@ -106,6 +117,34 @@ export function VistaStock() {
   const openDisponibilidad = (nombre: string) => {
     setMaterialDisponibilidad(nombre);
     setDisponibilidadOpen(true);
+  };
+
+  const exportCsv = () => {
+    const rows = aggregateChapasPorMaterial(chapas, materialesCatalogo);
+    const csv = rowsToCsv(
+      [
+        "Material",
+        "Familia",
+        "Código",
+        "Planchas",
+        "M2 disp.",
+        "M2 retazo",
+        "Retazos",
+        "Costo USD",
+      ],
+      rows.map((r) => [
+        r.materialLabel,
+        r.familia ?? "",
+        r.codigo ?? "",
+        r.planchasDisponibles,
+        r.m2Disponibles.toFixed(2),
+        r.m2Retazo > 0 ? r.m2Retazo.toFixed(2) : "",
+        r.retazosCount > 0 ? r.retazosCount : "",
+        r.costoUsdTotal != null ? Math.round(r.costoUsdTotal) : "",
+      ]),
+    );
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`stock_planchas_${stamp}.csv`, csv);
   };
 
   return (
@@ -121,40 +160,67 @@ export function VistaStock() {
                 </span>
               ) : null}
             </h1>
-          </div>
-          <Button
-            type="button"
-            className="h-10 shrink-0 gap-1.5"
-            onClick={() => setRemitoOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Cargar chapas
-          </Button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2 lg:max-w-2xl">
-          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-            <p className="text-[11px] font-medium text-muted-foreground">Disponibles</p>
-            <p className="text-lg font-semibold tabular-nums text-foreground">
-              {resumenPiedra.bultosLibres}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {resumen.planchas} planchas en stock · {resumen.materiales} materiales
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-            <p className="text-[11px] font-medium text-muted-foreground">m² libres</p>
-            <p className="text-lg font-semibold tabular-nums text-foreground">
-              {formatM2(resumenPiedra.m2Disponibles)}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-            <p className="text-[11px] font-medium text-muted-foreground">Reservadas</p>
-            <p className="text-lg font-semibold tabular-nums text-foreground">
-              {resumenPiedra.bultosReservados}
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" className="h-10 gap-1.5">
+                  Exportar
+                  <ChevronDown className="h-4 w-4 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={exportCsv}>Exportar CSV</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setHistorialOpen(true)}>
+                  Historial de remitos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRemitoOpen(true)}>
+                  Ingreso con remito
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCatalogoOpen(true)}>
+                  Nombres de materiales
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRecortesOpen(true)}>
+                  Cargar recorte
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              type="button"
+              className="h-10 shrink-0 gap-1.5"
+              onClick={() => setCargaManualOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Carga manual
+            </Button>
           </div>
         </div>
       </header>
 
       <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-6">
+        <CargaManualPlanchasDialog
+          open={cargaManualOpen}
+          onOpenChange={setCargaManualOpen}
+          materiales={materialesOpciones}
+          onMaterialCreated={(m) => {
+            setMaterialesCatalogo((prev) =>
+              [...prev.filter((x) => x.id !== m.id), m].sort((a, b) =>
+                a.name.localeCompare(b.name, "es"),
+              ),
+            );
+          }}
+          userId={user?.id}
+          onSuccess={async () => {
+            await reloadChapas();
+            await reloadMateriales();
+            refreshHistorialRelated();
+          }}
+        />
+
         <CrearRemitoDialog
           open={remitoOpen}
           onOpenChange={setRemitoOpen}
@@ -177,65 +243,67 @@ export function VistaStock() {
         />
 
         <Tabs value={tab} onValueChange={setTab} className="gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <TabsList className="h-auto w-full justify-start gap-1 sm:w-auto">
-              <TabsTrigger value="inventario" className="gap-1.5 px-3">
-                <Package className="h-4 w-4" />
-                Inventario
-              </TabsTrigger>
-              <TabsTrigger value="historial" className="gap-1.5 px-3">
-                <History className="h-4 w-4" />
-                Historial
-              </TabsTrigger>
-            </TabsList>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs text-muted-foreground"
-                onClick={() => setCatalogoOpen(true)}
-              >
-                Nombres de materiales
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs text-muted-foreground"
-                onClick={() => setRecortesOpen(true)}
-              >
-                Cargar recorte
-              </Button>
-            </div>
-          </div>
+          <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b border-border bg-transparent p-0 sm:w-auto">
+            <TabsTrigger
+              value="planchas"
+              className={cn(
+                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-sm shadow-none",
+                "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+              )}
+            >
+              <Package className="mr-1.5 h-4 w-4" />
+              Planchas
+            </TabsTrigger>
+            <TabsTrigger
+              value="bachas"
+              className={cn(
+                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-sm shadow-none",
+                "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
+              )}
+            >
+              Bachas de clientes
+            </TabsTrigger>
+          </TabsList>
 
-          <TabsContent value="inventario" className="mt-2 space-y-3">
+          <TabsContent value="planchas" className="mt-3 space-y-3">
             <StockMaterialesAgregadosTab
               chapas={chapas}
+              materiales={materialesCatalogo}
               onOpenMaterial={openDisponibilidad}
             />
           </TabsContent>
 
-          <TabsContent value="historial" className="mt-2">
-            <div className="mb-3 flex flex-col gap-2 rounded-lg border border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted-foreground">
-                Historial de remitos. Cada ingreso suma chapas al inventario.
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 gap-1.5 shrink-0"
-                onClick={() => setRemitoOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Nuevo ingreso
-              </Button>
-            </div>
-            <HistorialRemitosTab reloadToken={historialBump} />
+          <TabsContent value="bachas" className="mt-3">
+            <BachasClientesTab />
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={historialOpen} onOpenChange={setHistorialOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Historial de remitos
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mb-3 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => {
+                setHistorialOpen(false);
+                setRemitoOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Nuevo ingreso
+            </Button>
+          </div>
+          <HistorialRemitosTab reloadToken={historialBump} />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={catalogoOpen} onOpenChange={setCatalogoOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -243,8 +311,7 @@ export function VistaStock() {
             <DialogTitle>Nombres de materiales</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground -mt-2 mb-2">
-            Maestro de nombres (Granito Negro, Absolute White, etc.) para usar al cargar remitos y
-            presupuestos.
+            Maestro de nombres para usar al cargar remitos y presupuestos.
           </p>
           <MaterialesCatalogoTab
             materiales={materialesCatalogo}

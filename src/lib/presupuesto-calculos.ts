@@ -74,9 +74,6 @@ export function buildLineaCalcInput(art: ArticuloCalculo, line: LineaItemOTUiInp
   if (!art.calculaMaterial || (art.medidaEstandarM2 != null && art.medidaEstandarM2 > 0)) {
     return { ...base, altoM: "0", anchoM: "0" };
   }
-  if (art.unidad === "ML") {
-    return { ...base, altoM: line.altoM, anchoM: "0" };
-  }
   if (art.unidad === "M2" && line.modoIngreso === "manual") {
     return { ...base, altoM: "0", anchoM: "0" };
   }
@@ -100,13 +97,20 @@ export function factorDesperdicio(desperdicioPct: string): number {
 
 export interface ResultadoLineaPresupuesto {
   m2Linea: number;
+  mlLinea: number;
   subtotal: number;
 }
 
+function resultadoLinea(
+  m2Linea: number,
+  subtotal: number,
+  mlLinea = 0,
+): ResultadoLineaPresupuesto {
+  return { m2Linea, mlLinea, subtotal };
+}
+
 /**
- * m² que aporta la línea al total del presupuesto (solo si calcula material).
- * subtotal en dinero según reglas mock (precio unitario = $/m² para material M2/ML;
- * $/unidad para ítems que no calculan material).
+ * m² y ml se acumulan por separado. UNI no suma ni m² ni ml.
  */
 export function computeLineaPresupuesto(
   art: ArticuloCalculo,
@@ -118,54 +122,50 @@ export function computeLineaPresupuesto(
   const ancho = parseDecimalInput(line.anchoM);
   const f = factorDesperdicio(line.desperdicioPct);
 
-  if (!art.calculaMaterial) {
-    return { m2Linea: 0, subtotal: qty * pu };
+  if (art.unidad === "UNI" || !art.calculaMaterial) {
+    return resultadoLinea(0, qty * pu);
+  }
+
+  if (art.unidad === "ML") {
+    const ml = qty * f;
+    return resultadoLinea(0, ml * pu, ml);
   }
 
   if (art.medidaEstandarM2 != null && art.medidaEstandarM2 > 0) {
     const m2 = qty * art.medidaEstandarM2;
-    return { m2Linea: m2, subtotal: m2 * pu };
+    return resultadoLinea(m2, m2 * pu);
   }
 
   if (art.unidad === "M2") {
     if (line.modoIngreso === "manual") {
       const m2 = qty;
-      return { m2Linea: m2, subtotal: m2 * pu };
+      return resultadoLinea(m2, m2 * pu);
     }
     /** Cantidad vacía = una pieza (1× alto × ancho). "0" explícito sigue siendo 0. */
     const qtyPiezas =
       line.cantidad.trim() === "" ? 1 : qty;
     if (qtyPiezas > 0 && alto > 0 && ancho > 0) {
       const m2 = qtyPiezas * alto * ancho * f;
-      return { m2Linea: m2, subtotal: m2 * pu };
+      return resultadoLinea(m2, m2 * pu);
     }
-    return { m2Linea: 0, subtotal: 0 };
+    return resultadoLinea(0, 0);
   }
 
-  if (art.unidad === "ML") {
-    if (qty > 0 && alto > 0) {
-      const m2 = qty * alto * f;
-      return { m2Linea: m2, subtotal: m2 * pu };
-    }
-    return { m2Linea: 0, subtotal: 0 };
-  }
-
-  if (art.unidad === "UNI" && art.calculaMaterial) {
-    const m2 = qty * (art.medidaEstandarM2 ?? 0);
-    return { m2Linea: m2, subtotal: (m2 > 0 ? m2 : qty) * pu };
-  }
-
-  return { m2Linea: 0, subtotal: qty * pu };
+  return resultadoLinea(0, qty * pu);
 }
 
 export function dimensionesHabilitadas(art: ArticuloCalculo): boolean {
   if (!art.calculaMaterial) return false;
   if (art.medidaEstandarM2 != null && art.medidaEstandarM2 > 0) return false;
-  return art.unidad === "M2" || art.unidad === "ML";
+  return art.unidad === "M2";
 }
 
 export function altoRequerido(art: ArticuloCalculo): boolean {
-  return art.calculaMaterial && art.unidad === "ML" && !art.medidaEstandarM2;
+  return (
+    art.calculaMaterial &&
+    art.unidad === "M2" &&
+    !art.medidaEstandarM2
+  );
 }
 
 export function anchoRequerido(art: ArticuloCalculo, modo: ModoIngresoM2): boolean {

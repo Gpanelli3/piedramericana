@@ -19,7 +19,12 @@ import { Plus, Check, ChevronsUpDown, Search } from "lucide-react";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { ClientePresupuesto } from "@/lib/clients-api";
 import { labelUnidad } from "@/lib/presupuesto-calculos";
+import type { UnidadArticuloDb } from "@/types/database";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+
+function labelTipoUnidad(unidad: UnidadArticuloDb): string {
+  return unidad === "UNI" ? "unidad" : labelUnidad(unidad);
+}
 
 export function SectionPresupuesto({
   title,
@@ -459,17 +464,21 @@ export function PickArticulo({
           type="button"
           variant="outline"
           className={cn(
-            "w-full justify-between text-xs font-normal shadow-sm border-border/90 bg-background hover:bg-muted/30",
+            "w-full justify-between text-xs font-normal shadow-sm border-border/90 bg-background text-foreground hover:bg-muted/30 hover:text-foreground",
             compact ? "h-8 min-w-[8rem] px-2" : "h-9 min-w-[12rem] px-2.5",
           )}
         >
-          <span
-            className={cn(
-              "truncate text-left",
-              !selected && "text-muted-foreground",
+          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+            {selected ? (
+              <>
+                <span className="truncate text-left">{selected.descripcion}</span>
+                <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                  {labelTipoUnidad(selected.unidad)}
+                </span>
+              </>
+            ) : (
+              <span className="truncate text-left text-muted-foreground">Sub-ítem…</span>
             )}
-          >
-            {selected?.descripcion ?? "Sub-ítem…"}
           </span>
           <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
@@ -500,17 +509,9 @@ export function PickArticulo({
                     )}
                   />
                   <span className="flex flex-col gap-0">
-                    <span>{a.descripcion}</span>
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      {a.codigo} · {labelUnidad(a.unidad as "M2" | "ML" | "UNI")}
-                      {!a.calcula_material
-                        ? " · sin m²"
-                        : a.medida_estandar_m2
-                          ? ` · std ${a.medida_estandar_m2} m²`
-                          : ""}
-                      {a.precio != null
-                        ? ` · $${a.precio}`
-                        : ""}
+                    <span className="font-medium">{a.descripcion}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      tipo · {labelTipoUnidad(a.unidad)}
                     </span>
                   </span>
                 </CommandItem>

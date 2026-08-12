@@ -59,6 +59,7 @@ export function MaterialesCatalogoTab({
       <NuevoMaterialDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        confirmLabel="Guardar"
         onCreated={(m) => {
           onMaterialCreated({
             id: m.id,
@@ -68,6 +69,10 @@ export function MaterialesCatalogoTab({
             peso_por_m2_kg: m.peso_por_m2_kg,
             bulk_stock_kg: m.bulk_stock_kg ?? 0,
             stock_qty: m.stock_qty ?? 0,
+            familia: m.familia ?? null,
+            codigo: m.codigo ?? null,
+            costo_usd: m.costo_usd ?? null,
+            espesor_mm: m.espesor_mm ?? null,
           });
         }}
       />

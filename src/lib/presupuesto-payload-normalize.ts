@@ -1,5 +1,37 @@
-import type { LineaItemOT, OrdenTrabajoWizard } from "@/components/presupuesto/wizard/types";
+import type {
+  LineaItemOT,
+  OrdenTrabajoWizard,
+  PlanoAdjuntoOt,
+} from "@/components/presupuesto/wizard/types";
 import { parseDecimalInput } from "@/lib/presupuesto-calculos";
+
+function normalizePlanoAdjunto(raw: unknown): PlanoAdjuntoOt | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const p = raw as Record<string, unknown>;
+  if (
+    typeof p.name !== "string" ||
+    typeof p.mime !== "string" ||
+    typeof p.storagePath !== "string" ||
+    typeof p.size !== "number"
+  ) {
+    return null;
+  }
+  return {
+    name: p.name,
+    mime: p.mime,
+    storagePath: p.storagePath,
+    size: p.size,
+  };
+}
+
+function normalizeCoord(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 /**
  * Convierte valores históricos guardados en centímetros (>20) a metros.
@@ -53,6 +85,13 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
           : "bajo",
       bachaId: typeof ot.bachaId === "string" ? ot.bachaId : "johnson-ss",
       items: itemsRaw.map(normalizeLineaItemFromPayload),
+      direccionObra: typeof ot.direccionObra === "string" ? ot.direccionObra : "",
+      obraLat: normalizeCoord(ot.obraLat),
+      obraLng: normalizeCoord(ot.obraLng),
+      obraFormattedAddress:
+        typeof ot.obraFormattedAddress === "string" ? ot.obraFormattedAddress : "",
+      referenciaObra: typeof ot.referenciaObra === "string" ? ot.referenciaObra : "",
+      planoAdjunto: normalizePlanoAdjunto(ot.planoAdjunto),
       mMedicion: ot.mMedicion !== false,
       mEntrega: ot.mEntrega !== false,
       mColocacion: ot.mColocacion !== false,

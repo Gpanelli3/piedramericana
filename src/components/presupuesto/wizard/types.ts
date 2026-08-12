@@ -33,6 +33,14 @@ export type LineaItemOT = {
   desperdicioPct: string;
 };
 
+/** Plano / comprobante de cotización adjunto a una OT. */
+export type PlanoAdjuntoOt = {
+  name: string;
+  mime: string;
+  storagePath: string;
+  size: number;
+};
+
 export type OrdenTrabajoWizard = {
   key: string;
   titulo: string;
@@ -51,6 +59,15 @@ export type OrdenTrabajoWizard = {
   tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
   bachaId: string;
   items: LineaItemOT[];
+  /** Dirección de obra (texto ingresado / buscado). */
+  direccionObra: string;
+  obraLat: number | null;
+  obraLng: number | null;
+  /** Dirección formateada tras geocode. */
+  obraFormattedAddress: string;
+  /** Detalle libre (lote, manzana, etc.) — va al PDF. */
+  referenciaObra: string;
+  planoAdjunto: PlanoAdjuntoOt | null;
   mMedicion: boolean;
   mEntrega: boolean;
   mColocacion: boolean;
@@ -86,6 +103,12 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     tipoColocacion: "bajo",
     bachaId: MODELOS_BACHA[0]!.value,
     items: [],
+    direccionObra: "",
+    obraLat: null,
+    obraLng: null,
+    obraFormattedAddress: "",
+    referenciaObra: "",
+    planoAdjunto: null,
     mMedicion: true,
     mEntrega: true,
     mColocacion: true,

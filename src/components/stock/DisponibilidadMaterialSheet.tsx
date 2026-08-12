@@ -140,6 +140,9 @@ export function DisponibilidadMaterialSheet({
                           <TableCell className="font-mono text-xs">{c.bulto}</TableCell>
                           <TableCell className="tabular-nums text-xs text-muted-foreground">
                             {c.largoCm} × {c.anchoCm} cm
+                            {c.espesorCm != null && c.espesorCm > 0
+                              ? ` · ${c.espesorCm} cm esp`
+                              : ""}
                           </TableCell>
                           <TableCell className="text-right text-xs font-semibold tabular-nums">
                             {formatM2(m2(c.largoCm, c.anchoCm))}

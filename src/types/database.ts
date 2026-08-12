@@ -13,6 +13,7 @@ export type ProfileRole = "admin" | "staff" | "sales";
 export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja";
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
+export type BachaClienteEstado = "pendiente" | "en_taller" | "usada";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
 export type VentaEstado =
   | "senado"
@@ -102,6 +103,9 @@ export interface Database {
           peso_por_m2_kg: number | null;
           espesor_mm: number | null;
           bulk_stock_kg: number;
+          familia: string | null;
+          codigo: string | null;
+          costo_usd: number | null;
         };
         Insert: {
           id?: string;
@@ -115,6 +119,9 @@ export interface Database {
           peso_por_m2_kg?: number | null;
           espesor_mm?: number | null;
           bulk_stock_kg?: number;
+          familia?: string | null;
+          codigo?: string | null;
+          costo_usd?: number | null;
         };
         Update: {
           id?: string;
@@ -128,6 +135,9 @@ export interface Database {
           peso_por_m2_kg?: number | null;
           espesor_mm?: number | null;
           bulk_stock_kg?: number;
+          familia?: string | null;
+          codigo?: string | null;
+          costo_usd?: number | null;
         };
         Relationships: [];
       };
@@ -708,6 +718,7 @@ export interface Database {
           material_label: string;
           largo_cm: number;
           ancho_cm: number;
+          espesor_cm: number | null;
           estado: InventorySlabEstado;
           lote_codigo: string | null;
           ot_reserva_id: string | null;
@@ -725,6 +736,7 @@ export interface Database {
           material_label: string;
           largo_cm: number;
           ancho_cm: number;
+          espesor_cm?: number | null;
           estado?: InventorySlabEstado;
           lote_codigo?: string | null;
           ot_reserva_id?: string | null;
@@ -742,6 +754,7 @@ export interface Database {
           material_label?: string;
           largo_cm?: number;
           ancho_cm?: number;
+          espesor_cm?: number | null;
           estado?: InventorySlabEstado;
           lote_codigo?: string | null;
           ot_reserva_id?: string | null;
@@ -1007,6 +1020,47 @@ export interface Database {
             columns: ["material_id"];
             isOneToOne: false;
             referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      bachas_clientes: {
+        Row: {
+          id: string;
+          cliente_nombre: string;
+          modelo: string | null;
+          estado: BachaClienteEstado;
+          ubicacion: string | null;
+          ot_id: string | null;
+          notas: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          cliente_nombre: string;
+          modelo?: string | null;
+          estado?: BachaClienteEstado;
+          ubicacion?: string | null;
+          ot_id?: string | null;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          cliente_nombre?: string;
+          modelo?: string | null;
+          estado?: BachaClienteEstado;
+          ubicacion?: string | null;
+          ot_id?: string | null;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "bachas_clientes_ot_id_fkey";
+            columns: ["ot_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
             referencedColumns: ["id"];
           },
         ];
@@ -1328,6 +1382,10 @@ export interface Database {
         Args: { p_payload: Json };
         Returns: string;
       };
+      create_manual_slabs: {
+        Args: { p_payload: Json };
+        Returns: number;
+      };
       register_cantera_ingreso: {
         Args: { p_payload: Json };
         Returns: undefined;
@@ -1367,6 +1425,7 @@ export interface Database {
       inventory_slab_estado: InventorySlabEstado;
       origen_placa: OrigenPlaca;
       material_kind: MaterialKindDb;
+      bacha_cliente_estado: BachaClienteEstado;
       presupuesto_estado: PresupuestoEstado;
       venta_estado: VentaEstado;
       unidad_articulo: UnidadArticuloDb;

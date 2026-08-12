@@ -606,6 +606,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const totalesItems = useMemo(() => {
     let subtotal = 0;
     let totalM2 = 0;
+    let totalMl = 0;
     let totalTon = 0;
     let faltaPesoNonMarmol = false;
     const porOt: {
@@ -613,6 +614,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       titulo: string;
       subtotal: number;
       m2: number;
+      ml: number;
       ton: number;
       cantLineas: number;
     }[] = [];
@@ -620,6 +622,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       const materialRow = materials.find((m) => m.id === ot.materialId);
       let sOt = 0;
       let m2Ot = 0;
+      let mlOt = 0;
       let tonOt = 0;
       let nLineas = 0;
       for (const line of ot.items) {
@@ -627,11 +630,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         const art = artBd ? articuloConPrecioToMock(artBd) : undefined;
         if (!art) continue;
         const calc = buildLineaCalcInput(art, line);
-        const { m2Linea, subtotal: subL } = computeLineaPresupuesto(art, calc);
+        const { m2Linea, mlLinea, subtotal: subL } = computeLineaPresupuesto(art, calc);
         subtotal += subL;
         totalM2 += m2Linea;
+        totalMl += mlLinea;
         sOt += subL;
         m2Ot += m2Linea;
+        mlOt += mlLinea;
         nLineas += 1;
         const peso = materialPesoEstimadoDesdeOt(m2Linea, {
           materialKind: materialRow?.material_kind ?? "marmol",
@@ -656,6 +661,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         titulo: ot.titulo.trim() || "Sin título",
         subtotal: sOt,
         m2: m2Ot,
+        ml: mlOt,
         ton: tonOt,
         cantLineas: nLineas,
       });
@@ -666,6 +672,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     return {
       subtotal,
       totalM2,
+      totalMl,
       totalTon,
       totalConDesc,
       porOt,
@@ -944,7 +951,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         art &&
         dim &&
         !manualM2 &&
-        (art.unidad === "ML" || art.unidad === "M2"),
+        art.unidad === "M2",
     );
     const showAnchoM = Boolean(
       hasArt && art && dim && art.unidad === "M2" && !manualM2,
@@ -952,12 +959,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     const showDesperdicio = Boolean(
       hasArt &&
         art &&
-        dim &&
         !manualM2 &&
-        (art.unidad === "M2" || art.unidad === "ML"),
+        ((art.unidad === "M2" && dim) || art.unidad === "ML"),
     );
-    const showM2Col = Boolean(hasArt && art && art.calculaMaterial);
-    const todosEnMetros = Boolean(hasArt && art && (art.unidad === "M2" || art.unidad === "ML"));
+    const showM2Col = Boolean(hasArt && art && art.unidad === "M2");
+    const todosEnMetros = Boolean(hasArt && art && art.unidad === "M2");
 
     return (
       <TableRow
@@ -1220,6 +1226,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               totalMecImporte={totalMecImporte}
               totalPresupuesto={totalPresupuesto}
               totalesTotalM2={totalesItems.totalM2}
+              totalesTotalMl={totalesItems.totalMl}
               totalesTotalTon={totalesItems.totalTon}
             />
           ) : null}
@@ -1406,6 +1413,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               m²{" "}
               <strong className="text-foreground">
                 {formatMetraje(totalesItems.totalM2)}
+              </strong>
+            </span>
+            <span className="text-border">|</span>
+            <span>
+              ml{" "}
+              <strong className="text-foreground">
+                {formatMetraje(totalesItems.totalMl)}
               </strong>
             </span>
             {totalesItems.totalTon > 0 ? (
