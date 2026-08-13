@@ -30,7 +30,11 @@ export async function listPresupuestosLista(): Promise<{
   return { data: data as PresupuestoRowLista[], error: null };
 }
 
-export type PresupuestoRowList = PresupuestoRowLista & VentaResumenMerged;
+export type PresupuestoRowList = PresupuestoRowLista &
+  VentaResumenMerged & {
+    created_by: string | null;
+    vendedor_nombre: string | null;
+  };
 
 export async function listPresupuestosResumen(): Promise<{
   data: PresupuestoRowList[] | null;
@@ -38,14 +42,43 @@ export async function listPresupuestosResumen(): Promise<{
 }> {
   const { data, error } = await supabase
     .from("presupuestos")
-    .select("id, numero, cliente, total, moneda, status, created_at, updated_at")
+    .select("id, numero, cliente, total, moneda, status, created_at, updated_at, created_by")
     .order("created_at", { ascending: false });
   if (error) return { data: null, error: new Error(error.message) };
   try {
-    const merged = await mergeVentasResumenIntoPresupuestos(
-      data as Omit<PresupuestoRowList, keyof VentaResumenMerged>[],
-    );
-    return { data: merged as PresupuestoRowList[], error: null };
+    const base = (data ?? []) as Array<
+      PresupuestoRowLista & { created_by: string | null }
+    >;
+    const merged = await mergeVentasResumenIntoPresupuestos(base);
+
+    const creatorIds = [
+      ...new Set(
+        merged
+          .map((r) => r.created_by)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const nombrePorId = new Map<string, string>();
+    if (creatorIds.length > 0) {
+      const { data: usuarios, error: uErr } = await supabase
+        .from("usuarios")
+        .select("id, full_name")
+        .in("id", creatorIds);
+      if (!uErr && usuarios) {
+        for (const u of usuarios) {
+          const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
+          if (u.id && name) nombrePorId.set(u.id, name);
+        }
+      }
+    }
+
+    const withVendedor: PresupuestoRowList[] = merged.map((r) => ({
+      ...r,
+      created_by: r.created_by ?? null,
+      vendedor_nombre: r.created_by ? nombrePorId.get(r.created_by) ?? null : null,
+    }));
+
+    return { data: withVendedor, error: null };
   } catch (e) {
     return {
       data: null,

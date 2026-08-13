@@ -3,6 +3,8 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { MainWorkspace } from "./pages/MainWorkspace";
 import { PresupuestoPrintPage } from "./pages/PresupuestoPrintPage";
+import { CobrosComprobantePrintPage } from "./pages/CobrosComprobantePrintPage";
+import { ObrasCobrosPrintPage } from "./pages/ObrasCobrosPrintPage";
 import { RequireAuth } from "./routes/RequireAuth";
 
 export default function App() {
@@ -14,6 +16,11 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route path="/" element={<MainWorkspace />} />
             <Route path="/presupuestos/:id/imprimir" element={<PresupuestoPrintPage />} />
+            <Route
+              path="/presupuestos/:id/cobros/imprimir"
+              element={<CobrosComprobantePrintPage />}
+            />
+            <Route path="/obras-cobros/imprimir" element={<ObrasCobrosPrintPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

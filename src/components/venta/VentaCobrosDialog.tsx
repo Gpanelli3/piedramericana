@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ChevronDown, Download, Plus, Printer } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import type { Database, JobStatus, VentaEstado } from "@/types/database";
 import {
   getVentaPorPresupuesto,
@@ -37,8 +45,20 @@ import {
   type ChapaInventarioRow,
 } from "@/lib/stock-ot-api";
 import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
+import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 
 type VentasPagoRow = Database["public"]["Tables"]["ventas_pagos"]["Row"];
+
+function formatMonto(n: number, moneda: "ars" | "usd") {
+  const opts: Intl.NumberFormatOptions = {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: moneda === "usd" ? 2 : 0,
+  };
+  if (moneda === "usd") {
+    return `USD ${n.toLocaleString("es-AR", opts)}`;
+  }
+  return `$ ${n.toLocaleString("es-AR", opts)}`;
+}
 
 function formatoFechaCortaDb(s: string): string {
   try {
@@ -47,27 +67,40 @@ function formatoFechaCortaDb(s: string): string {
         ? new Date(s.includes("T") ? s : `${s}T12:00:00`)
         : new Date(s);
     if (Number.isNaN(d.getTime())) return s;
-    return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return d.toLocaleDateString("es-AR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
   } catch {
     return s;
   }
 }
 
-function etiquetaEtapaOt(etapa: string | null, estadoOt: JobStatus | null): string {
-  if (estadoOt === "done") return "Finalizada";
-  if (estadoOt === "cancelled") return "Cancelada";
-  switch (etapa) {
-    case "medicion":
-      return "Medición";
-    case "corte":
-      return "Corte";
-    case "produccion":
-      return "Producción";
-    case "despacho":
-      return "Despacho";
-    default:
-      return "Sin OT";
+function montoPagoNum(p: VentasPagoRow): number {
+  const val = typeof p.monto === "string" ? parseFloat(p.monto) : Number(p.monto ?? 0);
+  return Number.isFinite(val) ? val : 0;
+}
+
+type BadgeCobro = { label: string; className: string };
+
+function badgeCobro(cobrado: number, saldo: number): BadgeCobro {
+  if (cobrado <= 0.009) {
+    return {
+      label: "Sin seña",
+      className: "border-border bg-muted text-muted-foreground",
+    };
   }
+  if (saldo <= 0.009) {
+    return {
+      label: "Al día",
+      className: "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-200",
+    };
+  }
+  return {
+    label: "Con anticipo",
+    className: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  };
 }
 
 type Props = {
@@ -85,6 +118,7 @@ export function VentaCobrosDialog({
   rowResumen,
   onDatosCambiaron,
 }: Props) {
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [ventaCabecera, setVentaCabecera] = useState<{ id: string; estado: VentaEstado } | null>(null);
   const [pagosVentas, setPagosVentas] = useState<VentasPagoRow[]>([]);
@@ -94,6 +128,7 @@ export function VentaCobrosDialog({
   const [pagoMetodo, setPagoMetodo] = useState("transferencia");
   const [pagoFecha, setPagoFecha] = useState("");
   const [pagoNota, setPagoNota] = useState("");
+  const [formOpen, setFormOpen] = useState(true);
   const [placasOt, setPlacasOt] = useState<ChapaInventarioRow[]>([]);
   const [otEtapa, setOtEtapa] = useState<string | null>(null);
   const [otEstado, setOtEstado] = useState<JobStatus | null>(null);
@@ -127,16 +162,16 @@ export function VentaCobrosDialog({
         setOtEtapa(typeof otRes.data.etapa === "string" ? otRes.data.etapa : null);
         setOtEstado((otRes.data.estado as JobStatus) ?? null);
       } else {
-        setOtEtapa(null);
-        setOtEstado(null);
+        setOtEtapa(rowResumen?.ot_etapa ?? null);
+        setOtEstado(rowResumen?.ot_estado ?? null);
       }
     } else {
       setPlacasOt([]);
-      setOtEtapa(null);
-      setOtEstado(null);
+      setOtEtapa(rowResumen?.ot_etapa ?? null);
+      setOtEstado(rowResumen?.ot_estado ?? null);
     }
     setBusy(false);
-  }, [rowResumen?.orden_trabajo_id]);
+  }, [rowResumen?.orden_trabajo_id, rowResumen?.ot_etapa, rowResumen?.ot_estado]);
 
   useEffect(() => {
     if (!open || !presupuestoId) return;
@@ -145,9 +180,32 @@ export function VentaCobrosDialog({
     setPagoMetodo("transferencia");
     setMontoDigitado("");
     setPagoNota("");
+    setFormOpen(true);
     if (rowResumen?.moneda) setPagoMoneda(rowResumen.moneda);
+    setOtEtapa(rowResumen?.ot_etapa ?? null);
+    setOtEstado(rowResumen?.ot_estado ?? null);
     void cargar(presupuestoId);
-  }, [open, presupuestoId, rowResumen?.moneda, cargar]);
+  }, [open, presupuestoId, rowResumen?.moneda, rowResumen?.ot_etapa, rowResumen?.ot_estado, cargar]);
+
+  const moneda: "ars" | "usd" = rowResumen?.moneda ?? "usd";
+  const total = rowResumen?.total ?? 0;
+
+  const cobrado = useMemo(() => {
+    let sum = 0;
+    for (const p of pagosVentas) {
+      if (p.moneda !== moneda) continue;
+      sum += montoPagoNum(p);
+    }
+    return sum;
+  }, [pagosVentas, moneda]);
+
+  const saldo = Math.max(0, total - cobrado);
+  const cobroBadge = badgeCobro(cobrado, saldo);
+
+  const etapaLabel =
+    ventaCabecera?.estado === "entregado"
+      ? "Entregada"
+      : etiquetaEtapaOt(otEtapa, otEstado);
 
   const onRegistrarPago = useCallback(async () => {
     if (!presupuestoId || pagoBusy) return;
@@ -220,194 +278,274 @@ export function VentaCobrosDialog({
   }, [ventaCabecera, pagoBusy, presupuestoId, cargar, onDatosCambiaron]);
 
   const estado = ventaCabecera?.estado;
+  const cliente = rowResumen?.cliente?.trim() || "Sin cliente";
+  const numero = rowResumen?.numero ?? "—";
+
+  const abrirComprobante = useCallback(
+    (descargar: boolean) => {
+      if (!presupuestoId) {
+        toast.error("No hay presupuesto para generar el comprobante.");
+        return;
+      }
+      const qs = descargar ? "?descargar=1" : "";
+      navigate(`/presupuestos/${presupuestoId}/cobros/imprimir${qs}`);
+    },
+    [navigate, presupuestoId],
+  );
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-4 sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="space-y-2">
-          <DialogTitle>Cobros y venta</DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-2">
-              {rowResumen ? (
-                <p className="text-sm">
-                  <span className="font-semibold text-foreground">{rowResumen.numero}</span>
-                  {" · "}
-                  <span className="text-foreground">{rowResumen.cliente}</span>
-                </p>
-              ) : null}
-              <p className="text-sm">
-                Estado OT:{" "}
-                <span className="font-semibold text-foreground">
-                  {estado === "entregado"
-                    ? "Entregada"
-                    : etiquetaEtapaOt(otEtapa, otEstado)}
-                </span>
-              </p>
-              {rowResumen?.pct_sena_sobre_presupuesto != null ? (
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  Cobrado:{" "}
-                  <span className="font-medium text-foreground">
-                    {rowResumen.pct_sena_sobre_presupuesto.toFixed(1)} %
-                  </span>
-                  {" "}(misma moneda)
-                  {typeof rowResumen.saldo_misma_moneda === "number" ? (
-                    <>
-                      {" · "}Saldo:{" "}
-                      <span className="font-medium text-foreground">
-                        {rowResumen.moneda === "usd"
-                          ? rowResumen.saldo_misma_moneda.toLocaleString("es-AR", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          : Math.round(rowResumen.saldo_misma_moneda).toLocaleString("es-AR")}
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-              ) : null}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg max-h-[90vh]">
+          <DialogHeader className="space-y-3 border-b border-border px-6 pb-4 pt-6 pr-12 text-left">
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle className="text-lg font-semibold tracking-tight text-foreground">
+                {cliente}
+              </DialogTitle>
+              <Badge variant="outline" className={cn("font-medium", cobroBadge.className)}>
+                {cobroBadge.label}
+              </Badge>
             </div>
-          </DialogDescription>
-        </DialogHeader>
-
-        {busy ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">Cargando…</p>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
-              <p className="font-semibold text-foreground">Registrar pago</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="vc-monto">Monto</Label>
-                  <Input
-                    id="vc-monto"
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={montoDigitado}
-                    onChange={(e) => setMontoDigitado(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="vc-fecha">Fecha</Label>
-                  <Input id="vc-fecha" type="date" value={pagoFecha} onChange={(e) => setPagoFecha(e.target.value)} />
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Moneda</Label>
-                  <Select value={pagoMoneda} onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ars">ARS</SelectItem>
-                      <SelectItem value="usd">USD</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Cómo se paga</Label>
-                  <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {METODOS_COBRO_UI.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="vc-nota">Nota (opcional)</Label>
-                <Textarea id="vc-nota" rows={2} value={pagoNota} onChange={(e) => setPagoNota(e.target.value)} />
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button type="button" disabled={pagoBusy} onClick={() => void onRegistrarPago()}>
-                  Registrar pago
-                </Button>
-                {estado === "finalizado" && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={pagoBusy}
-                    onClick={() => void onMarcarEntregado()}
-                  >
-                    Marcar entregado
-                  </Button>
-                )}
-              </div>
+            <DialogDescription className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{numero}</span>
+              {" · "}
+              {etapaLabel}
+            </DialogDescription>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                disabled={!presupuestoId || busy}
+                onClick={() => abrirComprobante(false)}
+              >
+                <Printer className="h-3.5 w-3.5" aria-hidden />
+                Imprimir
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 text-xs"
+                disabled={!presupuestoId || busy}
+                onClick={() => abrirComprobante(true)}
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden />
+                Descargar PDF
+              </Button>
             </div>
+          </DialogHeader>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Historial de cobros</p>
-              <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border p-3 text-xs">
-                {pagosVentas.length === 0 ? (
-                  <p className="text-muted-foreground">Sin pagos registrados.</p>
-                ) : (
-                  pagosVentas.map((p) => {
-                    const val = typeof p.monto === "string" ? parseFloat(p.monto) : Number(p.monto ?? 0);
-                    const montoTxt = Number.isFinite(val)
-                      ? p.moneda === "usd"
-                        ? val.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        : Math.round(val).toLocaleString("es-AR")
-                      : String(p.monto);
-                    return (
-                      <div
-                        key={p.id}
-                        className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border/60 pb-1.5 last:border-none last:pb-0"
-                      >
-                        <span className="text-muted-foreground">
-                          {formatoFechaCortaDb(p.fecha)} · {etiquetaMetodo(p.metodo)}
-                        </span>
-                        <span className="font-medium tabular-nums text-foreground">
-                          {p.moneda === "usd" ? "USD " : "$ "}
-                          {montoTxt}
-                        </span>
-                        {p.nota ? (
-                          <span className="w-full text-muted-foreground">{p.nota}</span>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {placasOt.length > 0 ? (
+          <div className="max-h-[calc(90vh-7rem)] space-y-5 overflow-y-auto px-6 py-5">
+            {busy ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+            ) : (
               <>
-                <Separator />
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">Placas asociadas a la OT</p>
-                  <ul className="space-y-1 text-xs text-muted-foreground">
-                    {placasOt.map((c) => (
-                      <li key={c.id}>
-                        {c.bulto} · {c.material_label}
-                        {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""} · {c.estado}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="rounded-xl bg-foreground px-5 py-4 text-background shadow-sm">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-background/70">
+                    {saldo <= 0.009 ? "Saldo" : "Saldo pendiente"}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+                    {saldo <= 0.009 ? "Al día" : formatMonto(saldo, moneda)}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-background/20 pt-3 text-xs tabular-nums text-background/80">
+                    <span>Total {formatMonto(total, moneda)}</span>
+                    <span>Cobrado {formatMonto(cobrado, moneda)}</span>
+                  </div>
                 </div>
-              </>
-            ) : null}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
 
-    <ElegirChapaReemplazoDialog
-      open={reemplazoOpen}
-      onOpenChange={(o) => {
-        setReemplazoOpen(o);
-        if (!o) setChapasPendientes([]);
-      }}
-      pendientes={chapasPendientes}
-      onResuelto={async () => {
-        setChapasPendientes([]);
-        if (presupuestoId) await cargar(presupuestoId);
-        await onDatosCambiaron();
-      }}
-    />
+                <section className="space-y-2.5">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Pagos ({pagosVentas.length})
+                  </h3>
+                  {pagosVentas.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                      Sin pagos registrados.
+                    </p>
+                  ) : (
+                    <ul className="max-h-52 space-y-2 overflow-y-auto pr-0.5">
+                      {pagosVentas.map((p) => {
+                        const val = montoPagoNum(p);
+                        return (
+                          <li
+                            key={p.id}
+                            className="rounded-lg border border-border bg-card px-3.5 py-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-0.5">
+                                <p className="text-sm font-semibold tabular-nums text-foreground">
+                                  {formatMonto(val, p.moneda === "usd" ? "usd" : "ars")}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatoFechaCortaDb(p.fecha)}
+                                </p>
+                              </div>
+                              <p className="shrink-0 text-xs font-medium text-muted-foreground">
+                                {etiquetaMetodo(p.metodo)}
+                              </p>
+                            </div>
+                            {p.nota ? (
+                              <p className="mt-2 text-xs text-muted-foreground">{p.nota}</p>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+
+                <Collapsible open={formOpen} onOpenChange={setFormOpen}>
+                  <div className="overflow-hidden rounded-xl border border-border">
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 bg-muted/40 px-4 py-3 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted/60"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <Plus className="h-4 w-4 opacity-70" aria-hidden />
+                          Registrar pago
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 text-muted-foreground transition-transform",
+                            formOpen && "rotate-180",
+                          )}
+                          aria-hidden
+                        />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-3 border-t border-border px-4 py-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="vc-monto">Monto</Label>
+                            <Input
+                              id="vc-monto"
+                              type="number"
+                              min={0}
+                              step="any"
+                              value={montoDigitado}
+                              onChange={(e) => setMontoDigitado(e.target.value)}
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="vc-fecha">Fecha</Label>
+                            <Input
+                              id="vc-fecha"
+                              type="date"
+                              value={pagoFecha}
+                              onChange={(e) => setPagoFecha(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label>Moneda</Label>
+                            <Select
+                              value={pagoMoneda}
+                              onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ars">ARS</SelectItem>
+                                <SelectItem value="usd">USD</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Cómo se paga</Label>
+                            <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {METODOS_COBRO_UI.map((m) => (
+                                  <SelectItem key={m.value} value={m.value}>
+                                    {m.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="vc-nota">Nota (opcional)</Label>
+                          <Textarea
+                            id="vc-nota"
+                            rows={2}
+                            value={pagoNota}
+                            onChange={(e) => setPagoNota(e.target.value)}
+                          />
+                        </div>
+                        <div className="flex flex-col gap-2 pt-1">
+                          <Button
+                            type="button"
+                            className="w-full"
+                            disabled={pagoBusy}
+                            onClick={() => void onRegistrarPago()}
+                          >
+                            <Plus className="mr-1 h-4 w-4" aria-hidden />
+                            Registrar pago
+                          </Button>
+                          {estado === "finalizado" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full"
+                              disabled={pagoBusy}
+                              onClick={() => void onMarcarEntregado()}
+                            >
+                              Marcar entregado
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
+
+                {placasOt.length > 0 ? (
+                  <section className="space-y-2 border-t border-border pt-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Placas en OT
+                    </h3>
+                    <ul className="space-y-1.5 text-xs text-muted-foreground">
+                      {placasOt.map((c) => (
+                        <li key={c.id} className="rounded-md bg-muted/40 px-3 py-2">
+                          <span className="font-medium text-foreground">{c.bulto}</span>
+                          {" · "}
+                          {c.material_label}
+                          {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""}
+                          {" · "}
+                          {c.estado}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ElegirChapaReemplazoDialog
+        open={reemplazoOpen}
+        onOpenChange={(o) => {
+          setReemplazoOpen(o);
+          if (!o) setChapasPendientes([]);
+        }}
+        pendientes={chapasPendientes}
+        onResuelto={async () => {
+          setChapasPendientes([]);
+          if (presupuestoId) await cargar(presupuestoId);
+          await onDatosCambiaron();
+        }}
+      />
     </>
   );
 }

@@ -114,6 +114,25 @@ export type VentaResumenMerged = {
   saldo_misma_moneda: number | null;
   pct_sena_sobre_presupuesto: number | null;
   orden_trabajo_id: string | null;
+  ot_etapa: string | null;
+  ot_estado: JobStatus | null;
+};
+
+type OtResumenPorVenta = {
+  id: string;
+  etapa: string | null;
+  estado: JobStatus | null;
+};
+
+const VENTA_RESUMEN_SIN_VENTA: VentaResumenMerged = {
+  venta_id: null,
+  venta_estado: null,
+  total_pagado_misma_moneda: null,
+  saldo_misma_moneda: null,
+  pct_sena_sobre_presupuesto: null,
+  orden_trabajo_id: null,
+  ot_etapa: null,
+  ot_estado: null,
 };
 
 export async function mergeVentasResumenIntoPresupuestos<
@@ -142,12 +161,7 @@ export async function mergeVentasResumenIntoPresupuestos<
   if (ventaIds.length === 0) {
     return rows.map((r) => ({
       ...r,
-      venta_id: null,
-      venta_estado: null,
-      total_pagado_misma_moneda: null,
-      saldo_misma_moneda: null,
-      pct_sena_sobre_presupuesto: null,
-      orden_trabajo_id: null,
+      ...VENTA_RESUMEN_SIN_VENTA,
     }));
   }
 
@@ -161,13 +175,19 @@ export async function mergeVentasResumenIntoPresupuestos<
   /** Si la tabla OT aún no existe en el proyecto, el listado no debe fallar. */
   const otRes = await supabase
     .from("ordenes_trabajo")
-    .select("id,venta_id")
+    .select("id,venta_id,etapa,estado")
     .not("venta_id", "is", null);
   const filasOt = !otRes.error && otRes.data ? otRes.data : [];
 
-  const otPorVenta = new Map<string, string>();
+  const otPorVenta = new Map<string, OtResumenPorVenta>();
   filasOt.forEach((j) => {
-    if (j.venta_id && j.id) otPorVenta.set(j.venta_id, j.id);
+    if (j.venta_id && j.id && !otPorVenta.has(j.venta_id)) {
+      otPorVenta.set(j.venta_id, {
+        id: j.id,
+        etapa: typeof j.etapa === "string" ? j.etapa : null,
+        estado: (j.estado as JobStatus) ?? null,
+      });
+    }
   });
 
   return rows.map((r) => {
@@ -175,12 +195,7 @@ export async function mergeVentasResumenIntoPresupuestos<
     if (!venta) {
       return {
         ...r,
-        venta_id: null,
-        venta_estado: null,
-        total_pagado_misma_moneda: null,
-        saldo_misma_moneda: null,
-        pct_sena_sobre_presupuesto: null,
-        orden_trabajo_id: null,
+        ...VENTA_RESUMEN_SIN_VENTA,
       };
     }
     let totalMis = 0;
@@ -192,6 +207,7 @@ export async function mergeVentasResumenIntoPresupuestos<
     }
     const saldoNum = Number.isFinite(r.total) ? r.total - totalMis : null;
     const pct = r.total > 0 ? Math.min(100, (totalMis / r.total) * 100) : null;
+    const ot = otPorVenta.get(venta.id);
     return {
       ...r,
       venta_id: venta.id,
@@ -199,7 +215,9 @@ export async function mergeVentasResumenIntoPresupuestos<
       total_pagado_misma_moneda: totalMis,
       saldo_misma_moneda: saldoNum !== null ? saldoNum : null,
       pct_sena_sobre_presupuesto: pct,
-      orden_trabajo_id: otPorVenta.get(venta.id) ?? null,
+      orden_trabajo_id: ot?.id ?? null,
+      ot_etapa: ot?.etapa ?? null,
+      ot_estado: ot?.estado ?? null,
     };
   });
 }

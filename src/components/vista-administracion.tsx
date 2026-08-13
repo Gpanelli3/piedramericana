@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,22 +15,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Wallet,
   TrendingUp,
-  Clock,
+  ChevronDown,
   ChevronRight,
   Search,
   Download,
+  FileSpreadsheet,
+  FileText,
+  Printer,
+  X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
   listPresupuestosResumen,
   type PresupuestoRowList,
 } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { VentaEstado } from "@/types/database";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
-import { exportPagosVentasCsv, exportVentasCsv } from "@/lib/reportes-export-api";
+import { exportVentasCsv } from "@/lib/reportes-export-api";
+import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
   const opts: Intl.NumberFormatOptions = {
@@ -43,54 +52,20 @@ function formatMonto(n: number, moneda: "ars" | "usd") {
   return `$ ${n.toLocaleString("es-AR", opts)}`;
 }
 
-function etiquetaEstadoVenta(e: VentaEstado | null): string {
-  switch (e) {
-    case null:
-      return "Sin seña";
-    case "senado":
-      return "Con seña";
-    case "en_medicion":
-      return "En producción";
-    case "en_produccion":
-      return "En producción";
-    case "finalizado":
-      return "Finalizado";
-    case "entregado":
-      return "Entregado";
-    default:
-      return "Sin venta";
+function formatoFecha(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return iso.slice(0, 10);
   }
-}
-
-function badgeEstadoVenta(e: VentaEstado | null) {
-  const label = etiquetaEstadoVenta(e);
-  const base =
-    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium";
-  if (e === null) {
-    return (
-      <Badge variant="outline" className={cn(base, "border-border text-muted-foreground")}>
-        {label}
-      </Badge>
-    );
-  }
-  if (e === "entregado" || e === "finalizado") {
-    return (
-      <Badge
-        variant="secondary"
-        className={cn(base, "border-green-200 bg-green-50 text-green-900")}
-      >
-        {label}
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="secondary" className={cn(base, "border-border")}>
-      {label}
-    </Badge>
-  );
 }
 
 export function VistaAdministracion() {
+  const navigate = useNavigate();
   const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
@@ -123,17 +98,20 @@ export function VistaAdministracion() {
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return filas;
-    return filas.filter(
-      (r) =>
+    return filas.filter((r) => {
+      const etapa = etiquetaEtapaOt(r.ot_etapa, r.ot_estado).toLowerCase();
+      return (
         r.numero.toLowerCase().includes(q) ||
-        r.cliente.toLowerCase().includes(q),
-    );
+        r.cliente.toLowerCase().includes(q) ||
+        (r.vendedor_nombre ?? "").toLowerCase().includes(q) ||
+        etapa.includes(q)
+      );
+    });
   }, [filas, busqueda]);
 
   const kpis = useMemo(() => {
     let saldoUsd = 0;
     let saldoArs = 0;
-    let sinSena = 0;
     for (const r of filas) {
       const sal = r.saldo_misma_moneda;
       if (r.moneda === "usd") {
@@ -141,7 +119,6 @@ export function VistaAdministracion() {
       } else {
         if (typeof sal === "number" && sal > 0) saldoArs += sal;
       }
-      if (r.venta_estado === null) sinSena += 1;
     }
     const conSaldo =
       filas.filter((r) => {
@@ -151,7 +128,6 @@ export function VistaAdministracion() {
     return {
       saldoUsd,
       saldoArs,
-      sinSena,
       conSaldo,
       totalAprob: filas.length,
     };
@@ -162,58 +138,102 @@ export function VistaAdministracion() {
     setCobrosAbierto(true);
   }
 
-  async function onExportVentas() {
+  async function onExportExcel() {
     setExportBusy(true);
     const res = await exportVentasCsv();
     setExportBusy(false);
     if (res.error) toast.error(res.error.message);
-    else toast.success("Export de ventas descargado.");
+    else toast.success("Excel descargado.");
   }
 
-  async function onExportPagos() {
-    setExportBusy(true);
-    const res = await exportPagosVentasCsv();
-    setExportBusy(false);
-    if (res.error) toast.error(res.error.message);
-    else toast.success("Export de cobros descargado.");
+  function onExportPdf() {
+    navigate("/obras-cobros/imprimir?descargar=1");
+  }
+
+  function onExportImprimir() {
+    navigate("/obras-cobros/imprimir");
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
               Ventas — Caja y cuentas corrientes
             </h1>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={exportBusy || cargando}
-              onClick={() => void onExportVentas()}
-            >
-              <Download className="mr-1 h-4 w-4" />
-              Export ventas
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={exportBusy || cargando}
-              onClick={() => void onExportPagos()}
-            >
-              <Download className="mr-1 h-4 w-4" />
-              Export cobros
-            </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <div className="relative w-full sm:w-[320px]">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <Input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar obra, cliente, vendedor o etapa…"
+                className="h-9 rounded-lg border-border bg-muted/40 pl-9 pr-9 shadow-none focus-visible:bg-background"
+                aria-label="Buscar en obras y cobros"
+              />
+              {busqueda.trim() ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => setBusqueda("")}
+                  aria-label="Limpiar búsqueda"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              ) : null}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={exportBusy || cargando}
+                  className="h-9 shrink-0 gap-1.5"
+                >
+                  <Download className="h-4 w-4" aria-hidden />
+                  Exportar
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[10.5rem]">
+                <DropdownMenuItem
+                  disabled={exportBusy}
+                  onSelect={() => void onExportExcel()}
+                  className="gap-2"
+                >
+                  <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                  Excel
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={exportBusy}
+                  onSelect={onExportPdf}
+                  className="gap-2"
+                >
+                  <FileText className="h-4 w-4" aria-hidden />
+                  PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={exportBusy}
+                  onSelect={onExportImprimir}
+                  className="gap-2"
+                >
+                  <Printer className="h-4 w-4" aria-hidden />
+                  Imprimir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
       <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card className="border-border shadow-sm">
             <CardContent className="flex gap-4 p-4 sm:p-5">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -255,43 +275,9 @@ export function VistaAdministracion() {
               </div>
             </CardContent>
           </Card>
-
-          <Card className="border-border shadow-sm sm:col-span-2 lg:col-span-1">
-            <CardContent className="flex gap-4 p-4 sm:p-5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <Clock className="h-5 w-5 text-foreground/80" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Sin seña registrada</p>
-                <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                  {cargando ? "…" : kpis.sinSena}
-                </p>
-                <p className="text-xs text-muted-foreground">Aún sin pagos en la venta asociada</p>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <Card className="border-border shadow-sm">
-          <CardHeader className="space-y-4 border-b border-border pb-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-base font-semibold text-foreground">
-                  Obras y cobros
-                </CardTitle>
-              </div>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar por presupuesto o cliente…"
-                  className="h-9 w-full pl-9 sm:w-[260px]"
-                  aria-label="Filtrar ventas"
-                />
-              </div>
-            </div>
-          </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
@@ -301,16 +287,25 @@ export function VistaAdministracion() {
                       Presupuesto
                     </TableHead>
                     <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Cliente / Arquitecto
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Etapa
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
                       Total
                     </TableHead>
                     <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
-                      Avance
+                      Cobrado
                     </TableHead>
                     <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
                       Saldo
                     </TableHead>
                     <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
-                      Venta
+                      Vendedor
+                    </TableHead>
+                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                      Fecha
                     </TableHead>
                     <TableHead className="whitespace-nowrap pr-4 text-right text-xs font-medium text-muted-foreground sm:pr-6">
                       Acción
@@ -320,13 +315,13 @@ export function VistaAdministracion() {
                 <TableBody>
                   {cargando ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
                         Cargando…
                       </TableCell>
                     </TableRow>
                   ) : filtradas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
                         {busqueda.trim() ?
                           `No hay resultados para «${busqueda}».`
                         : "No hay presupuestos aprobados."}
@@ -334,10 +329,6 @@ export function VistaAdministracion() {
                     </TableRow>
                   ) : (
                     filtradas.map((r) => {
-                      const pct =
-                        typeof r.pct_sena_sobre_presupuesto === "number" ?
-                          Math.round(r.pct_sena_sobre_presupuesto)
-                        : 0;
                       const pagado = r.total_pagado_misma_moneda ?? 0;
                       const saldo = r.saldo_misma_moneda ?? r.total;
                       return (
@@ -346,32 +337,20 @@ export function VistaAdministracion() {
                           className="cursor-pointer transition-colors hover:bg-muted/50"
                           onClick={() => abrirCobros(r)}
                         >
-                          <TableCell className="max-w-[220px] py-3 pl-4 sm:max-w-[280px] sm:pl-6">
+                          <TableCell className="max-w-[140px] py-3 pl-4 sm:pl-6">
                             <p className="text-sm font-medium text-accent">{r.numero}</p>
-                            <p className="truncate text-xs text-muted-foreground">{r.cliente}</p>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] py-3">
+                            <p className="truncate text-sm text-foreground">{r.cliente || "—"}</p>
+                          </TableCell>
+                          <TableCell className="py-3 text-sm text-muted-foreground">
+                            {etiquetaEtapaOt(r.ot_etapa, r.ot_estado)}
                           </TableCell>
                           <TableCell className="py-3 tabular-nums text-sm font-medium">
                             {formatMonto(r.total, r.moneda)}
                           </TableCell>
-                          <TableCell className="py-3">
-                            <div className="flex w-[7rem] flex-col gap-1">
-                              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className={cn(
-                                    "h-full rounded-full transition-all",
-                                    pct === 0 ?
-                                      "bg-red-400"
-                                    : pct === 100 ?
-                                      "bg-green-600"
-                                    : "bg-amber-500",
-                                  )}
-                                  style={{ width: `${Math.min(100, pct)}%` }}
-                                />
-                              </div>
-                              <span className="text-[11px] text-muted-foreground tabular-nums">
-                                {formatMonto(pagado, r.moneda)} · {pct}%
-                              </span>
-                            </div>
+                          <TableCell className="py-3 tabular-nums text-sm font-medium">
+                            {formatMonto(pagado, r.moneda)}
                           </TableCell>
                           <TableCell className="py-3 tabular-nums text-sm font-semibold">
                             {saldo <= 0.009 ?
@@ -380,7 +359,14 @@ export function VistaAdministracion() {
                               <span className="text-destructive">{formatMonto(saldo, r.moneda)}</span>
                             )}
                           </TableCell>
-                          <TableCell className="py-3">{badgeEstadoVenta(r.venta_estado)}</TableCell>
+                          <TableCell className="max-w-[140px] py-3">
+                            <p className="truncate text-sm text-muted-foreground">
+                              {r.vendedor_nombre?.trim() || "—"}
+                            </p>
+                          </TableCell>
+                          <TableCell className="py-3 whitespace-nowrap text-sm tabular-nums text-muted-foreground">
+                            {formatoFecha(r.created_at)}
+                          </TableCell>
                           <TableCell className="py-3 pr-4 text-right sm:pr-6">
                             <Button
                               type="button"

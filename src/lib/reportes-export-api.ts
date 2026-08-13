@@ -1,25 +1,14 @@
 import { supabase } from "@/lib/supabase";
 import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { listPresupuestosResumen } from "@/lib/presupuestos-api";
+import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import { fetchRemitosList, fetchRemitoLines } from "@/lib/stock-api";
 
 function fechaArchivo(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function etiquetaEstadoVenta(e: string | null): string {
-  if (!e) return "Sin seña";
-  const map: Record<string, string> = {
-    senado: "Con seña",
-    en_medicion: "En producción",
-    en_produccion: "En producción",
-    finalizado: "Finalizado",
-    entregado: "Entregado",
-  };
-  return map[e] ?? e;
-}
-
-/** Exporta ventas aprobadas con resumen de cobros. */
+/** Exporta obras y cobros (ventas aprobadas) en CSV compatible con Excel. */
 export async function exportVentasCsv(): Promise<{ error: Error | null }> {
   const { data, error } = await listPresupuestosResumen();
   if (error) return { error };
@@ -27,28 +16,28 @@ export async function exportVentasCsv(): Promise<{ error: Error | null }> {
 
   const headers = [
     "Presupuesto",
-    "Cliente",
+    "Cliente / Arquitecto",
+    "Etapa",
     "Total",
     "Moneda",
-    "Estado venta",
-    "Pagado",
+    "Cobrado",
     "Saldo",
-    "Avance %",
-    "Fecha creación",
+    "Vendedor",
+    "Fecha",
   ];
   const rows = aprob.map((r) => [
     r.numero,
     r.cliente,
+    etiquetaEtapaOt(r.ot_etapa, r.ot_estado),
     r.total,
     r.moneda.toUpperCase(),
-    etiquetaEstadoVenta(r.venta_estado),
     r.total_pagado_misma_moneda ?? 0,
     r.saldo_misma_moneda ?? r.total,
-    r.pct_sena_sobre_presupuesto != null ? r.pct_sena_sobre_presupuesto.toFixed(1) : "",
+    r.vendedor_nombre?.trim() || "",
     r.created_at.slice(0, 10),
   ]);
 
-  downloadCsv(`ventas_${fechaArchivo()}.csv`, rowsToCsv(headers, rows));
+  downloadCsv(`obras_cobros_${fechaArchivo()}.csv`, rowsToCsv(headers, rows));
   return { error: null };
 }
 
