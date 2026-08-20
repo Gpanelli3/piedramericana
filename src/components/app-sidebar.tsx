@@ -3,32 +3,40 @@
 import { useMemo, useCallback, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import {
+  BarChart3,
   ChevronRight,
   FileText,
   Landmark,
   LayoutDashboard,
   Mountain,
   Package,
+  Settings,
+  Ship,
   Tags,
+  Truck,
+  Users,
+  UserCog,
   Wallet,
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRol } from "@/hooks/useRol";
-import type { WorkspaceTab } from "@/types/workspace";
+import {
+  EQUIPO_SECCION_LABELS,
+  EQUIPO_SECCIONES,
+  PRODUCCION_OT_FILTROS,
+  PRODUCCION_OT_LABELS,
+  WORKSPACE_TABS,
+  equipoSeccionDesdeParam,
+  produccionOtDesdeParam,
+  type EquipoSeccion,
+  type ProduccionOtFiltro,
+  type WorkspaceTab,
+} from "@/types/workspace";
 import { useSearchParams } from "react-router-dom";
 
-const KNOWN_WS = new Set<WorkspaceTab>([
-  "dashboard",
-  "ventas",
-  "articulos",
-  "administracion",
-  "finanzas",
-  "produccion",
-  "cantera",
-  "stock",
-]);
+const KNOWN_WS = new Set<WorkspaceTab>(WORKSPACE_TABS);
 
 function wsDesdeParam(v: string | null): WorkspaceTab {
   return v && KNOWN_WS.has(v as WorkspaceTab) ? (v as WorkspaceTab) : "dashboard";
@@ -58,6 +66,13 @@ const NAV_ITEMS: NavItemDef[] = [
     roles: ["vendedor", "admin", "administracion"],
   },
   {
+    id: "clientes",
+    label: "Clientes",
+    icon: <Users className="h-5 w-5" />,
+    color: "text-blue-400",
+    roles: ["vendedor", "admin", "administracion"],
+  },
+  {
     id: "articulos",
     label: "Sub-ítems",
     icon: <Tags className="h-5 w-5" />,
@@ -70,13 +85,6 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: <Wallet className="h-5 w-5" />,
     color: "text-purple-400",
     roles: ["vendedor", "admin", "administracion"],
-  },
-  {
-    id: "finanzas",
-    label: "Finanzas",
-    icon: <Landmark className="h-5 w-5" />,
-    color: "text-teal-400",
-    roles: ["admin", "administracion"],
   },
   {
     id: "produccion",
@@ -98,6 +106,48 @@ const NAV_ITEMS: NavItemDef[] = [
     icon: <Package className="h-5 w-5" />,
     color: "text-yellow-400",
     roles: ["admin", "administracion", "produccion"],
+  },
+  {
+    id: "proveedores",
+    label: "Proveedores",
+    icon: <Truck className="h-5 w-5" />,
+    color: "text-amber-400",
+    roles: ["admin", "administracion"],
+  },
+  {
+    id: "comercio_exterior",
+    label: "Comercio exterior",
+    icon: <Ship className="h-5 w-5" />,
+    color: "text-indigo-400",
+    roles: ["admin", "administracion"],
+  },
+  {
+    id: "finanzas",
+    label: "Finanzas",
+    icon: <Landmark className="h-5 w-5" />,
+    color: "text-teal-400",
+    roles: ["admin", "administracion"],
+  },
+  {
+    id: "equipo",
+    label: "Equipo",
+    icon: <UserCog className="h-5 w-5" />,
+    color: "text-rose-400",
+    roles: ["admin", "administracion"],
+  },
+  {
+    id: "reportes",
+    label: "Reportes",
+    icon: <BarChart3 className="h-5 w-5" />,
+    color: "text-emerald-400",
+    roles: ["admin", "administracion"],
+  },
+  {
+    id: "configuracion",
+    label: "Configuración",
+    icon: <Settings className="h-5 w-5" />,
+    color: "text-zinc-400",
+    roles: ["admin"],
   },
 ];
 
@@ -125,15 +175,113 @@ const ETIQUETAS_ROL: Record<string, string> = {
   admin: "Administrador",
 };
 
+function limpiarParamsDeOtrosModulos(n: URLSearchParams, tab: WorkspaceTab) {
+  if (tab !== "ventas") {
+    n.delete("pv");
+    n.delete("ft");
+    n.delete("rid");
+    n.delete("id");
+  }
+  if (tab !== "produccion") n.delete("ot");
+  if (tab !== "equipo") n.delete("eq");
+}
+
+type ExpandableNavProps = {
+  item: NavItemDef;
+  active: boolean;
+  menuAbierto: boolean;
+  onToggleEncabezado: () => void;
+  submenuId: string;
+  children: ReactNode;
+};
+
+function ExpandableNavItem({
+  item,
+  active,
+  menuAbierto,
+  onToggleEncabezado,
+  submenuId,
+  children,
+}: ExpandableNavProps) {
+  return (
+    <div className="space-y-0.5 pb-2">
+      <div
+        className={cn(
+          "flex w-full items-stretch rounded-md",
+          active ? "bg-sidebar-accent text-sidebar-foreground" : "text-sidebar-foreground/60",
+        )}
+      >
+        <button
+          type="button"
+          className={cn(
+            "shrink-0 flex items-center justify-center rounded-md px-1 py-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+            active ? "hover:bg-white/10" : "hover:bg-sidebar-accent/45",
+          )}
+          aria-expanded={active ? menuAbierto : false}
+          aria-controls={submenuId}
+          aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleEncabezado();
+          }}
+        >
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              "h-4 w-4 shrink-0 transition-transform duration-200",
+              menuAbierto && active && "rotate-90",
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleEncabezado}
+          className={cn(
+            "flex flex-1 min-w-0 items-center gap-2 px-1 py-2.5 rounded-md text-sm font-medium transition-colors text-left",
+            active
+              ? "text-sidebar-foreground"
+              : "hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+          )}
+        >
+          <span className={cn(active ? item.color : "")}>{item.icon}</span>
+          <span className="truncate flex-1">{item.label}</span>
+          {active ? (
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", item.color.replace("text-", "bg-"))} />
+          ) : null}
+        </button>
+      </div>
+
+      {menuAbierto && active ? (
+        <div
+          id={submenuId}
+          className="border-l border-sidebar-border ml-5 pl-1 space-y-0.5 mt-1"
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AppSidebar() {
   const { user, signOut } = useAuth();
   const { roles, esAdmin } = useRol();
   const [searchParams, setSearchParams] = useSearchParams();
   const [presupuestosMenuAbierto, setPresupuestosMenuAbierto] = useState(false);
+  const [produccionMenuAbierto, setProduccionMenuAbierto] = useState(false);
+  const [equipoMenuAbierto, setEquipoMenuAbierto] = useState(false);
 
   const activeTab = useMemo(() => wsDesdeParam(searchParams.get("ws")), [searchParams]);
   const pv = searchParams.get("pv") ?? "";
   const ft = searchParams.get("ft") ?? "pendientes";
+  const otFiltro = useMemo(
+    () => produccionOtDesdeParam(searchParams.get("ot")),
+    [searchParams],
+  );
+  const eqSeccion = useMemo(
+    () => equipoSeccionDesdeParam(searchParams.get("eq")),
+    [searchParams],
+  );
 
   const navItems = useMemo(() => {
     if (esAdmin || roles.length === 0) return NAV_ITEMS;
@@ -149,11 +297,9 @@ export function AppSidebar() {
         (prev) => {
           const n = new URLSearchParams(prev);
           n.set("ws", tab);
-          if (tab !== "ventas") {
-            n.delete("pv");
-            n.delete("ft");
-            n.delete("rid");
-          }
+          limpiarParamsDeOtrosModulos(n, tab);
+          if (tab === "produccion") n.set("ot", "general");
+          if (tab === "equipo") n.set("eq", "empleados");
           return n;
         },
         { replace: true },
@@ -175,6 +321,7 @@ export function AppSidebar() {
         (prev) => {
           const n = new URLSearchParams(prev);
           n.set("ws", "ventas");
+          limpiarParamsDeOtrosModulos(n, "ventas");
           if (tipo === "nuevo") {
             n.set("pv", "nuevo");
             n.delete("ft");
@@ -194,13 +341,44 @@ export function AppSidebar() {
     [setSearchParams],
   );
 
+  const gotoProduccionOt = useCallback(
+    (filtro: ProduccionOtFiltro) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("ws", "produccion");
+          limpiarParamsDeOtrosModulos(n, "produccion");
+          n.set("ot", filtro);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const gotoEquipoSeccion = useCallback(
+    (seccion: EquipoSeccion) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("ws", "equipo");
+          limpiarParamsDeOtrosModulos(n, "equipo");
+          n.set("eq", seccion);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   useEffect(() => {
-    if (activeTab !== "ventas") {
-      setPresupuestosMenuAbierto(false);
-    }
+    if (activeTab !== "ventas") setPresupuestosMenuAbierto(false);
+    if (activeTab !== "produccion") setProduccionMenuAbierto(false);
+    if (activeTab !== "equipo") setEquipoMenuAbierto(false);
   }, [activeTab]);
 
-  /** Misma acción para la flecha y el título «Presupuestos»: abrir al entrar / alternar ya en ventas. */
   const onPresupuestosEncabezado = useCallback(() => {
     if (activeTab !== "ventas") {
       gotoVentasQuery("nuevo");
@@ -210,17 +388,33 @@ export function AppSidebar() {
     setPresupuestosMenuAbierto((prev) => !prev);
   }, [activeTab, gotoVentasQuery]);
 
+  const onProduccionEncabezado = useCallback(() => {
+    if (activeTab !== "produccion") {
+      gotoProduccionOt("general");
+      setProduccionMenuAbierto(true);
+      return;
+    }
+    setProduccionMenuAbierto((prev) => !prev);
+  }, [activeTab, gotoProduccionOt]);
+
+  const onEquipoEncabezado = useCallback(() => {
+    if (activeTab !== "equipo") {
+      gotoEquipoSeccion("empleados");
+      setEquipoMenuAbierto(true);
+      return;
+    }
+    setEquipoMenuAbierto((prev) => !prev);
+  }, [activeTab, gotoEquipoSeccion]);
+
   const meta = user?.user_metadata as { full_name?: string } | undefined;
   const displayName = meta?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
   const initials = initialsFromUser(user?.email, meta?.full_name);
 
-  const submenuLinkCn = (
-    active: boolean,
-  ) =>
+  const submenuLinkCn = (active: boolean, accentBorder: string) =>
     cn(
       "flex w-full items-center rounded-md px-3 py-1.5 text-left text-[13px] transition-colors border-l-2",
       active
-        ? "border-red-400 bg-sidebar-accent text-sidebar-foreground font-medium"
+        ? cn(accentBorder, "bg-sidebar-accent text-sidebar-foreground font-medium")
         : "border-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
     );
 
@@ -257,105 +451,110 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3 py-4">
-        {navItems.map((item) =>
-          item.id === "ventas" ? (
-            <div key={item.id} className="space-y-0.5 pb-2">
-              <div
-                className={cn(
-                  "flex w-full items-stretch rounded-md",
-                  activeTab === item.id
-                    ? "bg-sidebar-accent text-sidebar-foreground"
-                    : "text-sidebar-foreground/60",
-                )}
+        {navItems.map((item) => {
+          if (item.id === "ventas") {
+            return (
+              <ExpandableNavItem
+                key={item.id}
+                item={item}
+                active={activeTab === item.id}
+                menuAbierto={presupuestosMenuAbierto}
+                onToggleEncabezado={onPresupuestosEncabezado}
+                submenuId="sidebar-presupuestos-submenu"
               >
                 <button
                   type="button"
-                  className={cn(
-                    "shrink-0 flex items-center justify-center rounded-md px-1 py-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-                    activeTab === item.id ? "hover:bg-white/10" : "hover:bg-sidebar-accent/45",
-                  )}
-                  aria-expanded={activeTab === "ventas" ? presupuestosMenuAbierto : false}
-                  aria-controls="sidebar-presupuestos-submenu"
-                  aria-label={
-                    presupuestosMenuAbierto
-                      ? "Contraer submenú de presupuestos"
-                      : "Desplegar submenú de presupuestos"
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPresupuestosEncabezado();
-                  }}
+                  onClick={() => gotoVentasQuery("nuevo")}
+                  className={submenuLinkCn(pv === "nuevo", "border-red-400")}
                 >
-                  <ChevronRight
-                    aria-hidden
-                    className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200",
-                      presupuestosMenuAbierto && activeTab === "ventas" && "rotate-90",
-                    )}
-                  />
+                  Nuevo presupuesto
                 </button>
                 <button
                   type="button"
-                  onClick={onPresupuestosEncabezado}
-                  className={cn(
-                    "flex flex-1 min-w-0 items-center gap-2 px-1 py-2.5 rounded-md text-sm font-medium transition-colors text-left",
-                    activeTab === item.id
-                      ? "text-sidebar-foreground"
-                      : "hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                  )}
+                  onClick={() => gotoVentasQuery("lista", "aprobados")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "aprobados", "border-red-400")}
                 >
-                  <span className={cn(activeTab === item.id ? item.color : "")}>{item.icon}</span>
-                  <span className="truncate flex-1">{item.label}</span>
-                  {activeTab === item.id ? (
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", item.color.replace("text-", "bg-"))} />
-                  ) : null}
+                  Aprobados
                 </button>
-              </div>
-
-              {presupuestosMenuAbierto && activeTab === "ventas" ? (
-                <div
-                  id="sidebar-presupuestos-submenu"
-                  className="border-l border-sidebar-border ml-5 pl-1 space-y-0.5 mt-1"
+                <button
+                  type="button"
+                  onClick={() => gotoVentasQuery("lista", "pendientes")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes", "border-red-400")}
                 >
+                  Pendientes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => gotoVentasQuery("lista", "rechazados")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados", "border-red-400")}
+                >
+                  Rechazados
+                </button>
+                <button
+                  type="button"
+                  onClick={() => gotoVentasQuery("lista", "todos")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "todos", "border-red-400")}
+                >
+                  Todos
+                </button>
+              </ExpandableNavItem>
+            );
+          }
+
+          if (item.id === "produccion") {
+            return (
+              <ExpandableNavItem
+                key={item.id}
+                item={item}
+                active={activeTab === item.id}
+                menuAbierto={produccionMenuAbierto}
+                onToggleEncabezado={onProduccionEncabezado}
+                submenuId="sidebar-produccion-submenu"
+              >
+                {PRODUCCION_OT_FILTROS.map((filtro) => (
                   <button
+                    key={filtro}
                     type="button"
-                    onClick={() => gotoVentasQuery("nuevo")}
-                    className={submenuLinkCn(pv === "nuevo")}
+                    onClick={() => gotoProduccionOt(filtro)}
+                    className={submenuLinkCn(
+                      otFiltro === filtro,
+                      filtro === "entregadas" ? "border-orange-400" : "border-green-400",
+                    )}
                   >
-                    Nuevo presupuesto
+                    <span className={filtro === "entregadas" ? "text-orange-300" : undefined}>
+                      {PRODUCCION_OT_LABELS[filtro]}
+                    </span>
                   </button>
+                ))}
+              </ExpandableNavItem>
+            );
+          }
+
+          if (item.id === "equipo") {
+            return (
+              <ExpandableNavItem
+                key={item.id}
+                item={item}
+                active={activeTab === item.id}
+                menuAbierto={equipoMenuAbierto}
+                onToggleEncabezado={onEquipoEncabezado}
+                submenuId="sidebar-equipo-submenu"
+              >
+                {EQUIPO_SECCIONES.map((seccion) => (
                   <button
+                    key={seccion}
                     type="button"
-                    onClick={() => gotoVentasQuery("lista", "aprobados")}
-                    className={submenuLinkCn(pv !== "nuevo" && ft === "aprobados")}
+                    onClick={() => gotoEquipoSeccion(seccion)}
+                    className={submenuLinkCn(eqSeccion === seccion, "border-rose-400")}
                   >
-                    Aprobados
+                    {EQUIPO_SECCION_LABELS[seccion]}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => gotoVentasQuery("lista", "pendientes")}
-                    className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes")}
-                  >
-                    Pendientes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => gotoVentasQuery("lista", "rechazados")}
-                    className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados")}
-                  >
-                    Rechazados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => gotoVentasQuery("lista", "todos")}
-                    className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}
-                  >
-                    Todos
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : (
+                ))}
+              </ExpandableNavItem>
+            );
+          }
+
+          return (
             <button
               key={item.id}
               type="button"
@@ -373,8 +572,8 @@ export function AppSidebar() {
                 <span className={cn("ml-auto h-2 w-2 rounded-full", item.color.replace("text-", "bg-"))} />
               )}
             </button>
-          ),
-        )}
+          );
+        })}
       </nav>
 
       <div className="space-y-2 border-t border-sidebar-border px-5 py-4">

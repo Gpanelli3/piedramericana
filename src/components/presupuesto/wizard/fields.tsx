@@ -95,7 +95,9 @@ export function PickCliente({
     return clientes.filter(
       (c) =>
         c.nombre.toLowerCase().includes(q) ||
-        c.contacto.toLowerCase().includes(q),
+        c.contacto.toLowerCase().includes(q) ||
+        c.tel.toLowerCase().includes(q) ||
+        c.email.toLowerCase().includes(q),
     );
   }, [clientes, query]);
 
@@ -216,7 +218,9 @@ export function PickCliente({
                     <div className="flex min-w-0 flex-col gap-0">
                       <span className="truncate font-medium">{c.nombre}</span>
                       <span className="truncate text-[10px] opacity-80">
-                        {c.contacto}
+                        {[c.contacto !== c.nombre ? c.contacto : null, c.tel]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin contacto"}
                       </span>
                     </div>
                   </button>

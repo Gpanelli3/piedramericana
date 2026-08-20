@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -38,11 +37,8 @@ import {
 } from "lucide-react";
 import { useArticulos } from "@/hooks/useArticulos";
 import { articuloConPrecioToMock } from "@/lib/presupuesto-calculos";
-import {
-  createClient,
-  listClients,
-  type ClientePresupuesto,
-} from "@/lib/clients-api";
+import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
+import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
 import { listMaterials } from "@/lib/materials-api";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import {
@@ -195,7 +191,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     () => [],
   );
   const [clientesCargando, setClientesCargando] = useState(isSupabaseConfigured);
-  const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState<
     string | null
   >(null);
@@ -273,13 +268,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [resumenAbierto, setResumenAbierto] = useState(false);
 
   const [dialogClienteAbierto, setDialogClienteAbierto] = useState(false);
-  const [draftCliente, setDraftCliente] = useState({
-    nombre: "",
-    contacto: "",
-    tel: "",
-    email: "",
-    direccion: "",
-  });
+  const [prefillNombreCliente, setPrefillNombreCliente] = useState("");
 
   const [grabarError, setGrabarError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -474,47 +463,16 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   }, []);
 
   const abrirNuevoCliente = (prefillNombre = "") => {
-    setDraftCliente({
-      nombre: prefillNombre,
-      contacto: "",
-      tel: "",
-      email: "",
-      direccion: "",
-    });
+    setPrefillNombreCliente(prefillNombre);
     setDialogClienteAbierto(true);
   };
 
-  const guardarDraftCliente = async () => {
-    const t = draftCliente.nombre.trim();
-    if (!t) return;
-
-    if (!isSupabaseConfigured) {
-      toast.error("Supabase no está configurado; no se puede guardar el cliente.");
-      return;
-    }
-
-    setGuardandoCliente(true);
-    try {
-      const { data, error } = await createClient({
-        nombre: t,
-        contacto: draftCliente.contacto,
-        tel: draftCliente.tel,
-        email: draftCliente.email,
-        direccion: draftCliente.direccion,
-      });
-      if (error || !data) {
-        toast.error(error?.message ?? "No se pudo crear el cliente");
-        return;
-      }
-      setClientesLocales((rows) =>
-        [...rows, data].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
-      );
-      aplicarCliente(data);
-      setDialogClienteAbierto(false);
-      toast.success("Cliente guardado");
-    } finally {
-      setGuardandoCliente(false);
-    }
+  const onClienteGuardadoDesdeWizard = (data: ClientePresupuesto) => {
+    setClientesLocales((rows) => {
+      const sin = rows.filter((c) => c.id !== data.id);
+      return [...sin, data].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    });
+    aplicarCliente(data);
   };
 
   const patchOrden = (key: string, patch: Partial<OrdenTrabajoWizard>) => {
@@ -1234,89 +1192,12 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       </div>
 
 
-      <Dialog
+      <ClienteFormDialog
         open={dialogClienteAbierto}
         onOpenChange={setDialogClienteAbierto}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Nuevo cliente</DialogTitle>
-            <DialogDescription>
-              Se guarda en la base de datos y queda disponible para próximos
-              presupuestos.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Nombre / razón social</Label>
-              <Input
-                className="h-9 text-sm"
-                value={draftCliente.nombre}
-                onChange={(e) =>
-                  setDraftCliente((d) => ({ ...d, nombre: e.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Contacto</Label>
-              <Input
-                className="h-9 text-sm"
-                value={draftCliente.contacto}
-                onChange={(e) =>
-                  setDraftCliente((d) => ({ ...d, contacto: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Tel.</Label>
-                <Input
-                  className="h-9 text-sm"
-                  value={draftCliente.tel}
-                  onChange={(e) =>
-                    setDraftCliente((d) => ({ ...d, tel: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Email</Label>
-                <Input
-                  className="h-9 text-sm"
-                  type="email"
-                  value={draftCliente.email}
-                  onChange={(e) =>
-                    setDraftCliente((d) => ({ ...d, email: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dirección</Label>
-              <Input
-                className="h-9 text-sm"
-                value={draftCliente.direccion}
-                onChange={(e) =>
-                  setDraftCliente((d) => ({ ...d, direccion: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button
-              type="button"
-              onClick={() => void guardarDraftCliente()}
-              disabled={!draftCliente.nombre.trim() || guardandoCliente}
-            >
-              {guardandoCliente ? "Guardando…" : "Guardar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        prefillNombre={prefillNombreCliente}
+        onSaved={onClienteGuardadoDesdeWizard}
+      />
 
       <Dialog
         open={!!grabarError}

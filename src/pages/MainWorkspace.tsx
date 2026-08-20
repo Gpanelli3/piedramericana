@@ -8,23 +8,19 @@ import { VistaAdministracion } from "@/components/vista-administracion";
 import { VistaFinanzas } from "@/components/vista-finanzas";
 import { VistaArticulos } from "@/components/vista-articulos";
 import { VistaCantera } from "@/components/vista-cantera";
-import { VistaProduccion } from "@/components/vista-produccion";
+import { VistaProduccionShell } from "@/components/vista-produccion-shell";
 import { VistaStock } from "@/components/vista-stock";
 import { VistaVentas } from "@/components/vista-ventas";
+import { VistaModuloPendiente } from "@/components/vista-modulo-pendiente";
+import { VistaClientes } from "@/components/vista-clientes";
+import { VistaEquipo } from "@/components/vista-equipo";
+import { VistaReportes } from "@/components/vista-reportes";
 import { StockProvider } from "@/contexts/StockContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { WorkspaceTab } from "@/types/workspace";
+import { WORKSPACE_TABS, type WorkspaceTab } from "@/types/workspace";
+import { Settings, Ship, Truck } from "lucide-react";
 
-const KNOWN_WS = new Set<WorkspaceTab>([
-  "dashboard",
-  "ventas",
-  "articulos",
-  "administracion",
-  "finanzas",
-  "produccion",
-  "cantera",
-  "stock",
-]);
+const KNOWN_WS = new Set<WorkspaceTab>(WORKSPACE_TABS);
 
 function workspaceDesdeSearchParams(ws: string | null): WorkspaceTab {
   return ws && KNOWN_WS.has(ws as WorkspaceTab) ? (ws as WorkspaceTab) : "dashboard";
@@ -47,12 +43,36 @@ export function MainWorkspace() {
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "dashboard" && <VistaDashboard />}
             {activeTab === "ventas" && <VistaVentas />}
+            {activeTab === "clientes" && <VistaClientes />}
             {activeTab === "articulos" && <VistaArticulos />}
-            {activeTab === "produccion" && <VistaProduccion />}
+            {activeTab === "produccion" && <VistaProduccionShell />}
             {activeTab === "cantera" && <VistaCantera />}
             {activeTab === "stock" && <VistaStock />}
+            {activeTab === "proveedores" && (
+              <VistaModuloPendiente
+                titulo="Proveedores"
+                resumen="Maestro de proveedores ligado a remitos y compras de piedra."
+                icono={Truck}
+              />
+            )}
+            {activeTab === "comercio_exterior" && (
+              <VistaModuloPendiente
+                titulo="Comercio exterior"
+                resumen="Seguimiento de importaciones, costos de nacionalización y mercadería en tránsito."
+                icono={Ship}
+              />
+            )}
             {activeTab === "administracion" && <VistaAdministracion />}
             {activeTab === "finanzas" && <VistaFinanzas />}
+            {activeTab === "equipo" && <VistaEquipo />}
+            {activeTab === "reportes" && <VistaReportes />}
+            {activeTab === "configuracion" && (
+              <VistaModuloPendiente
+                titulo="Configuración"
+                resumen="Usuarios, roles, datos de la empresa y parámetros del flujo."
+                icono={Settings}
+              />
+            )}
           </div>
         </div>
       </div>
