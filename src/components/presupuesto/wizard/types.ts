@@ -80,11 +80,11 @@ export function newEmptyLineaItem(): LineaItemOT {
     key: crypto.randomUUID(),
     articuloId: "",
     modoIngreso: "dimensiones",
-    cantidad: "",
+    cantidad: "1",
     precioUnitario: "",
-    altoM: "",
-    anchoM: "",
-    desperdicioPct: "",
+    altoM: "0",
+    anchoM: "0",
+    desperdicioPct: "0",
   };
 }
 

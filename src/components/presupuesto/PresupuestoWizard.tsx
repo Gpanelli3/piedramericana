@@ -29,7 +29,7 @@ import {
   type PresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
 import {
-  Minus,
+  Trash2,
   Save,
   Printer,
   ChevronRight,
@@ -54,7 +54,6 @@ import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoRes
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import { PresupuestoStepper } from "@/components/presupuesto/PresupuestoStepper";
 import { StepCliente } from "@/components/presupuesto/wizard/StepCliente";
-import { StepLogistica } from "@/components/presupuesto/wizard/StepLogistica";
 import { StepOrdenes } from "@/components/presupuesto/wizard/StepOrdenes";
 import { StepConfirmacion } from "@/components/presupuesto/wizard/StepConfirmacion";
 import { PickArticulo } from "@/components/presupuesto/wizard/fields";
@@ -540,10 +539,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         articuloId: "",
         modoIngreso: "dimensiones",
         precioUnitario: "",
-        cantidad: "",
-        altoM: "",
-        anchoM: "",
-        desperdicioPct: "",
+        cantidad: "1",
+        altoM: "0",
+        anchoM: "0",
+        desperdicioPct: "0",
       });
       return;
     }
@@ -554,10 +553,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       articuloId,
       modoIngreso: art.preferModoManualM2 ? "manual" : "dimensiones",
       precioUnitario: artBd.precio != null ? String(artBd.precio) : "",
-      cantidad: "",
-      altoM: "",
-      anchoM: "",
-      desperdicioPct: "",
+      cantidad: "1",
+      altoM: "0",
+      anchoM: "0",
+      desperdicioPct: "0",
     });
   };
 
@@ -826,7 +825,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   };
 
   const [wizardStep, setWizardStep] = useState(0);
-  const wizardLastIndex = 3;
+  const wizardLastIndex = 2;
 
   const origenLabelDisplay = useMemo(
     () =>
@@ -886,7 +885,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
   const handleWizardAnterior = () => setWizardStep((s) => Math.max(0, s - 1));
 
-  const renderLineaCells = (ot: OrdenTrabajoWizard, line: LineaItemOT) => {
+  const renderLineaCells = (
+    ot: OrdenTrabajoWizard,
+    line: LineaItemOT,
+    index: number,
+  ) => {
     const artBd = line.articuloId ? articulosBd.find((a) => a.id === line.articuloId) : undefined;
     const art = artBd ? articuloConPrecioToMock(artBd) : undefined;
     const hasArt = Boolean(art);
@@ -904,36 +907,40 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       hasArt && art && art.unidad === "M2" && line.modoIngreso === "manual",
     );
     const dim = hasArt && art ? dimensionesHabilitadas(art) : false;
-    const showAltoField = Boolean(
-      hasArt &&
-        art &&
-        dim &&
-        !manualM2 &&
-        art.unidad === "M2",
+    const isM2Dimensiones = Boolean(
+      hasArt && art && art.unidad === "M2" && dim && !manualM2,
     );
-    const showAnchoM = Boolean(
-      hasArt && art && dim && art.unidad === "M2" && !manualM2,
-    );
+    const showLargoField = isM2Dimensiones;
+    const showAnchoM = isM2Dimensiones;
     const showDesperdicio = Boolean(
       hasArt &&
         art &&
         !manualM2 &&
         ((art.unidad === "M2" && dim) || art.unidad === "ML"),
     );
-    const showM2Col = Boolean(hasArt && art && art.unidad === "M2");
-    const todosEnMetros = Boolean(hasArt && art && art.unidad === "M2");
+    /** En m² por dimensiones: m² calculado; si no: input de cantidad. */
+    const showM2Calculado = isM2Dimensiones;
+    const showCantidadEnM2Cant = Boolean(hasArt && !isM2Dimensiones);
+    /** En m² por dimensiones: piezas; si no: label de unidad. */
+    const showUnidPiezas = isM2Dimensiones;
+
+    const inputClass = cn(
+      "h-8 text-xs tabular-nums px-2",
+      "border-border bg-background shadow-sm",
+      "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
+    );
+    const inputDisabledClass = cn(
+      inputClass,
+      "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
+    );
 
     return (
       <TableRow
         key={line.key}
         className="border-b border-border/70 odd:bg-background even:bg-muted/25 hover:bg-muted/40"
       >
-        <TableCell className="px-2.5 py-2 align-middle text-xs font-mono text-muted-foreground whitespace-nowrap first:pl-3">
-          {hasArt && art ? (
-            art.codigo
-          ) : (
-            <span className="text-muted-foreground/30 select-none">–</span>
-          )}
+        <TableCell className="px-2.5 py-2 align-middle text-xs tabular-nums text-muted-foreground whitespace-nowrap first:pl-3">
+          {index + 1}
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle min-w-[9rem]">
           <PickArticulo
@@ -943,76 +950,22 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             articulos={articulosBd}
           />
         </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle text-xs font-medium whitespace-nowrap">
-          {hasArt && art ? (
-            labelUnidad(art.unidad)
-          ) : (
-            <span className="text-muted-foreground/30 select-none">–</span>
-          )}
-        </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle min-w-[5.5rem]">
-          <Input
-            className={cn(
-              "h-8 text-xs tabular-nums px-2",
-              "border-border bg-background shadow-sm",
-              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-            )}
-            inputMode="decimal"
-            title={
-              manualM2
-                ? "Superficie total de material en m² (precio unitario $/m²)"
-                : "Cantidad según unidad del artículo"
-            }
-            value={line.cantidad}
-            onChange={(e) =>
-              patchItem(ot.key, line.key, { cantidad: e.target.value })
-            }
-          />
-        </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle w-[4.75rem]">
-          <Input
-            className={cn(
-              "h-8 text-xs tabular-nums px-2",
-              "border-border bg-background shadow-sm",
-              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-            )}
-            inputMode="decimal"
-            value={line.precioUnitario}
-            onChange={(e) =>
-              patchItem(ot.key, line.key, { precioUnitario: e.target.value })
-            }
-          />
-        </TableCell>
         <TableCell className="px-2.5 py-2 align-middle min-w-[4rem]">
           <Input
-            className={cn(
-              "h-8 text-xs tabular-nums px-2",
-              "border-border bg-background shadow-sm",
-              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-              "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
-            )}
+            className={inputDisabledClass}
             inputMode="decimal"
-            placeholder={todosEnMetros ? "m" : "–"}
-            title={
-              art?.unidad === "ML"
-                ? "Alto en metros (metro lineal)"
-                : "Alto en metros (m² por dimensiones)"
-            }
+            placeholder="m"
+            title="Largo en metros (m² por dimensiones)"
             value={line.altoM}
             onChange={(e) =>
               patchItem(ot.key, line.key, { altoM: e.target.value })
             }
-            disabled={!showAltoField}
+            disabled={!showLargoField}
           />
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle min-w-[4rem]">
           <Input
-            className={cn(
-              "h-8 text-xs tabular-nums px-2",
-              "border-border bg-background shadow-sm",
-              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-              "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
-            )}
+            className={inputDisabledClass}
             inputMode="decimal"
             placeholder="m"
             title="Ancho en metros"
@@ -1023,17 +976,56 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             disabled={!showAnchoM}
           />
         </TableCell>
+        <TableCell className="px-2.5 py-2 align-middle min-w-[5.5rem]">
+          {showM2Calculado ? (
+            <span className="block text-xs font-medium tabular-nums text-muted-foreground">
+              {formatMetraje(m2Linea)}
+            </span>
+          ) : showCantidadEnM2Cant ? (
+            <Input
+              className={inputClass}
+              inputMode="decimal"
+              title={
+                manualM2
+                  ? "Superficie total de material en m² (precio unitario $/m²)"
+                  : "Cantidad según unidad del artículo"
+              }
+              value={line.cantidad}
+              onChange={(e) =>
+                patchItem(ot.key, line.key, { cantidad: e.target.value })
+              }
+            />
+          ) : (
+            <span className="block text-xs font-medium tabular-nums text-muted-foreground">
+              {formatMetraje(0)}
+            </span>
+          )}
+        </TableCell>
+        <TableCell className="px-2.5 py-2 align-middle min-w-[3.5rem]">
+          {showUnidPiezas || !hasArt ? (
+            <Input
+              className={inputClass}
+              inputMode="decimal"
+              title="Cantidad de piezas"
+              value={line.cantidad}
+              onChange={(e) =>
+                patchItem(ot.key, line.key, { cantidad: e.target.value })
+              }
+            />
+          ) : art ? (
+            <span className="text-xs font-semibold whitespace-nowrap">
+              {labelUnidad(art.unidad)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/30 select-none">–</span>
+          )}
+        </TableCell>
         <TableCell className="px-2.5 py-2 align-middle w-[3.25rem]">
           <Input
-            className={cn(
-              "h-8 text-xs tabular-nums px-2",
-              "border-border bg-background shadow-sm",
-              "focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/15",
-              "disabled:cursor-not-allowed disabled:bg-muted/40 disabled:border-border/60 disabled:text-muted-foreground/70 disabled:shadow-none",
-            )}
+            className={inputDisabledClass}
             inputMode="decimal"
             placeholder="%"
-            title="Desperdicio: % extra sobre el área (cortes, roturas). Vacío = 0%. Aplica a m² por dimensiones y a metro lineal."
+            title="Desperdicio: % extra sobre el área (cortes, roturas). Vacío = 0%."
             value={line.desperdicioPct}
             onChange={(e) =>
               patchItem(ot.key, line.key, { desperdicioPct: e.target.value })
@@ -1041,12 +1033,19 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             disabled={!showDesperdicio}
           />
         </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle text-right text-xs font-semibold tabular-nums whitespace-nowrap text-foreground">
-          {showM2Col ? (
-            formatMetraje(m2Linea)
-          ) : (
-            <span className="font-medium text-muted-foreground/35">–</span>
-          )}
+        <TableCell className="px-2.5 py-2 align-middle w-[4.75rem]">
+          <Input
+            className={cn(
+              inputClass,
+              !line.precioUnitario.trim() && "placeholder:text-muted-foreground/40",
+            )}
+            inputMode="decimal"
+            placeholder="—"
+            value={line.precioUnitario}
+            onChange={(e) =>
+              patchItem(ot.key, line.key, { precioUnitario: e.target.value })
+            }
+          />
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle text-right">
           <span
@@ -1056,8 +1055,11 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             )}
           >
             {hasArt
-              ? subL.toLocaleString("es-AR", { maximumFractionDigits: 2 })
-              : "–"}
+              ? `$${subL.toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : "$0.00"}
           </span>
         </TableCell>
         <TableCell className="w-12 px-1.5 py-2 align-middle text-center last:pr-3">
@@ -1070,7 +1072,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               aria-label="Quitar ítem"
               onClick={() => removeItem(ot.key, line.key)}
             >
-              <Minus className="h-4 w-4" />
+              <Trash2 className="h-4 w-4" />
             </Button>
           </div>
         </TableCell>
@@ -1153,10 +1155,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           ) : null}
 
           {wizardStep === 2 ? (
-            <StepLogistica logistica={logistica} setLogistica={setLogistica} />
-          ) : null}
-
-          {wizardStep === 3 ? (
             <StepConfirmacion
               clienteNombre={clienteSeleccionado?.nombre ?? "—"}
               listaPrecioLabel={listaPrecioLabel}
@@ -1164,7 +1162,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               monedaPresupuesto={monedaPresupuesto}
               ordenesCount={ordenes.length}
               lineItemsCount={totalLineasOt}
-              logistica={logistica}
               faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
               totalesPorOt={totalesItems.porOt}
               mMedicionGlobal={mMedicionGlobal}
@@ -1335,7 +1332,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                 Atrás
               </Button>
             ) : null}
-            {wizardStep < 3 ? (
+            {wizardStep < 2 ? (
               <Button
                 type="button"
                 size="sm"

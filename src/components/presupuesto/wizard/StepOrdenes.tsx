@@ -18,7 +18,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { formatMetraje, formatToneladas } from "@/lib/presupuesto-calculos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
@@ -50,7 +49,11 @@ export type StepOrdenesProps = {
   addOrdenTrabajo: () => void;
   removeOrdenTrabajo: (key: string) => void;
   addItem: (otKey: string) => void;
-  renderLineaCells: (ot: OrdenTrabajoWizard, line: LineaItemOT) => ReactNode;
+  renderLineaCells: (
+    ot: OrdenTrabajoWizard,
+    line: LineaItemOT,
+    index: number,
+  ) => ReactNode;
 };
 
 export function StepOrdenes({
@@ -98,22 +101,10 @@ export function StepOrdenes({
               <span className="font-semibold">Cantera</span>). El total en toneladas puede quedar incompleto.
             </p>
           ) : null}
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 rounded-lg border border-border/70 bg-card/90 px-3 py-3 shadow-sm backdrop-blur-sm dark:bg-card/75">
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground tracking-tight">
-                Órdenes de trabajo
-              </h3>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 shrink-0 border-dashed border-border bg-background/80 text-muted-foreground hover:text-foreground"
-              onClick={addOrdenTrabajo}
-            >
-              <Plus className="h-4 w-4 shrink-0" aria-hidden />
-              Agregar OT
-            </Button>
+          <div className="mb-3 rounded-lg border border-border/70 bg-card/90 px-3 py-3 shadow-sm backdrop-blur-sm dark:bg-card/75">
+            <h3 className="text-sm font-semibold text-foreground tracking-tight">
+              Órdenes de trabajo
+            </h3>
           </div>
 
           <div className="space-y-3">
@@ -126,17 +117,17 @@ export function StepOrdenes({
               return (
                 <section
                   key={ot.key}
-                  className="min-w-0 scroll-mt-2 overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06]"
+                  className="min-w-0 scroll-mt-2 overflow-hidden rounded-lg border border-sky-200/70 border-l-[3px] border-l-sky-400 bg-sky-50/80 shadow-sm ring-1 ring-sky-900/[0.03] dark:border-sky-800/50 dark:border-l-sky-500 dark:bg-sky-950/25 dark:ring-white/[0.04]"
                 >
                   <Collapsible
                     open={ot.panelExpandido}
                     onOpenChange={(open) => patchOrden(ot.key, { panelExpandido: open })}
                   >
-                    <div className="flex min-w-0 items-stretch gap-0 border-b border-border/70 bg-muted/35 pl-3">
+                    <div className="flex min-w-0 items-stretch gap-0 border-b border-sky-200/60 bg-sky-100/45 pl-3 dark:border-sky-800/40 dark:bg-sky-950/40">
                       <CollapsibleTrigger asChild>
                         <button
                           type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2.5 border-l-2 border-l-sky-500/70 py-2.5 pl-2.5 pr-1 text-left -ml-px hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 border-l-2 border-l-sky-500/70 py-2.5 pl-2.5 pr-1 text-left -ml-px hover:bg-sky-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:bg-sky-900/30"
                         >
                           <ChevronDown
                             className={cn(
@@ -176,7 +167,7 @@ export function StepOrdenes({
                     </div>
 
                     <CollapsibleContent>
-                      <div className="space-y-4 bg-muted/20 px-3 py-4 sm:px-4 sm:py-5 dark:bg-muted/10">
+                      <div className="space-y-4 bg-sky-50/40 px-3 py-4 sm:px-4 sm:py-5 dark:bg-sky-950/20">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 rounded-md border border-border/55 bg-background/90 p-3 sm:p-4 shadow-sm dark:bg-background/80">
                           <div className="space-y-1.5 min-w-0">
                             <Label htmlFor={`${ot.key}-titulo`} className="text-xs font-medium">
@@ -229,30 +220,37 @@ export function StepOrdenes({
                               <Table className="text-xs min-w-[58rem]">
                                 <TableHeader>
                                   <TableRow className="border-b border-border/60 bg-muted/45 hover:bg-muted/45 [&_th]:h-8 [&_th]:py-1.5 [&_th]:text-[10px] [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:uppercase [&_th]:tracking-wide first:[&_th]:pl-3 last:[&_th]:pr-3">
-                                    <TableHead className="whitespace-nowrap">Cód.</TableHead>
-                                    <TableHead className="min-w-[8.5rem]">Descripción</TableHead>
-                                    <TableHead>Unidad</TableHead>
-                                    <TableHead>Cant.</TableHead>
-                                    <TableHead>P. unit.</TableHead>
+                                    <TableHead className="w-8 whitespace-nowrap">#</TableHead>
+                                    <TableHead className="min-w-[8.5rem]">Sub-item</TableHead>
                                     <TableHead
                                       className="whitespace-nowrap"
-                                      title="Alto en metros (m² por dimensiones o metro lineal)."
+                                      title="Largo en metros (m² por dimensiones)."
                                     >
-                                      Alto (m)
+                                      Largo
                                     </TableHead>
                                     <TableHead
                                       className="whitespace-nowrap"
                                       title="Ancho en metros (solo m² por dimensiones)."
                                     >
-                                      Ancho (m)
+                                      Ancho
+                                    </TableHead>
+                                    <TableHead
+                                      className="whitespace-nowrap"
+                                      title="m² calculados o cantidad según el tipo de artículo."
+                                    >
+                                      m² / Cant
+                                    </TableHead>
+                                    <TableHead
+                                      className="whitespace-nowrap"
+                                      title="Unidades (piezas) o tipo de unidad del artículo."
+                                    >
+                                      Unid.
                                     </TableHead>
                                     <TableHead title="Desperdicio: % extra de material. Vacío = 0%.">
-                                      Desp.%
+                                      Desp
                                     </TableHead>
-                                    <TableHead className="text-right" title="Superficie de material calculada.">
-                                      m²
-                                    </TableHead>
-                                    <TableHead className="text-right">Total $</TableHead>
+                                    <TableHead className="whitespace-nowrap">Precio</TableHead>
+                                    <TableHead className="text-right">Subtotal</TableHead>
                                     <TableHead className="w-12 p-1.5 text-center">
                                       <span className="sr-only">Quitar</span>
                                     </TableHead>
@@ -261,12 +259,14 @@ export function StepOrdenes({
                                 <TableBody>
                                   {ot.items.length === 0 ? (
                                     <TableRow className="hover:bg-transparent bg-muted/10">
-                                      <TableCell colSpan={11} className="py-6 px-4 text-center">
+                                      <TableCell colSpan={10} className="py-6 px-4 text-center">
                                         <p className="text-sm text-muted-foreground">Todavía no hay sub-ítems</p>
                                       </TableCell>
                                     </TableRow>
                                   ) : (
-                                    ot.items.map((line) => renderLineaCells(ot, line))
+                                    ot.items.map((line, lineIdx) =>
+                                      renderLineaCells(ot, line, lineIdx),
+                                    )
                                   )}
                                 </TableBody>
                               </Table>
@@ -285,58 +285,24 @@ export function StepOrdenes({
                             </div>
                           </div>
                         </div>
-
-                        <div className="flex flex-wrap gap-6 text-xs rounded-md border border-border/55 bg-muted/25 px-3 py-2.5 dark:bg-muted/20 justify-between sm:justify-start">
-                          <div>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Líneas</p>
-                            <p className="font-medium tabular-nums text-foreground">
-                              {totalesItems.porOt.find((p) => p.key === ot.key)?.cantLineas ?? 0}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Subtotal</p>
-                            <p className="font-medium tabular-nums text-foreground">
-                              $
-                              {totalesItems.porOt
-                                .find((p) => p.key === ot.key)
-                                ?.subtotal.toLocaleString("es-AR", {
-                                  minimumFractionDigits: 2,
-                                }) ?? "0"}
-                            </p>
-                          </div>
-                          <div className="sm:ml-auto">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">m²</p>
-                            <p className="font-medium tabular-nums text-primary">
-                              {formatMetraje(
-                                totalesItems.porOt.find((p) => p.key === ot.key)?.m2 ?? 0,
-                              )}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">ml</p>
-                            <p className="font-medium tabular-nums text-foreground">
-                              {formatMetraje(
-                                totalesItems.porOt.find((p) => p.key === ot.key)?.ml ?? 0,
-                              )}
-                            </p>
-                          </div>
-                          {(totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0) > 0 ? (
-                            <div>
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ton (~)</p>
-                              <p className="font-medium tabular-nums text-sky-800 dark:text-sky-200">
-                                {formatToneladas(
-                                  totalesItems.porOt.find((p) => p.key === ot.key)?.ton ?? 0,
-                                )}
-                              </p>
-                            </div>
-                          ) : null}
-                        </div>
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
                 </section>
               );
             })}
+            <div className="flex justify-center pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-dashed border-border bg-background/80 text-muted-foreground hover:text-foreground"
+                onClick={addOrdenTrabajo}
+              >
+                <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                Agregar OT
+              </Button>
+            </div>
           </div>
         </div>
       </SectionPresupuesto>

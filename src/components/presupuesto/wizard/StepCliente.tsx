@@ -63,7 +63,7 @@ export function StepCliente({
   setObsCabecera,
 }: StepClienteProps) {
   return (
-    <SectionPresupuesto borderAccentClass="border-t-4 border-t-red-500">
+    <SectionPresupuesto borderAccentClass="">
       <div className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1 space-y-1">

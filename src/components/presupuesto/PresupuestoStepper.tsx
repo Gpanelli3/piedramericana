@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 const PASOS_LABEL = [
   { kicker: "CLIENTE", subtitle: "Datos de cliente" },
   { kicker: "ORDEN DE TRABAJO", subtitle: "Trabajos a realizar" },
-  { kicker: "LOGÍSTICA", subtitle: "Entrega y flete" },
   { kicker: "CONFIRMACIÓN", subtitle: "Revisar y guardar" },
 ] as const;
 

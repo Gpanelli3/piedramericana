@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatMetraje, formatToneladas } from "@/lib/presupuesto-calculos";
 import { cn } from "@/lib/utils";
 import { mecAlgunoActivo } from "./validacion";
-import type { LogisticaPresupuesto } from "./types";
 import { SectionPresupuesto } from "./fields";
 
 type PorOtTot = {
@@ -27,7 +26,6 @@ type StepConfirmacionProps = {
   monedaPresupuesto: string;
   ordenesCount: number;
   lineItemsCount: number;
-  logistica: LogisticaPresupuesto;
   faltaPesoNonMarmol: boolean;
   totalesPorOt: PorOtTot[];
   mMedicionGlobal: boolean;
@@ -50,15 +48,6 @@ type StepConfirmacionProps = {
   totalesTotalMl: number;
   totalesTotalTon: number;
 };
-
-function formatListaFecha(iso?: string): string {
-  if (!iso || !iso.trim()) return "—";
-  try {
-    return new Date(`${iso}T12:00:00`).toLocaleDateString("es-AR");
-  } catch {
-    return iso;
-  }
-}
 
 function formatMoney(n: number): string {
   return n.toLocaleString("es-AR", {
@@ -130,7 +119,6 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
     monedaPresupuesto,
     ordenesCount,
     lineItemsCount,
-    logistica,
     faltaPesoNonMarmol,
     totalesPorOt,
     mMedicionGlobal,
@@ -175,7 +163,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-          {/* 2. Columna izquierda: OT + logística */}
+          {/* 2. Columna izquierda: OT */}
           <div className="space-y-4 lg:col-span-3">
             <section className="rounded-md border border-border/70 bg-card">
               <header className="border-b border-border/60 px-3 py-2">
@@ -200,35 +188,6 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                   </li>
                 ))}
               </ul>
-            </section>
-
-            <section className="rounded-md border border-border/70 bg-muted/10 px-3 py-3">
-              <h3 className="text-xs font-semibold text-foreground">Logística</h3>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Definida en el paso anterior · solo lectura
-              </p>
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Coordinación
-                  </p>
-                  <p className="text-sm font-medium">{formatListaFecha(logistica.fechaCoord)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Entrega
-                  </p>
-                  <p className="text-sm font-medium">{formatListaFecha(logistica.fechaEntrega)}</p>
-                </div>
-                <div className="sm:col-span-2 border-t border-border/50 pt-2">
-                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Observación
-                  </p>
-                  <p className="break-words text-sm text-foreground">
-                    {logistica.observacion.trim() || "—"}
-                  </p>
-                </div>
-              </div>
             </section>
 
             {faltaPesoNonMarmol ? (
