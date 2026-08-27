@@ -267,6 +267,17 @@ async function crearJobOtSiAusente(opts: {
   const id_cliente = await resolveClientId(opts.payload, opts.clienteNombre);
   const titulo = `OT · ${opts.presupuestoNumero}`;
   const now = new Date().toISOString();
+  const parsed = parsePayload(opts.payload);
+  const fechaEntregaRaw =
+    parsed?.ordenes
+      ?.map((o) => o.fechaEntrega?.trim())
+      .find((f) => f && f.length >= 10) ||
+    parsed?.logistica?.fechaEntrega?.trim() ||
+    "";
+  const fecha_programada =
+    fechaEntregaRaw.length >= 10
+      ? `${fechaEntregaRaw.slice(0, 10)}T12:00:00.000Z`
+      : null;
   const ins = await supabase
     .from("ordenes_trabajo")
     .insert({
@@ -275,11 +286,12 @@ async function crearJobOtSiAusente(opts: {
       venta_id: opts.ventaId,
       id_cliente,
       estado: "pending",
-      fecha_programada: null,
+      fecha_programada,
       notas: `OT desde venta (${opts.presupuestoNumero}).`,
       actualizado_en: now,
       etapa: "medicion",
       pausada: false,
+      bloqueada: false,
       requiere_reserva_stock: true,
     })
     .select("id")

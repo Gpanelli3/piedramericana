@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, History, Package, Plus } from "lucide-react";
+import { ChevronDown, History, Plus } from "lucide-react";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
@@ -26,7 +25,6 @@ import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab"
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
 import { CargaManualPlanchasDialog } from "@/components/stock/CargaManualPlanchasDialog";
-import { BachasClientesTab } from "@/components/stock/BachasClientesTab";
 import {
   aggregateChapasPorMaterial,
   fetchMaterialsForStock,
@@ -34,7 +32,6 @@ import {
 } from "@/lib/stock-api";
 import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
 
 export function VistaStock() {
   const { user } = useAuth();
@@ -48,7 +45,6 @@ export function VistaStock() {
   const [catalogoOpen, setCatalogoOpen] = useState(false);
   const [recortesOpen, setRecortesOpen] = useState(false);
   const [historialOpen, setHistorialOpen] = useState(false);
-  const [tab, setTab] = useState("planchas");
 
   const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -189,14 +185,6 @@ export function VistaStock() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              type="button"
-              className="h-10 shrink-0 gap-1.5"
-              onClick={() => setCargaManualOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Carga manual
-            </Button>
           </div>
         </div>
       </header>
@@ -242,41 +230,12 @@ export function VistaStock() {
           chapasLocales={chapas}
         />
 
-        <Tabs value={tab} onValueChange={setTab} className="gap-4">
-          <TabsList className="h-auto w-full justify-start gap-0 rounded-none border-b border-border bg-transparent p-0 sm:w-auto">
-            <TabsTrigger
-              value="planchas"
-              className={cn(
-                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-sm shadow-none",
-                "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
-              )}
-            >
-              <Package className="mr-1.5 h-4 w-4" />
-              Planchas
-            </TabsTrigger>
-            <TabsTrigger
-              value="bachas"
-              className={cn(
-                "rounded-none border-b-2 border-transparent bg-transparent px-3 py-2.5 text-sm shadow-none",
-                "data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none",
-              )}
-            >
-              Bachas de clientes
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="planchas" className="mt-3 space-y-3">
-            <StockMaterialesAgregadosTab
-              chapas={chapas}
-              materiales={materialesCatalogo}
-              onOpenMaterial={openDisponibilidad}
-            />
-          </TabsContent>
-
-          <TabsContent value="bachas" className="mt-3">
-            <BachasClientesTab />
-          </TabsContent>
-        </Tabs>
+        <StockMaterialesAgregadosTab
+          chapas={chapas}
+          materiales={materialesCatalogo}
+          onOpenMaterial={openDisponibilidad}
+          onCargaManual={() => setCargaManualOpen(true)}
+        />
       </div>
 
       <Dialog open={historialOpen} onOpenChange={setHistorialOpen}>

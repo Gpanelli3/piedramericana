@@ -212,6 +212,8 @@ export interface Database {
           medidas_confirmadas: boolean;
           fecha_medidas_confirmadas: string | null;
           requiere_reserva_stock: boolean;
+          bloqueada: boolean;
+          motivo_bloqueo: string | null;
         };
         Insert: {
           id?: string;
@@ -229,6 +231,8 @@ export interface Database {
           medidas_confirmadas?: boolean;
           fecha_medidas_confirmadas?: string | null;
           requiere_reserva_stock?: boolean;
+          bloqueada?: boolean;
+          motivo_bloqueo?: string | null;
         };
         Update: {
           id?: string;
@@ -246,6 +250,8 @@ export interface Database {
           medidas_confirmadas?: boolean;
           fecha_medidas_confirmadas?: string | null;
           requiere_reserva_stock?: boolean;
+          bloqueada?: boolean;
+          motivo_bloqueo?: string | null;
         };
         Relationships: [
           {

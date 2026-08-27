@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ChevronDown, Download, Plus, Printer } from "lucide-react";
+import { Download, Plus, Printer } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -23,11 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { Database, JobStatus, VentaEstado } from "@/types/database";
 import {
@@ -38,7 +32,6 @@ import {
   type ChapaReservaPendiente,
 } from "@/lib/ventas-api";
 import { METODOS_COBRO_UI, etiquetaMetodo } from "@/lib/finanzas-api";
-import type { PresupuestoRowList } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   listChapasUsadasPorOt,
@@ -103,11 +96,22 @@ function badgeCobro(cobrado: number, saldo: number): BadgeCobro {
   };
 }
 
+/** Cabecera opcional; si falta, el diálogo la carga desde el presupuesto. */
+export type VentaCobrosResumen = {
+  cliente?: string | null;
+  numero?: string | null;
+  total?: number | null;
+  moneda?: "ars" | "usd" | null;
+  orden_trabajo_id?: string | null;
+  ot_etapa?: string | null;
+  ot_estado?: JobStatus | null;
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   presupuestoId: string | null;
-  rowResumen: PresupuestoRowList | null;
+  rowResumen: VentaCobrosResumen | null;
   onDatosCambiaron: () => Promise<void>;
 };
 
@@ -128,22 +132,49 @@ export function VentaCobrosDialog({
   const [pagoMetodo, setPagoMetodo] = useState("transferencia");
   const [pagoFecha, setPagoFecha] = useState("");
   const [pagoNota, setPagoNota] = useState("");
-  const [formOpen, setFormOpen] = useState(true);
   const [placasOt, setPlacasOt] = useState<ChapaInventarioRow[]>([]);
   const [otEtapa, setOtEtapa] = useState<string | null>(null);
   const [otEstado, setOtEstado] = useState<JobStatus | null>(null);
   const [chapasPendientes, setChapasPendientes] = useState<ChapaReservaPendiente[]>([]);
   const [reemplazoOpen, setReemplazoOpen] = useState(false);
+  const [presCabecera, setPresCabecera] = useState<{
+    numero: string;
+    cliente: string;
+    total: number;
+    moneda: "ars" | "usd";
+  } | null>(null);
 
   const cargar = useCallback(async (pid: string) => {
     setBusy(true);
+    setPresCabecera(null);
+
+    if (isSupabaseConfigured) {
+      const presRes = await supabase
+        .from("presupuestos")
+        .select("numero, cliente, total, moneda")
+        .eq("id", pid)
+        .maybeSingle();
+      if (!presRes.error && presRes.data) {
+        const monedaPres = presRes.data.moneda === "usd" ? "usd" : "ars";
+        setPresCabecera({
+          numero: presRes.data.numero ?? "—",
+          cliente: (presRes.data.cliente ?? "").trim(),
+          total: Number(presRes.data.total ?? 0),
+          moneda: monedaPres,
+        });
+        setPagoMoneda(monedaPres);
+      } else {
+        setPresCabecera(null);
+      }
+    }
+
     const vt = await getVentaPorPresupuesto(pid);
     if (vt.error || !vt.data) {
       setVentaCabecera(null);
       setPagosVentas([]);
       setPlacasOt([]);
-      setOtEtapa(null);
-      setOtEstado(null);
+      setOtEtapa(rowResumen?.ot_etapa ?? null);
+      setOtEstado(rowResumen?.ot_estado ?? null);
       setBusy(false);
       return;
     }
@@ -151,7 +182,17 @@ export function VentaCobrosDialog({
     setVentaCabecera({ id: vt.data.id, estado: vt.data.estado as VentaEstado });
     setPagosVentas(lp.error ? [] : lp.data ?? []);
 
-    const otId = rowResumen?.orden_trabajo_id;
+    let otId = rowResumen?.orden_trabajo_id ?? null;
+    if (!otId && isSupabaseConfigured) {
+      const otFind = await supabase
+        .from("ordenes_trabajo")
+        .select("id, etapa, estado")
+        .eq("venta_id", vt.data.id)
+        .limit(1);
+      const otRow = otFind.data?.[0];
+      if (otRow) otId = otRow.id;
+    }
+
     if (otId && isSupabaseConfigured) {
       const [ch, otRes] = await Promise.all([
         listChapasUsadasPorOt(otId),
@@ -180,15 +221,14 @@ export function VentaCobrosDialog({
     setPagoMetodo("transferencia");
     setMontoDigitado("");
     setPagoNota("");
-    setFormOpen(true);
     if (rowResumen?.moneda) setPagoMoneda(rowResumen.moneda);
     setOtEtapa(rowResumen?.ot_etapa ?? null);
     setOtEstado(rowResumen?.ot_estado ?? null);
     void cargar(presupuestoId);
   }, [open, presupuestoId, rowResumen?.moneda, rowResumen?.ot_etapa, rowResumen?.ot_estado, cargar]);
 
-  const moneda: "ars" | "usd" = rowResumen?.moneda ?? "usd";
-  const total = rowResumen?.total ?? 0;
+  const moneda: "ars" | "usd" = presCabecera?.moneda ?? rowResumen?.moneda ?? "ars";
+  const total = presCabecera?.total ?? rowResumen?.total ?? 0;
 
   const cobrado = useMemo(() => {
     let sum = 0;
@@ -278,8 +318,9 @@ export function VentaCobrosDialog({
   }, [ventaCabecera, pagoBusy, presupuestoId, cargar, onDatosCambiaron]);
 
   const estado = ventaCabecera?.estado;
-  const cliente = rowResumen?.cliente?.trim() || "Sin cliente";
-  const numero = rowResumen?.numero ?? "—";
+  const cliente =
+    presCabecera?.cliente?.trim() || rowResumen?.cliente?.trim() || "Sin cliente";
+  const numero = presCabecera?.numero ?? rowResumen?.numero ?? "—";
 
   const abrirComprobante = useCallback(
     (descargar: boolean) => {
@@ -296,220 +337,211 @@ export function VentaCobrosDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg max-h-[90vh]">
-          <DialogHeader className="space-y-3 border-b border-border px-6 pb-4 pt-6 pr-12 text-left">
-            <div className="flex flex-wrap items-center gap-2">
-              <DialogTitle className="text-lg font-semibold tracking-tight text-foreground">
-                {cliente}
-              </DialogTitle>
-              <Badge variant="outline" className={cn("font-medium", cobroBadge.className)}>
-                {cobroBadge.label}
-              </Badge>
-            </div>
-            <DialogDescription className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{numero}</span>
-              {" · "}
-              {etapaLabel}
-            </DialogDescription>
-            <div className="flex flex-wrap gap-2 pt-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs"
-                disabled={!presupuestoId || busy}
-                onClick={() => abrirComprobante(false)}
-              >
-                <Printer className="h-3.5 w-3.5" aria-hidden />
-                Imprimir
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs"
-                disabled={!presupuestoId || busy}
-                onClick={() => abrirComprobante(true)}
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden />
-                Descargar PDF
-              </Button>
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="shrink-0 space-y-1 border-b border-border px-6 py-4 pr-12 text-left">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DialogTitle className="text-lg font-semibold tracking-tight text-foreground">
+                    {cliente}
+                  </DialogTitle>
+                  <Badge variant="outline" className={cn("font-medium", cobroBadge.className)}>
+                    {cobroBadge.label}
+                  </Badge>
+                </div>
+                <DialogDescription className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{numero}</span>
+                  {" · "}
+                  {etapaLabel}
+                </DialogDescription>
+              </div>
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={!presupuestoId || busy}
+                  onClick={() => abrirComprobante(false)}
+                >
+                  <Printer className="h-3.5 w-3.5" aria-hidden />
+                  Imprimir
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={!presupuestoId || busy}
+                  onClick={() => abrirComprobante(true)}
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden />
+                  PDF
+                </Button>
+              </div>
             </div>
           </DialogHeader>
 
-          <div className="max-h-[calc(90vh-7rem)] space-y-5 overflow-y-auto px-6 py-5">
-            {busy ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-            ) : (
-              <>
-                <div className="rounded-xl bg-foreground px-5 py-4 text-background shadow-sm">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-background/70">
-                    {saldo <= 0.009 ? "Saldo" : "Saldo pendiente"}
-                  </p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
-                    {saldo <= 0.009 ? "Al día" : formatMonto(saldo, moneda)}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-background/20 pt-3 text-xs tabular-nums text-background/80">
-                    <span>Total {formatMonto(total, moneda)}</span>
-                    <span>Cobrado {formatMonto(cobrado, moneda)}</span>
+          {busy ? (
+            <p className="px-6 py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* Saldo — compacto, siempre visible */}
+              <div className="shrink-0 px-6 pt-4">
+                <div className="grid grid-cols-3 overflow-hidden rounded-xl bg-foreground text-background">
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
+                      {saldo <= 0.009 ? "Saldo" : "Pendiente"}
+                    </p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
+                      {saldo <= 0.009 ? "Al día" : formatMonto(saldo, moneda)}
+                    </p>
+                  </div>
+                  <div className="border-l border-background/15 px-4 py-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
+                      Total
+                    </p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
+                      {formatMonto(total, moneda)}
+                    </p>
+                  </div>
+                  <div className="border-l border-background/15 px-4 py-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
+                      Cobrado
+                    </p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
+                      {formatMonto(cobrado, moneda)}
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                <section className="space-y-2.5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Pagos ({pagosVentas.length})
-                  </h3>
-                  {pagosVentas.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-                      Sin pagos registrados.
-                    </p>
-                  ) : (
-                    <ul className="max-h-52 space-y-2 overflow-y-auto pr-0.5">
-                      {pagosVentas.map((p) => {
-                        const val = montoPagoNum(p);
-                        return (
-                          <li
-                            key={p.id}
-                            className="rounded-lg border border-border bg-card px-3.5 py-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 space-y-0.5">
-                                <p className="text-sm font-semibold tabular-nums text-foreground">
-                                  {formatMonto(val, p.moneda === "usd" ? "usd" : "ars")}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {formatoFechaCortaDb(p.fecha)}
-                                </p>
-                              </div>
-                              <p className="shrink-0 text-xs font-medium text-muted-foreground">
-                                {etiquetaMetodo(p.metodo)}
-                              </p>
-                            </div>
-                            {p.nota ? (
-                              <p className="mt-2 text-xs text-muted-foreground">{p.nota}</p>
-                            ) : null}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </section>
-
-                <Collapsible open={formOpen} onOpenChange={setFormOpen}>
-                  <div className="overflow-hidden rounded-xl border border-border">
-                    <CollapsibleTrigger asChild>
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between gap-2 bg-muted/40 px-4 py-3 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted/60"
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          <Plus className="h-4 w-4 opacity-70" aria-hidden />
-                          Registrar pago
-                        </span>
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 text-muted-foreground transition-transform",
-                            formOpen && "rotate-180",
-                          )}
-                          aria-hidden
-                        />
-                      </button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="space-y-3 border-t border-border px-4 py-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-1.5">
-                            <Label htmlFor="vc-monto">Monto</Label>
-                            <Input
-                              id="vc-monto"
-                              type="number"
-                              min={0}
-                              step="any"
-                              value={montoDigitado}
-                              onChange={(e) => setMontoDigitado(e.target.value)}
-                              placeholder="0"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor="vc-fecha">Fecha</Label>
-                            <Input
-                              id="vc-fecha"
-                              type="date"
-                              value={pagoFecha}
-                              onChange={(e) => setPagoFecha(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-1.5">
-                            <Label>Moneda</Label>
-                            <Select
-                              value={pagoMoneda}
-                              onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="ars">ARS</SelectItem>
-                                <SelectItem value="usd">USD</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label>Cómo se paga</Label>
-                            <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {METODOS_COBRO_UI.map((m) => (
-                                  <SelectItem key={m.value} value={m.value}>
-                                    {m.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="vc-nota">Nota (opcional)</Label>
-                          <Textarea
-                            id="vc-nota"
-                            rows={2}
-                            value={pagoNota}
-                            onChange={(e) => setPagoNota(e.target.value)}
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2 pt-1">
-                          <Button
-                            type="button"
-                            className="w-full"
-                            disabled={pagoBusy}
-                            onClick={() => void onRegistrarPago()}
-                          >
-                            <Plus className="mr-1 h-4 w-4" aria-hidden />
-                            Registrar pago
-                          </Button>
-                          {estado === "finalizado" ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-full"
-                              disabled={pagoBusy}
-                              onClick={() => void onMarcarEntregado()}
-                            >
-                              Marcar entregado
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
-                    </CollapsibleContent>
+              {/* Formulario de pago — arriba, sin scrollear */}
+              <div className="shrink-0 border-b border-border px-6 py-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Registrar pago
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.4fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)]">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="vc-monto">Monto</Label>
+                    <Input
+                      id="vc-monto"
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={montoDigitado}
+                      onChange={(e) => setMontoDigitado(e.target.value)}
+                      placeholder="0"
+                    />
                   </div>
-                </Collapsible>
+                  <div className="space-y-1.5">
+                    <Label>Moneda</Label>
+                    <Select
+                      value={pagoMoneda}
+                      onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ars">ARS</SelectItem>
+                        <SelectItem value="usd">USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Cómo se paga</Label>
+                    <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {METODOS_COBRO_UI.map((m) => (
+                          <SelectItem key={m.value} value={m.value}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="vc-fecha">Fecha</Label>
+                    <Input
+                      id="vc-fecha"
+                      type="date"
+                      value={pagoFecha}
+                      onChange={(e) => setPagoFecha(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Label htmlFor="vc-nota">Nota (opcional)</Label>
+                    <Input
+                      id="vc-nota"
+                      value={pagoNota}
+                      onChange={(e) => setPagoNota(e.target.value)}
+                      placeholder="Referencia, n° de transferencia…"
+                    />
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    {estado === "finalizado" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pagoBusy}
+                        onClick={() => void onMarcarEntregado()}
+                      >
+                        Marcar entregado
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={pagoBusy}
+                      onClick={() => void onRegistrarPago()}
+                    >
+                      <Plus className="mr-1 h-4 w-4" aria-hidden />
+                      Registrar pago
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Historial de pagos — scrollea si hay muchos */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Pagos ({pagosVentas.length})
+                </h3>
+                {pagosVentas.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground">
+                    Sin pagos registrados.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border rounded-lg border border-border">
+                    {pagosVentas.map((p) => {
+                      const val = montoPagoNum(p);
+                      return (
+                        <li key={p.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                          <p className="w-28 shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                            {formatMonto(val, p.moneda === "usd" ? "usd" : "ars")}
+                          </p>
+                          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                            {formatoFechaCortaDb(p.fecha)}
+                            {p.nota ? ` · ${p.nota}` : ""}
+                          </p>
+                          <p className="shrink-0 text-xs font-medium text-muted-foreground">
+                            {etiquetaMetodo(p.metodo)}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
 
                 {placasOt.length > 0 ? (
-                  <section className="space-y-2 border-t border-border pt-4">
+                  <section className="mt-4 space-y-2 border-t border-border pt-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Placas en OT
                     </h3>
@@ -527,9 +559,9 @@ export function VentaCobrosDialog({
                     </ul>
                   </section>
                 ) : null}
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

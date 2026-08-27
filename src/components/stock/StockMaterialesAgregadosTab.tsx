@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -10,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, ArrowUpDown, Box } from "lucide-react";
+import { Search, ArrowUpDown, Box, Plus } from "lucide-react";
 import type { ChapaRow, MaterialCatalogLookup } from "@/lib/stock-api";
 import { aggregateChapasPorMaterial } from "@/lib/stock-api";
 
@@ -28,6 +29,7 @@ type Props = {
   chapas: ChapaRow[];
   materiales: MaterialCatalogLookup[];
   onOpenMaterial: (materialLabel: string) => void;
+  onCargaManual?: () => void;
 };
 
 function formatM2(n: number) {
@@ -49,6 +51,7 @@ export function StockMaterialesAgregadosTab({
   chapas,
   materiales,
   onOpenMaterial,
+  onCargaManual,
 }: Props) {
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("materialLabel");
@@ -126,9 +129,6 @@ export function StockMaterialesAgregadosTab({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">
-          Tocá un material para ver cada plancha (bulto, medida, estado).
-        </p>
         <div className="relative w-full sm:w-56">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -139,6 +139,17 @@ export function StockMaterialesAgregadosTab({
             aria-label="Filtrar materiales"
           />
         </div>
+        {onCargaManual ? (
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 shrink-0 gap-1.5"
+            onClick={onCargaManual}
+          >
+            <Plus className="h-4 w-4" />
+            Carga manual
+          </Button>
+        ) : null}
       </div>
       <div className="overflow-x-auto">
         <Table>

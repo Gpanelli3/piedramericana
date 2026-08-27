@@ -198,6 +198,23 @@ export function StepOrdenes({
                             />
                             <ConversionesMaestroHints parentMaterialId={ot.materialId} />
                           </div>
+                          <div className="space-y-1.5 min-w-0">
+                            <Label htmlFor={`${ot.key}-fecha-entrega`} className="text-xs font-medium">
+                              Fecha compromiso de entrega
+                            </Label>
+                            <Input
+                              id={`${ot.key}-fecha-entrega`}
+                              type="date"
+                              className="h-9 text-sm"
+                              value={ot.fechaEntrega}
+                              onChange={(e) =>
+                                patchOrden(ot.key, { fechaEntrega: e.target.value })
+                              }
+                            />
+                            <p className="text-[10px] text-muted-foreground leading-snug">
+                              Queda en la OT de producción al señar (fecha programada).
+                            </p>
+                          </div>
                           <PickChapaParaOt
                             materialNombre={materialRow?.name}
                             valueId={ot.chapaSugeridaId}

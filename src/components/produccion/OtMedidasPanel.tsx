@@ -124,7 +124,10 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
           <p className="text-sm font-medium text-foreground">Medidas del presupuesto</p>
         </div>
         {confirmadas ? (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge
+            variant="outline"
+            className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+          >
             Confirmadas
           </Badge>
         ) : (
