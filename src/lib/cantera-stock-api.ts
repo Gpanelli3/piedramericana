@@ -250,6 +250,59 @@ export async function fetchMaterialConversionsByParent(
   }));
 }
 
+export async function findOrCreateMaterialByName(
+  name: string,
+  unit: string = "u.",
+): Promise<string> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("El nombre del producto no puede estar vacío");
+
+  if (!isSupabaseConfigured) {
+    return `demo-mat-${trimmed.toLowerCase().replace(/\s+/g, "-")}`;
+  }
+
+  const { data: existing, error: findErr } = await supabase
+    .from("materials")
+    .select("id")
+    .ilike("name", trimmed)
+    .limit(1)
+    .maybeSingle();
+
+  if (findErr) throw findErr;
+  if (existing) return existing.id;
+
+  const { data: created, error: createErr } = await supabase
+    .from("materials")
+    .insert({
+      name: trimmed,
+      unit,
+      material_kind: "cantera" as never,
+      stock_qty: 0,
+      bulk_stock_kg: 0,
+    })
+    .select("id")
+    .single();
+
+  if (createErr) {
+    if (/material_kind/.test(createErr.message)) {
+      const { data: fallback, error: fbErr } = await supabase
+        .from("materials")
+        .insert({
+          name: trimmed,
+          unit,
+          stock_qty: 0,
+          bulk_stock_kg: 0,
+        })
+        .select("id")
+        .single();
+      if (fbErr) throw fbErr;
+      return fallback!.id;
+    }
+    throw createErr;
+  }
+  return created!.id;
+}
+
 export async function patchMaterialCatalogoCampos(params: {
   materialId: string;
   peso_por_m2_kg?: number | null;

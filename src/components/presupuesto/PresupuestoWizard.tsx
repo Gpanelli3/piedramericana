@@ -1271,7 +1271,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
       <div
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:left-56",
+          "fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:left-60",
         )}
       >
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -1357,7 +1357,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                 <Button
                   type="button"
                   size="sm"
-                  className="gap-1 bg-green-700 text-white hover:bg-green-800"
+                  variant="accent"
+                  className="gap-1"
                   disabled={guardando}
                   onClick={() => void handleGrabar()}
                 >

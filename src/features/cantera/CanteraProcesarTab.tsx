@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
 import type { InventoryLoteListItem, RegisterCanteraProcesamientoInput } from "@/lib/cantera-stock-api";
 import type { MaterialOption } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -159,29 +158,28 @@ export function CanteraProcesarTab({
   };
 
   return (
-    <div className="space-y-4">
-      <Card className="shadow-sm">
-        <CardHeader className="border-b bg-muted/20 py-3">
-          <CardTitle className="text-base">Procesar piedra bruta</CardTitle>
-          <CardDescription>
-            Consumí kg de un lote de cantera y registrá los productos terminados que ingresan al stock por
-            cantidad (adoquines, m² de laja, etc.).
-          </CardDescription>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Procesar piedra bruta</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Consumí kg de un lote y registrá los productos terminados (adoquines, m² de laja, etc.).
+          </p>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4">
+        <CardContent className="space-y-5">
           {lotesLoading ? (
             <p className="text-sm text-muted-foreground">Cargando lotes…</p>
           ) : lotesDisponibles.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-              No hay lotes con kg disponibles. Registrá un ingreso en la pestaña «Nuevo ingreso».
-            </p>
+            <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+              No hay lotes con kg disponibles. Registrá un ingreso con el botón de arriba.
+            </div>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="text-xs">Lote de origen</Label>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-medium">Lote de origen</Label>
                   <Select value={loteId || "__none__"} onValueChange={(v) => setLoteId(v === "__none__" ? "" : v)}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Elegir lote" />
                     </SelectTrigger>
                     <SelectContent>
@@ -194,10 +192,10 @@ export function CanteraProcesarTab({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Kg a consumir</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Kg a consumir</Label>
                   <Input
-                    className="h-9 tabular-nums"
+                    className="tabular-nums"
                     inputMode="decimal"
                     placeholder="ej. 2000"
                     value={kgConsumidos}
@@ -213,11 +211,10 @@ export function CanteraProcesarTab({
                     </p>
                   ) : null}
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Fecha</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Fecha</Label>
                   <Input
                     type="date"
-                    className="h-9"
                     value={issueDate}
                     onChange={(e) => setIssueDate(e.target.value)}
                   />
@@ -228,41 +225,39 @@ export function CanteraProcesarTab({
                 <ConversionesMaestroHints parentMaterialId={loteSeleccionado.material_id} />
               ) : null}
 
-              <div className="space-y-1">
-                <Label className="text-xs">Notas</Label>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Notas</Label>
                 <Textarea
-                  className="min-h-[52px] text-sm"
+                  className="min-h-[56px] text-sm"
                   placeholder="Observaciones del procesamiento…"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </div>
 
-              <Separator />
-
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <Label className="text-xs font-semibold">Productos terminados</Label>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addProductLine}>
+                  <h3 className="text-sm font-semibold text-foreground">Productos terminados</h3>
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addProductLine}>
                     <Plus className="h-3.5 w-3.5" />
                     Agregar producto
                   </Button>
                 </div>
-                <div className="space-y-3 rounded-md border border-border p-3">
+                <div className="space-y-2">
                   {productLines.map((ln) => {
                     const mat = materiales.find((m) => m.id === ln.materialId);
                     return (
                       <div
                         key={ln.key}
-                        className="grid gap-2 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
+                        className="grid gap-3 rounded-xl bg-muted/40 p-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
                       >
                         <div className="space-y-1 min-w-0">
-                          <Label className="text-[10px] text-muted-foreground">Producto (stock)</Label>
+                          <Label className="text-[11px] text-muted-foreground">Producto (stock)</Label>
                           <Select
                             value={ln.materialId}
                             onValueChange={(v) => patchProductLine(ln.key, { materialId: v })}
                           >
-                            <SelectTrigger className="h-9">
+                            <SelectTrigger className="w-full">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -275,11 +270,11 @@ export function CanteraProcesarTab({
                           </Select>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">
+                          <Label className="text-[11px] text-muted-foreground">
                             Cantidad {mat?.unit ? `(${mat.unit})` : ""}
                           </Label>
                           <Input
-                            className="h-9 tabular-nums"
+                            className="tabular-nums"
                             inputMode="decimal"
                             value={ln.cantidad}
                             onChange={(e) => patchProductLine(ln.key, { cantidad: e.target.value })}
@@ -290,7 +285,7 @@ export function CanteraProcesarTab({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-destructive"
+                            className="text-destructive hover:text-destructive"
                             disabled={productLines.length <= 1}
                             onClick={() => removeProductLine(ln.key)}
                             aria-label="Quitar producto"
@@ -306,6 +301,7 @@ export function CanteraProcesarTab({
 
               <Button
                 type="button"
+                variant="accent"
                 className="w-full sm:w-auto"
                 disabled={submitting || !materiales.length || !loteId}
                 onClick={() => void handleSubmit()}
@@ -317,42 +313,42 @@ export function CanteraProcesarTab({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm">
-        <CardHeader className="border-b bg-muted/20 py-3">
-          <CardTitle className="text-base">Procesamientos recientes</CardTitle>
-          <CardDescription>
-            {procLoading ? "Cargando…" : `${procesamientos.length} registro(s).`}
-          </CardDescription>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Procesamientos recientes</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {procLoading ? "Cargando…" : `${procesamientos.length} registro(s)`}
+          </p>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="text-xs">Fecha</TableHead>
-                  <TableHead className="text-xs">Material bruto</TableHead>
-                  <TableHead className="text-xs text-right">kg consumidos</TableHead>
-                  <TableHead className="text-xs">Productos</TableHead>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Material bruto</TableHead>
+                  <TableHead className="text-right">kg consumidos</TableHead>
+                  <TableHead>Productos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!procesamientos.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-12">
                       Aún no hay procesamientos registrados.
                     </TableCell>
                   </TableRow>
                 ) : (
                   procesamientos.map((p) => (
                     <TableRow key={p.id}>
-                      <TableCell className="text-xs whitespace-nowrap">{p.issue_date}</TableCell>
-                      <TableCell className="text-xs max-w-[10rem] truncate">
+                      <TableCell className="text-sm whitespace-nowrap">{p.issue_date}</TableCell>
+                      <TableCell className="text-sm max-w-[10rem] truncate">
                         {p.material_bruto_name ?? p.material_bruto_id.slice(0, 8)}
                       </TableCell>
-                      <TableCell className="text-xs text-right tabular-nums">
+                      <TableCell className="text-sm text-right tabular-nums">
                         {p.qty_kg_consumidos.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
                       </TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="text-sm">
                         {p.lineas.length === 0
                           ? "—"
                           : p.lineas

@@ -8,6 +8,7 @@ import {
   FileText,
   Landmark,
   LayoutDashboard,
+  LogOut,
   Mountain,
   Package,
   Settings,
@@ -46,8 +47,6 @@ type NavItemDef = {
   id: WorkspaceTab;
   label: string;
   icon: ReactNode;
-  color: string;
-  /** Roles que pueden ver este módulo. Si está vacío, todos lo ven. */
   roles?: string[];
 };
 
@@ -55,98 +54,84 @@ const NAV_ITEMS: NavItemDef[] = [
   {
     id: "dashboard",
     label: "Dashboard",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-    color: "text-accent",
+    icon: <LayoutDashboard className="h-[18px] w-[18px]" />,
   },
   {
     id: "ventas",
     label: "Presupuestos",
-    icon: <FileText className="h-5 w-5" />,
-    color: "text-red-400",
+    icon: <FileText className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "clientes",
     label: "Clientes",
-    icon: <Users className="h-5 w-5" />,
-    color: "text-blue-400",
+    icon: <Users className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "articulos",
     label: "Sub-ítems",
-    icon: <Tags className="h-5 w-5" />,
-    color: "text-orange-400",
+    icon: <Tags className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "administracion",
     label: "Ventas",
-    icon: <Wallet className="h-5 w-5" />,
-    color: "text-purple-400",
+    icon: <Wallet className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
   },
   {
     id: "produccion",
     label: "Producción",
-    icon: <Wrench className="h-5 w-5" />,
-    color: "text-green-400",
+    icon: <Wrench className="h-[18px] w-[18px]" />,
     roles: ["cortador", "produccion", "medidor", "admin"],
   },
   {
     id: "cantera",
     label: "Cantera",
-    icon: <Mountain className="h-5 w-5" />,
-    color: "text-sky-400",
+    icon: <Mountain className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "stock",
     label: "Stock",
-    icon: <Package className="h-5 w-5" />,
-    color: "text-yellow-400",
+    icon: <Package className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion", "produccion"],
   },
   {
     id: "proveedores",
     label: "Proveedores",
-    icon: <Truck className="h-5 w-5" />,
-    color: "text-amber-400",
+    icon: <Truck className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "comercio_exterior",
     label: "Comercio exterior",
-    icon: <Ship className="h-5 w-5" />,
-    color: "text-indigo-400",
+    icon: <Ship className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "finanzas",
     label: "Finanzas",
-    icon: <Landmark className="h-5 w-5" />,
-    color: "text-teal-400",
+    icon: <Landmark className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "equipo",
     label: "Equipo",
-    icon: <UserCog className="h-5 w-5" />,
-    color: "text-rose-400",
+    icon: <UserCog className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "reportes",
     label: "Reportes",
-    icon: <BarChart3 className="h-5 w-5" />,
-    color: "text-emerald-400",
+    icon: <BarChart3 className="h-[18px] w-[18px]" />,
     roles: ["admin", "administracion"],
   },
   {
     id: "configuracion",
     label: "Configuración",
-    icon: <Settings className="h-5 w-5" />,
-    color: "text-zinc-400",
+    icon: <Settings className="h-[18px] w-[18px]" />,
     roles: ["admin"],
   },
 ];
@@ -204,18 +189,20 @@ function ExpandableNavItem({
   children,
 }: ExpandableNavProps) {
   return (
-    <div className="space-y-0.5 pb-2">
+    <div className="space-y-0.5">
       <div
         className={cn(
-          "flex w-full items-stretch rounded-md",
-          active ? "bg-sidebar-accent text-sidebar-foreground" : "text-sidebar-foreground/60",
+          "flex w-full items-stretch rounded-xl transition-colors",
+          active ? "bg-accent text-accent-foreground" : "text-sidebar-foreground",
         )}
       >
         <button
           type="button"
           className={cn(
-            "shrink-0 flex items-center justify-center rounded-md px-1 py-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-            active ? "hover:bg-white/10" : "hover:bg-sidebar-accent/45",
+            "shrink-0 flex items-center justify-center rounded-xl px-1 py-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+            active
+              ? "text-accent-foreground hover:bg-accent/80"
+              : "text-sidebar-foreground/70 hover:bg-muted hover:text-sidebar-foreground",
           )}
           aria-expanded={active ? menuAbierto : false}
           aria-controls={submenuId}
@@ -237,24 +224,21 @@ function ExpandableNavItem({
           type="button"
           onClick={onToggleEncabezado}
           className={cn(
-            "flex flex-1 min-w-0 items-center gap-2 px-1 py-2.5 rounded-md text-sm font-medium transition-colors text-left",
+            "flex flex-1 min-w-0 items-center gap-2.5 px-1 py-2.5 rounded-xl text-sm font-medium transition-colors text-left",
             active
-              ? "text-sidebar-foreground"
-              : "hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+              ? "text-accent-foreground"
+              : "text-sidebar-foreground hover:bg-muted",
           )}
         >
-          <span className={cn(active ? item.color : "")}>{item.icon}</span>
+          <span>{item.icon}</span>
           <span className="truncate flex-1">{item.label}</span>
-          {active ? (
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", item.color.replace("text-", "bg-"))} />
-          ) : null}
         </button>
       </div>
 
       {menuAbierto && active ? (
         <div
           id={submenuId}
-          className="border-l border-sidebar-border ml-5 pl-1 space-y-0.5 mt-1"
+          className="border-l-2 border-accent/40 ml-5 pl-2 space-y-0.5 mt-1"
         >
           {children}
         </div>
@@ -410,39 +394,43 @@ export function AppSidebar() {
   const displayName = meta?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
   const initials = initialsFromUser(user?.email, meta?.full_name);
 
-  const submenuLinkCn = (active: boolean, accentBorder: string) =>
+  const submenuLinkCn = (active: boolean) =>
     cn(
-      "flex w-full items-center rounded-md px-3 py-1.5 text-left text-[13px] transition-colors border-l-2",
+      "flex w-full items-center rounded-lg px-3 py-1.5 text-left text-[13px] transition-colors",
       active
-        ? cn(accentBorder, "bg-sidebar-accent text-sidebar-foreground font-medium")
-        : "border-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+        ? "bg-accent/20 text-accent-foreground font-medium"
+        : "text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground",
     );
 
   return (
-    <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col self-stretch bg-sidebar overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="border-b border-sidebar-border px-5 py-5">
-        <div className="flex items-center gap-2">
-          <LayoutDashboard className="h-6 w-6 text-accent" />
+    <aside className="flex h-full min-h-0 w-60 shrink-0 flex-col self-stretch bg-sidebar border-r border-sidebar-border overflow-y-auto [scrollbar-gutter:stable]">
+      {/* Brand */}
+      <div className="px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
+            <LayoutDashboard className="h-5 w-5 text-accent-foreground" />
+          </div>
           <span className="text-lg font-bold tracking-tight text-sidebar-foreground">MarmoGest</span>
         </div>
       </div>
 
-      <div className="border-b border-sidebar-border px-5 py-4">
+      {/* User */}
+      <div className="border-y border-sidebar-border px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-semibold text-sidebar-foreground">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-sidebar-foreground">{displayName}</p>
             {roles.length > 0 ? (
-              <p className="truncate text-xs text-sidebar-foreground/60">
+              <p className="truncate text-xs text-sidebar-foreground/50">
                 {(esAdmin ? ["admin"] : roles.slice(0, 2))
                   .map((r) => ETIQUETAS_ROL[r] ?? r)
                   .join(" · ")}
               </p>
             ) : (
-              <p className="flex items-center gap-1 text-xs text-green-400">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400" />
+              <p className="flex items-center gap-1.5 text-xs text-success-strong">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-success-strong" />
                 Sesión activa
               </p>
             )}
@@ -450,7 +438,11 @@ export function AppSidebar() {
         </div>
       </div>
 
+      {/* Navigation */}
       <nav className="flex-1 space-y-0.5 px-3 py-4">
+        <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+          Navegación
+        </p>
         {navItems.map((item) => {
           if (item.id === "ventas") {
             return (
@@ -465,35 +457,35 @@ export function AppSidebar() {
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("nuevo")}
-                  className={submenuLinkCn(pv === "nuevo", "border-red-400")}
+                  className={submenuLinkCn(pv === "nuevo")}
                 >
                   Nuevo presupuesto
                 </button>
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("lista", "aprobados")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "aprobados", "border-red-400")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "aprobados")}
                 >
                   Aprobados
                 </button>
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("lista", "pendientes")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes", "border-red-400")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes")}
                 >
                   Pendientes
                 </button>
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("lista", "rechazados")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados", "border-red-400")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados")}
                 >
                   Rechazados
                 </button>
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("lista", "todos")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "todos", "border-red-400")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}
                 >
                   Todos
                 </button>
@@ -516,14 +508,9 @@ export function AppSidebar() {
                     key={filtro}
                     type="button"
                     onClick={() => gotoProduccionOt(filtro)}
-                    className={submenuLinkCn(
-                      otFiltro === filtro,
-                      filtro === "entregadas" ? "border-orange-400" : "border-green-400",
-                    )}
+                    className={submenuLinkCn(otFiltro === filtro)}
                   >
-                    <span className={filtro === "entregadas" ? "text-orange-300" : undefined}>
-                      {PRODUCCION_OT_LABELS[filtro]}
-                    </span>
+                    {PRODUCCION_OT_LABELS[filtro]}
                   </button>
                 ))}
               </ExpandableNavItem>
@@ -545,7 +532,7 @@ export function AppSidebar() {
                     key={seccion}
                     type="button"
                     onClick={() => gotoEquipoSeccion(seccion)}
-                    className={submenuLinkCn(eqSeccion === seccion, "border-rose-400")}
+                    className={submenuLinkCn(eqSeccion === seccion)}
                   >
                     {EQUIPO_SECCION_LABELS[seccion]}
                   </button>
@@ -560,31 +547,30 @@ export function AppSidebar() {
               type="button"
               onClick={() => gotoWorkspace(item.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 activeTab === item.id
-                  ? "bg-sidebar-accent text-sidebar-foreground"
-                  : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  ? "bg-accent text-accent-foreground"
+                  : "text-sidebar-foreground hover:bg-muted",
               )}
             >
-              <span className={cn(activeTab === item.id ? item.color : "")}>{item.icon}</span>
+              <span>{item.icon}</span>
               {item.label}
-              {activeTab === item.id && (
-                <span className={cn("ml-auto h-2 w-2 rounded-full", item.color.replace("text-", "bg-"))} />
-              )}
             </button>
           );
         })}
       </nav>
 
-      <div className="space-y-2 border-t border-sidebar-border px-5 py-4">
+      {/* Footer */}
+      <div className="space-y-2 border-t border-sidebar-border px-4 py-4">
         <button
           type="button"
           onClick={() => void signOut()}
-          className="w-full rounded-md border border-sidebar-border px-2 py-1.5 text-left text-xs text-sidebar-foreground/80 hover:bg-sidebar-accent/60"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-sidebar-foreground/60 hover:bg-muted hover:text-sidebar-foreground transition-colors"
         >
+          <LogOut className="h-4 w-4" />
           Cerrar sesión
         </button>
-        <p className="text-xs text-sidebar-foreground/30">Piedra Americana · escritorio</p>
+        <p className="px-3 text-[11px] text-sidebar-foreground/30">Piedra Americana · escritorio</p>
       </div>
     </aside>
   );

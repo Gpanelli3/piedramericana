@@ -8,7 +8,11 @@ import {
   CalendarClock,
   ChevronRight,
   ClipboardList,
+  FilePlus2,
   Layers,
+  ListChecks,
+  Package,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,30 +40,30 @@ type KpiCardProps = {
 
 function KpiCard({ label, value, hint, icon, accent = "default", onClick }: KpiCardProps) {
   const inner = (
-    <CardContent className="flex gap-4 p-4 sm:p-5">
+    <CardContent className="flex gap-4 p-5">
       <div
         className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-          accent === "warn" && "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-          accent === "ok" && "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-          accent === "default" && "bg-muted text-foreground/80",
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+          accent === "warn" && "bg-warning-soft text-warning-strong",
+          accent === "ok" && "bg-success-soft text-success-strong",
+          accent === "default" && "bg-muted text-foreground/70",
         )}
       >
         {icon}
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">{value}</p>
+        <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{value}</p>
         {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       </div>
-      {onClick ? <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/50" /> : null}
+      {onClick ? <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/40" /> : null}
     </CardContent>
   );
 
   if (onClick) {
     return (
       <Card
-        className="cursor-pointer border-border shadow-sm transition-colors hover:bg-muted/30"
+        className="cursor-pointer transition-shadow hover:shadow-md"
         onClick={onClick}
       >
         {inner}
@@ -67,7 +71,7 @@ function KpiCard({ label, value, hint, icon, accent = "default", onClick }: KpiC
     );
   }
 
-  return <Card className="border-border shadow-sm">{inner}</Card>;
+  return <Card>{inner}</Card>;
 }
 
 export function VistaDashboard() {
@@ -126,11 +130,11 @@ export function VistaDashboard() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
-        <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+      <header className="px-4 pt-6 pb-2 sm:px-8 sm:pt-8 sm:pb-3">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           {saludoSegunHora()}
         </h1>
-        <p className="mt-0.5 text-sm capitalize text-muted-foreground">{fechaHoy}</p>
+        <p className="mt-1 text-sm capitalize text-muted-foreground">{fechaHoy}</p>
       </header>
 
       <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
@@ -142,8 +146,32 @@ export function VistaDashboard() {
           </Card>
         ) : (
           <>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Accesos rápidos</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2 sm:grid-cols-4">
+                <Button variant="accent" className="h-12 justify-start gap-3" onClick={() => ir("ventas", { pv: "nuevo" })}>
+                  <FilePlus2 className="h-4 w-4" />
+                  Nuevo presupuesto
+                </Button>
+                <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("ventas", { pv: "list", ft: "pendientes" })}>
+                  <ListChecks className="h-4 w-4" />
+                  Ver pendientes
+                </Button>
+                <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("administracion")}>
+                  <Wallet className="h-4 w-4" />
+                  Cobros y ventas
+                </Button>
+                <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("stock")}>
+                  <Package className="h-4 w-4" />
+                  Stock de piedra
+                </Button>
+              </CardContent>
+            </Card>
+
             <section>
-              <h2 className="mb-3 text-sm font-medium text-muted-foreground">Operación</h2>
+              <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Operación</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
                   label="Presupuestos pendientes"
@@ -168,6 +196,7 @@ export function VistaDashboard() {
                   value={cargando ? "…" : String(data?.presupuestosAprobados ?? 0)}
                   hint="Obras en curso comercial"
                   icon={<Layers className="h-5 w-5" aria-hidden />}
+                  accent="ok"
                   onClick={() => ir("administracion")}
                 />
                 <KpiCard
@@ -181,8 +210,7 @@ export function VistaDashboard() {
               </div>
             </section>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card className="border-border shadow-sm">
+            <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="flex items-center gap-2 text-base font-semibold">
                     <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -204,7 +232,7 @@ export function VistaDashboard() {
                       {data.proximasEntregas.map((e) => (
                         <li
                           key={e.id}
-                          className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2 text-sm"
+                          className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-4 py-3 text-sm"
                         >
                           <div className="min-w-0">
                             <p className="truncate font-medium">{e.titulo}</p>
@@ -219,28 +247,7 @@ export function VistaDashboard() {
                     </ul>
                   )}
                 </CardContent>
-              </Card>
-
-              <Card className="border-border shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-semibold">Accesos rápidos</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2 sm:grid-cols-2">
-                  <Button variant="outline" className="h-10 justify-start" onClick={() => ir("ventas", { pv: "nuevo" })}>
-                    Nuevo presupuesto
-                  </Button>
-                  <Button variant="outline" className="h-10 justify-start" onClick={() => ir("ventas", { pv: "list", ft: "pendientes" })}>
-                    Ver pendientes
-                  </Button>
-                  <Button variant="outline" className="h-10 justify-start" onClick={() => ir("administracion")}>
-                    Cobros y ventas
-                  </Button>
-                  <Button variant="outline" className="h-10 justify-start" onClick={() => ir("stock")}>
-                    Stock de piedra
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+            </Card>
           </>
         )}
       </div>

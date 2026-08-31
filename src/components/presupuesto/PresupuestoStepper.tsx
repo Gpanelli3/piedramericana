@@ -24,7 +24,7 @@ export function PresupuestoStepper({ step, className }: PresupuestoStepperProps)
       </p>
       <nav
         className={cn(
-          "rounded-xl border border-border bg-white shadow-sm px-3 py-4 sm:py-5",
+          "rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] px-3 py-4 sm:py-5",
           className,
         )}
         aria-label="Progreso del presupuesto"
@@ -42,8 +42,8 @@ export function PresupuestoStepper({ step, className }: PresupuestoStepperProps)
                     className={cn(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold tabular-nums transition-colors sm:h-10 sm:w-10 sm:text-sm",
                       estado === "current" &&
-                        "border-[#1e3a5f] bg-[#1e3a5f] text-white ring-4 ring-[#1e3a5f]/20",
-                      estado === "done" && "border-emerald-600 bg-emerald-600 text-white",
+                        "border-accent bg-accent text-accent-foreground ring-4 ring-accent/20",
+                      estado === "done" && "border-success-strong bg-success-strong text-white",
                       estado === "todo" && "border-muted-foreground/30 bg-muted/40 text-muted-foreground",
                     )}
                     aria-current={estado === "current" ? "step" : undefined}
@@ -61,7 +61,7 @@ export function PresupuestoStepper({ step, className }: PresupuestoStepperProps)
                   <p
                     className={cn(
                       "text-[10px] font-bold uppercase tracking-wide sm:text-[11px]",
-                      estado === "current" ? "text-[#1e3a5f]" : "text-muted-foreground",
+                      estado === "current" ? "text-foreground" : "text-muted-foreground",
                     )}
                   >
                     {p.kicker}

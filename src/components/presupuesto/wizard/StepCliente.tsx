@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus } from "lucide-react";
 import type { ListaPrecioRow } from "@/types/articulos";
 import type { ClientePresupuesto } from "@/lib/clients-api";
@@ -98,33 +99,32 @@ export function StepCliente({
           />
           <div className="space-y-1">
             <Label className="text-xs font-medium">Moneda</Label>
-            <select
-              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-              value={monedaPresupuesto}
-              onChange={(e) => setMonedaPresupuesto(e.target.value as "ars" | "usd")}
-            >
-              <option value="usd">Dólares (USD)</option>
-              <option value="ars">Pesos (ARS)</option>
-            </select>
+            <Select value={monedaPresupuesto} onValueChange={(v) => setMonedaPresupuesto(v as "ars" | "usd")}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="usd">Dólares (USD)</SelectItem>
+                <SelectItem value="ars">Pesos (ARS)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1 sm:col-span-2 lg:col-span-1">
             <Label className="text-xs font-medium">
               Origen
             </Label>
-            <select
-              className="h-8 w-full rounded-md border border-input bg-background px-2.5 text-sm"
-              value={origenVentas}
-              onChange={(e) => setOrigenVentas(e.target.value)}
-            >
-              {ORIGEN_VENTA_OPCIONES.map((o) => (
-                <option
-                  key={o.value === "" ? "_sin_origen" : o.value}
-                  value={o.value}
-                >
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <Select value={origenVentas || undefined} onValueChange={setOrigenVentas}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Elegir origen…" />
+              </SelectTrigger>
+              <SelectContent>
+                {ORIGEN_VENTA_OPCIONES.filter((o) => o.value !== "").map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
