@@ -24,12 +24,14 @@ import type { Dispatch, SetStateAction } from "react";
 import type { MaterialOption, ModoMedidasRemito, OrigenPlaca } from "@/lib/stock-api";
 import {
   fetchSuppliers,
-  createRemitoWithSlabsViaRpc,
   type SupplierRow,
+} from "@/lib/suppliers-api";
+import {
+  createRemitoWithSlabsViaRpc,
   type ChapaRow,
 } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { NuevoProveedorDialog } from "./NuevoProveedorDialog";
+import { ProveedorFormDialog } from "@/components/proveedores/ProveedorFormDialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +192,16 @@ export function CrearRemitoDialog({
       setSuppliers([]);
     }
   }, []);
+
+  const sortedSuppliers = useMemo(() => {
+    const placasRubros = ["placas_naturales", "placas_industriales"];
+    return [...suppliers].sort((a, b) => {
+      const aMatch = (a.rubros ?? []).some((r: string) => placasRubros.includes(r)) ? 0 : 1;
+      const bMatch = (b.rubros ?? []).some((r: string) => placasRubros.includes(r)) ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+      return a.name.localeCompare(b.name, "es");
+    });
+  }, [suppliers]);
 
   useEffect(() => {
     if (!open) return;
@@ -559,11 +571,11 @@ export function CrearRemitoDialog({
 
   return (
     <>
-      <NuevoProveedorDialog
+      <ProveedorFormDialog
         open={proveedorDialog}
         onOpenChange={setProveedorDialog}
-        onCreated={(id) => {
-          void reloadSuppliers().then(() => setSupplierId(id));
+        onSaved={(s) => {
+          void reloadSuppliers().then(() => setSupplierId(s.id));
         }}
       />
 
@@ -640,7 +652,7 @@ export function CrearRemitoDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Seleccionar</SelectItem>
-                        {suppliers.map((s) => (
+                        {sortedSuppliers.map((s) => (
                           <SelectItem key={s.id} value={s.id}>
                             {s.name}
                           </SelectItem>

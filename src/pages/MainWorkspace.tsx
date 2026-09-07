@@ -13,12 +13,13 @@ import { VistaStock } from "@/components/vista-stock";
 import { VistaVentas } from "@/components/vista-ventas";
 import { VistaModuloPendiente } from "@/components/vista-modulo-pendiente";
 import { VistaClientes } from "@/components/vista-clientes";
+import { VistaProveedores } from "@/components/vista-proveedores";
 import { VistaEquipo } from "@/components/vista-equipo";
 import { VistaReportes } from "@/components/vista-reportes";
 import { StockProvider } from "@/contexts/StockContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { WORKSPACE_TABS, type WorkspaceTab } from "@/types/workspace";
-import { Settings, Ship, Truck } from "lucide-react";
+import { Settings, Ship } from "lucide-react";
 
 const KNOWN_WS = new Set<WorkspaceTab>(WORKSPACE_TABS);
 
@@ -48,13 +49,7 @@ export function MainWorkspace() {
             {activeTab === "produccion" && <VistaProduccionShell />}
             {activeTab === "cantera" && <VistaCantera />}
             {activeTab === "stock" && <VistaStock />}
-            {activeTab === "proveedores" && (
-              <VistaModuloPendiente
-                titulo="Proveedores"
-                resumen="Maestro de proveedores ligado a remitos y compras de piedra."
-                icono={Truck}
-              />
-            )}
+            {activeTab === "proveedores" && <VistaProveedores />}
             {activeTab === "comercio_exterior" && (
               <VistaModuloPendiente
                 titulo="Comercio exterior"

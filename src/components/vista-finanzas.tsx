@@ -49,6 +49,7 @@ import {
   type MovimientoCajaRow,
   type SaldoCuentaRow,
 } from "@/lib/finanzas-api";
+import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
 import { cn } from "@/lib/utils";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
@@ -95,6 +96,7 @@ export function VistaFinanzas() {
   const [dialogMov, setDialogMov] = useState(false);
   const [dialogTransf, setDialogTransf] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [suppliersFinanzas, setSuppliersFinanzas] = useState<SupplierRow[]>([]);
 
   const hoy = new Date().toISOString().slice(0, 10);
   const [resumenDia, setResumenDia] = useState<{
@@ -112,6 +114,7 @@ export function VistaFinanzas() {
     moneda: "ars" as "ars" | "usd",
     fecha: hoy,
     descripcion: "",
+    supplier_id: "" as string,
   });
 
   const conceptosDisponibles = useMemo(
@@ -143,6 +146,7 @@ export function VistaFinanzas() {
       listMovimientos({ limit: 100 }),
       resumenCajaDelDia(hoy),
     ]);
+    void fetchSuppliers().then(setSuppliersFinanzas).catch(() => {});
     if (s.error) toast.error(s.error.message);
     if (c.error) toast.error(c.error.message);
     if (m.error) toast.error(m.error.message);
@@ -184,6 +188,7 @@ export function VistaFinanzas() {
       moneda: movForm.moneda,
       fecha: movForm.fecha,
       descripcion: movForm.descripcion,
+      supplier_id: movForm.supplier_id || null,
     });
     setBusy(false);
     if (res.error) {
@@ -200,6 +205,7 @@ export function VistaFinanzas() {
       moneda: "ars",
       fecha: hoy,
       descripcion: "",
+      supplier_id: "",
     });
     await recargar();
   }
@@ -515,6 +521,23 @@ export function VistaFinanzas() {
               <Label>Descripción</Label>
               <Textarea rows={2} value={movForm.descripcion} onChange={(e) => setMovForm((f) => ({ ...f, descripcion: e.target.value }))} />
             </div>
+            {movForm.tipo === "egreso" && (
+              <div className="space-y-1">
+                <Label>Proveedor (opcional)</Label>
+                <Select
+                  value={movForm.supplier_id || "__none__"}
+                  onValueChange={(v) => setMovForm((f) => ({ ...f, supplier_id: v === "__none__" ? "" : v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sin proveedor" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin proveedor</SelectItem>
+                    {suppliersFinanzas.filter((s) => s.activo !== false).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogMov(false)}>Cancelar</Button>

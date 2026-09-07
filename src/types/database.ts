@@ -359,6 +359,12 @@ export interface Database {
           postal_code: string | null;
           province: string | null;
           locality: string | null;
+          rubros: string[];
+          origen: "nacional" | "exterior" | "propio";
+          pais: string | null;
+          contact_name: string | null;
+          notes: string | null;
+          activo: boolean;
           created_at: string;
         };
         Insert: {
@@ -372,6 +378,12 @@ export interface Database {
           postal_code?: string | null;
           province?: string | null;
           locality?: string | null;
+          rubros?: string[];
+          origen?: "nacional" | "exterior" | "propio";
+          pais?: string | null;
+          contact_name?: string | null;
+          notes?: string | null;
+          activo?: boolean;
           created_at?: string;
         };
         Update: {
@@ -385,6 +397,12 @@ export interface Database {
           postal_code?: string | null;
           province?: string | null;
           locality?: string | null;
+          rubros?: string[];
+          origen?: "nacional" | "exterior" | "propio";
+          pais?: string | null;
+          contact_name?: string | null;
+          notes?: string | null;
+          activo?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -1280,6 +1298,7 @@ export interface Database {
           referencia_id: string | null;
           cuenta_contraparte_id: string | null;
           transferencia_grupo_id: string | null;
+          supplier_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -1297,6 +1316,7 @@ export interface Database {
           referencia_id?: string | null;
           cuenta_contraparte_id?: string | null;
           transferencia_grupo_id?: string | null;
+          supplier_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1314,6 +1334,7 @@ export interface Database {
           referencia_id?: string | null;
           cuenta_contraparte_id?: string | null;
           transferencia_grupo_id?: string | null;
+          supplier_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1323,6 +1344,13 @@ export interface Database {
             columns: ["cuenta_id"];
             isOneToOne: false;
             referencedRelation: "cuentas_financieras";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "movimientos_caja_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
             referencedColumns: ["id"];
           },
         ];

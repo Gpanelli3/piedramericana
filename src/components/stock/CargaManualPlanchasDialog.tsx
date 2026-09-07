@@ -22,13 +22,12 @@ import {
 import { CirclePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   createManualSlabs,
-  fetchSuppliers,
   type MaterialOption,
-  type SupplierRow,
 } from "@/lib/stock-api";
+import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
 import { createMaterial } from "@/lib/materials-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { NuevoProveedorDialog } from "./NuevoProveedorDialog";
+import { ProveedorFormDialog } from "@/components/proveedores/ProveedorFormDialog";
 
 type Props = {
   open: boolean;
@@ -85,6 +84,15 @@ export function CargaManualPlanchasDialog({
   const [costoUsd, setCostoUsd] = useState("");
   const [supplierId, setSupplierId] = useState<string>("");
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const sortedSuppliers = useMemo(() => {
+    const placasRubros = ["placas_naturales", "placas_industriales"];
+    return [...suppliers].sort((a, b) => {
+      const aMatch = (a.rubros ?? []).some((r: string) => placasRubros.includes(r)) ? 0 : 1;
+      const bMatch = (b.rubros ?? []).some((r: string) => placasRubros.includes(r)) ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+      return a.name.localeCompare(b.name, "es");
+    });
+  }, [suppliers]);
   const [creandoMaterial, setCreandoMaterial] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoCodigo, setNuevoCodigo] = useState("");
@@ -595,7 +603,7 @@ export function CargaManualPlanchasDialog({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">Sin proveedor</SelectItem>
-                      {suppliers.map((s) => (
+                      {sortedSuppliers.map((s) => (
                         <SelectItem key={s.id} value={s.id}>
                           {s.name}
                         </SelectItem>
@@ -624,16 +632,14 @@ export function CargaManualPlanchasDialog({
         </DialogContent>
       </Dialog>
 
-      <NuevoProveedorDialog
+      <ProveedorFormDialog
         open={nuevoProvOpen}
         onOpenChange={setNuevoProvOpen}
-        onCreated={(id, name) => {
+        onSaved={(s) => {
           setSuppliers((prev) =>
-            [...prev, { id, name } as SupplierRow].sort((a, b) =>
-              a.name.localeCompare(b.name, "es"),
-            ),
+            [...prev, s].sort((a, b) => a.name.localeCompare(b.name, "es")),
           );
-          setSupplierId(id);
+          setSupplierId(s.id);
         }}
       />
     </>

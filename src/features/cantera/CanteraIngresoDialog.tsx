@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { MaterialOption } from "@/lib/stock-api";
-import { fetchSuppliers, type SupplierRow } from "@/lib/stock-api";
+import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
 import type { RegisterCanteraLineInput, CanteraPurchaseUom } from "@/lib/cantera-stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -60,6 +60,14 @@ export function CanteraIngresoDialog({
   onSuccess,
 }: CanteraIngresoDialogProps) {
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const sortedSuppliers = useMemo(() => {
+    return [...suppliers].sort((a, b) => {
+      const aMatch = (a.rubros ?? []).includes("piedra_kg") ? 0 : 1;
+      const bMatch = (b.rubros ?? []).includes("piedra_kg") ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+      return a.name.localeCompare(b.name, "es");
+    });
+  }, [suppliers]);
   const [supplierId, setSupplierId] = useState<string>("");
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receiptRef, setReceiptRef] = useState("");
@@ -180,7 +188,7 @@ export function CanteraIngresoDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Sin proveedor</SelectItem>
-                  {suppliers.map((s) => (
+                  {sortedSuppliers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>

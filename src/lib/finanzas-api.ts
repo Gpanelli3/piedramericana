@@ -133,6 +133,7 @@ export async function registrarMovimientoManual(opts: {
   metodo: MetodoPago;
   concepto?: Exclude<ConceptoMovimiento, "transferencia">;
   descripcion?: string;
+  supplier_id?: string | null;
   created_by?: string | null;
 }): Promise<{ error: Error | null }> {
   if (!Number.isFinite(opts.monto) || opts.monto <= 0) {
@@ -156,6 +157,7 @@ export async function registrarMovimientoManual(opts: {
     concepto,
     descripcion: opts.descripcion?.trim() || null,
     referencia_tipo: "manual",
+    supplier_id: opts.supplier_id ?? null,
     created_by: opts.created_by ?? null,
   });
   return { error: error ? new Error(error.message) : null };
