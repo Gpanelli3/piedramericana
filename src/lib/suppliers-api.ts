@@ -50,13 +50,13 @@ export async function fetchSuppliers(): Promise<SupplierRow[]> {
       .order("name");
     if (fallback.error) throw new Error(fallback.error.message);
     return (fallback.data ?? []).map((r) => ({
-      rubros: [],
-      origen: "nacional" as const,
-      pais: null,
-      contact_name: null,
-      notes: null,
-      activo: true,
       ...r,
+      rubros: r.rubros ?? [],
+      origen: r.origen ?? "nacional",
+      pais: r.pais ?? null,
+      contact_name: r.contact_name ?? null,
+      notes: r.notes ?? null,
+      activo: r.activo ?? true,
     }));
   }
   return data ?? [];

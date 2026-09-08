@@ -54,7 +54,7 @@ export function VistaLogistica() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Producción · Logística</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Despacho y colocación — OTs en etapa Despacho
+              OTs en logística, listas para entrega
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm font-medium">
@@ -68,7 +68,7 @@ export function VistaLogistica() {
           <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>
         ) : items.length === 0 ? (
           <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm text-muted-foreground">
-            No hay OTs en despacho.
+            No hay OTs en logística.
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">

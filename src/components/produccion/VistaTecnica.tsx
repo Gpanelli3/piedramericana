@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
 import { OtListRow } from "@/components/produccion/OtListRow";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { avanzarEtapaOt, getOtsPorFiltro, type OtProduccionItem } from "@/lib/produccion-api";
+import { avanzarEtapaOt, getOtsPorFiltro, siguienteEtapaOt, type OtProduccionItem } from "@/lib/produccion-api";
+import { etiquetaAvanceEtapa } from "@/lib/etiquetas-ot";
 import { formatFechaCorta } from "@/components/produccion/ot-ui";
 
 export function VistaTecnica() {
@@ -55,7 +56,7 @@ export function VistaTecnica() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Producción · Técnica</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Medición, planos y m² técnicos (etapa Medición)
+              Medición, planos y m² técnicos
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm font-medium">
@@ -69,7 +70,7 @@ export function VistaTecnica() {
           <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>
         ) : items.length === 0 ? (
           <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm text-muted-foreground">
-            No hay OTs en etapa de medición.
+            No hay OTs en técnica.
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
@@ -82,7 +83,7 @@ export function VistaTecnica() {
                   setDetalleOpen(true);
                 }}
                 primaryAction={{
-                  label: "A Corte",
+                  label: etiquetaAvanceEtapa(siguienteEtapaOt("medicion") ?? "corte"),
                   disabled:
                     busyId === item.orden.id ||
                     Boolean(item.orden.bloqueada) ||

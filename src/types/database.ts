@@ -32,6 +32,44 @@ export type RolOperativo =
   | "reparador"
   | "administracion"
   | "admin";
+export type ImportacionEstado =
+  | "orden_compra"
+  | "embarque"
+  | "en_transito"
+  | "en_aduana"
+  | "nacionalizada"
+  | "en_deposito";
+export type ImportacionMedioTransporte = "maritimo" | "aereo" | "terrestre";
+export type ImportacionGastoConcepto =
+  | "valor_mercaderia"
+  | "flete_internacional"
+  | "seguro"
+  | "derechos_importacion"
+  | "iva_importacion"
+  | "ingresos_brutos"
+  | "percepcion_ganancias"
+  | "gasto_despachante"
+  | "flete_local"
+  | "otro";
+export type ImportacionDocumentoTipo =
+  | "factura_provisoria"
+  | "factura_definitiva"
+  | "despacho"
+  | "bill_of_lading"
+  | "packing_list"
+  | "otro";
+export type LiquidacionEstado = "borrador" | "cerrada";
+export type LiquidacionConceptoTipo =
+  | "sueldo_base"
+  | "comision"
+  | "hora_extra"
+  | "instalacion"
+  | "flete"
+  | "adelanto"
+  | "descuento"
+  | "carga_social"
+  | "otro";
+export type AdelantoMetodo = "efectivo" | "transferencia";
 
 export interface Database {
   public: {
@@ -56,6 +94,233 @@ export interface Database {
           created_at?: string;
         };
         Relationships: [];
+      };
+      empleados: {
+        Row: {
+          id: string;
+          usuario_id: string | null;
+          nombre: string;
+          apellido: string;
+          dni: string | null;
+          cuil: string | null;
+          telefono: string | null;
+          email: string | null;
+          fecha_ingreso: string | null;
+          puesto: string | null;
+          sueldo_base: number;
+          activo: boolean;
+          notas: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id?: string | null;
+          nombre: string;
+          apellido: string;
+          dni?: string | null;
+          cuil?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          fecha_ingreso?: string | null;
+          puesto?: string | null;
+          sueldo_base?: number;
+          activo?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          usuario_id?: string | null;
+          nombre?: string;
+          apellido?: string;
+          dni?: string | null;
+          cuil?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          fecha_ingreso?: string | null;
+          puesto?: string | null;
+          sueldo_base?: number;
+          activo?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "empleados_usuario_id_fkey";
+            columns: ["usuario_id"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      adelantos_empleado: {
+        Row: {
+          id: string;
+          empleado_id: string;
+          liquidacion_id: string | null;
+          monto: number;
+          fecha: string;
+          metodo: AdelantoMetodo;
+          notas: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          empleado_id: string;
+          liquidacion_id?: string | null;
+          monto: number;
+          fecha?: string;
+          metodo?: AdelantoMetodo;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          empleado_id?: string;
+          liquidacion_id?: string | null;
+          monto?: number;
+          fecha?: string;
+          metodo?: AdelantoMetodo;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "adelantos_empleado_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "adelantos_empleado_liquidacion_id_fkey";
+            columns: ["liquidacion_id"];
+            isOneToOne: false;
+            referencedRelation: "liquidaciones";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "adelantos_empleado_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      liquidaciones: {
+        Row: {
+          id: string;
+          empleado_id: string;
+          periodo_mes: number;
+          periodo_anio: number;
+          estado: LiquidacionEstado;
+          total_bruto: number;
+          total_descuentos: number;
+          total_neto: number;
+          pago_efectivo_15: number;
+          pago_banco_30: number;
+          pago_efectivo_30: number;
+          fecha_cierre: string | null;
+          notas: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          empleado_id: string;
+          periodo_mes: number;
+          periodo_anio: number;
+          estado?: LiquidacionEstado;
+          total_bruto?: number;
+          total_descuentos?: number;
+          total_neto?: number;
+          pago_efectivo_15?: number;
+          pago_banco_30?: number;
+          pago_efectivo_30?: number;
+          fecha_cierre?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          empleado_id?: string;
+          periodo_mes?: number;
+          periodo_anio?: number;
+          estado?: LiquidacionEstado;
+          total_bruto?: number;
+          total_descuentos?: number;
+          total_neto?: number;
+          pago_efectivo_15?: number;
+          pago_banco_30?: number;
+          pago_efectivo_30?: number;
+          fecha_cierre?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "liquidaciones_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "liquidaciones_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      liquidacion_conceptos: {
+        Row: {
+          id: string;
+          liquidacion_id: string;
+          tipo: LiquidacionConceptoTipo;
+          descripcion: string;
+          monto: number;
+          referencia_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          liquidacion_id: string;
+          tipo: LiquidacionConceptoTipo;
+          descripcion: string;
+          monto: number;
+          referencia_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          liquidacion_id?: string;
+          tipo?: LiquidacionConceptoTipo;
+          descripcion?: string;
+          monto?: number;
+          referencia_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "liquidacion_conceptos_liquidacion_id_fkey";
+            columns: ["liquidacion_id"];
+            isOneToOne: false;
+            referencedRelation: "liquidaciones";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       clients: {
         Row: {
@@ -416,6 +681,7 @@ export interface Database {
           issue_date: string;
           notes: string | null;
           origen_placa: OrigenPlaca;
+          importacion_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -427,6 +693,7 @@ export interface Database {
           issue_date: string;
           notes?: string | null;
           origen_placa?: OrigenPlaca;
+          importacion_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -438,6 +705,7 @@ export interface Database {
           issue_date?: string;
           notes?: string | null;
           origen_placa?: OrigenPlaca;
+          importacion_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -454,6 +722,13 @@ export interface Database {
             columns: ["supplier_id"];
             isOneToOne: false;
             referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "remitos_importacion_id_fkey";
+            columns: ["importacion_id"];
+            isOneToOne: false;
+            referencedRelation: "importaciones";
             referencedColumns: ["id"];
           },
         ];
@@ -841,6 +1116,51 @@ export interface Database {
           created_at?: string;
         };
         Relationships: [];
+      };
+      ot_stock_unidades: {
+        Row: {
+          id: string;
+          ot_id: string;
+          material_id: string;
+          qty_reservada: number;
+          qty_consumida: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          ot_id: string;
+          material_id: string;
+          qty_reservada?: number;
+          qty_consumida?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          ot_id?: string;
+          material_id?: string;
+          qty_reservada?: number;
+          qty_consumida?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ot_stock_unidades_ot_id_fkey";
+            columns: ["ot_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ot_stock_unidades_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       presupuestos: {
         Row: {
@@ -1396,6 +1716,181 @@ export interface Database {
           },
         ];
       };
+      importaciones: {
+        Row: {
+          id: string;
+          supplier_id: string;
+          descripcion: string;
+          pais_origen: string;
+          nro_orden_compra: string | null;
+          fecha_orden_compra: string | null;
+          monto_factura_usd: number | null;
+          fecha_factura_provisoria: string | null;
+          fecha_embarque: string | null;
+          fecha_estimada_llegada: string | null;
+          fecha_llegada_real: string | null;
+          fecha_nacionalizacion: string | null;
+          nro_despacho: string | null;
+          estado: ImportacionEstado;
+          despachante_nombre: string | null;
+          despachante_telefono: string | null;
+          notas: string | null;
+          medio_transporte: ImportacionMedioTransporte | null;
+          nro_conocimiento: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          supplier_id: string;
+          descripcion: string;
+          pais_origen: string;
+          nro_orden_compra?: string | null;
+          fecha_orden_compra?: string | null;
+          monto_factura_usd?: number | null;
+          fecha_factura_provisoria?: string | null;
+          fecha_embarque?: string | null;
+          fecha_estimada_llegada?: string | null;
+          fecha_llegada_real?: string | null;
+          fecha_nacionalizacion?: string | null;
+          nro_despacho?: string | null;
+          estado?: ImportacionEstado;
+          despachante_nombre?: string | null;
+          despachante_telefono?: string | null;
+          notas?: string | null;
+          medio_transporte?: ImportacionMedioTransporte | null;
+          nro_conocimiento?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          supplier_id?: string;
+          descripcion?: string;
+          pais_origen?: string;
+          nro_orden_compra?: string | null;
+          fecha_orden_compra?: string | null;
+          monto_factura_usd?: number | null;
+          fecha_factura_provisoria?: string | null;
+          fecha_embarque?: string | null;
+          fecha_estimada_llegada?: string | null;
+          fecha_llegada_real?: string | null;
+          fecha_nacionalizacion?: string | null;
+          nro_despacho?: string | null;
+          estado?: ImportacionEstado;
+          despachante_nombre?: string | null;
+          despachante_telefono?: string | null;
+          notas?: string | null;
+          medio_transporte?: ImportacionMedioTransporte | null;
+          nro_conocimiento?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "importaciones_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "importaciones_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      importacion_gastos: {
+        Row: {
+          id: string;
+          importacion_id: string;
+          concepto: ImportacionGastoConcepto;
+          monto: number;
+          moneda: "ars" | "usd";
+          es_iva_recuperable: boolean;
+          notas: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          importacion_id: string;
+          concepto: ImportacionGastoConcepto;
+          monto: number;
+          moneda?: "ars" | "usd";
+          es_iva_recuperable?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          importacion_id?: string;
+          concepto?: ImportacionGastoConcepto;
+          monto?: number;
+          moneda?: "ars" | "usd";
+          es_iva_recuperable?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "importacion_gastos_importacion_id_fkey";
+            columns: ["importacion_id"];
+            isOneToOne: false;
+            referencedRelation: "importaciones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      importacion_documentos: {
+        Row: {
+          id: string;
+          importacion_id: string;
+          tipo: ImportacionDocumentoTipo;
+          nombre_archivo: string;
+          url: string;
+          notas: string | null;
+          etapa: ImportacionEstado | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          importacion_id: string;
+          tipo: ImportacionDocumentoTipo;
+          nombre_archivo: string;
+          url: string;
+          notas?: string | null;
+          etapa?: ImportacionEstado | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          importacion_id?: string;
+          tipo?: ImportacionDocumentoTipo;
+          nombre_archivo?: string;
+          url?: string;
+          notas?: string | null;
+          etapa?: ImportacionEstado | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "importacion_documentos_importacion_id_fkey";
+            columns: ["importacion_id"];
+            isOneToOne: false;
+            referencedRelation: "importaciones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       v_saldos_cuentas: {
@@ -1426,6 +1921,33 @@ export interface Database {
       };
       register_cantera_procesamiento: {
         Args: { p_payload: Json };
+        Returns: undefined;
+      };
+      reservar_ot_stock_unidades: {
+        Args: {
+          p_ot_id: string;
+          p_material_id: string;
+          p_qty: number;
+          p_created_by?: string | null;
+        };
+        Returns: undefined;
+      };
+      consumir_ot_stock_unidades: {
+        Args: {
+          p_ot_id: string;
+          p_material_id: string;
+          p_qty?: number | null;
+          p_created_by?: string | null;
+        };
+        Returns: undefined;
+      };
+      liberar_ot_stock_unidades: {
+        Args: {
+          p_ot_id: string;
+          p_material_id: string;
+          p_qty?: number | null;
+          p_created_by?: string | null;
+        };
         Returns: undefined;
       };
       get_articulos_con_precios: {
@@ -1464,6 +1986,8 @@ export interface Database {
       venta_estado: VentaEstado;
       unidad_articulo: UnidadArticuloDb;
       rol_operativo: RolOperativo;
+      importacion_estado: ImportacionEstado;
+      liquidacion_estado: LiquidacionEstado;
     };
   };
 }

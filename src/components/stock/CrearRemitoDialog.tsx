@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import type { MaterialOption, ModoMedidasRemito, OrigenPlaca } from "@/lib/stock-api";
 import {
@@ -155,6 +156,10 @@ type CrearRemitoDialogProps = {
   refreshRemitos: () => Promise<void>;
   setChapas: Dispatch<SetStateAction<ChapaRow[]>>;
   existingBultosLower: Set<string>;
+  initialSupplierId?: string;
+  initialOrigen?: OrigenPlaca;
+  importacionId?: string | null;
+  onSaved?: () => void;
 };
 
 export function CrearRemitoDialog({
@@ -166,6 +171,10 @@ export function CrearRemitoDialog({
   refreshRemitos,
   setChapas,
   existingBultosLower,
+  initialSupplierId,
+  initialOrigen,
+  importacionId,
+  onSaved,
 }: CrearRemitoDialogProps) {
   const [proveedorDialog, setProveedorDialog] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
@@ -215,11 +224,11 @@ export function CrearRemitoDialog({
     setStep(0);
     setNotes("");
     setBranchCode("");
-    setSupplierId("");
-    setOrigenPlaca("nacional");
+    setSupplierId(initialSupplierId ?? "");
+    setOrigenPlaca(initialOrigen ?? "nacional");
     setIssueDate(new Date().toISOString().slice(0, 10));
     setSerialCode("000000");
-  }, [open]);
+  }, [open, initialSupplierId, initialOrigen]);
 
   const activeLine = lines[activeLineIdx] ?? lines[0]!;
 
@@ -500,11 +509,13 @@ export function CrearRemitoDialog({
           notes: notes || null,
           origen_placa: origenPlaca,
           created_by: userId ?? null,
+          importacion_id: importacionId ?? null,
           lines: payloadLines,
         });
         toast.success("Ingreso guardado. Chapas disponibles en inventario.");
         await reloadChapas();
         await refreshRemitos();
+        onSaved?.();
         onOpenChange(false);
       } catch (err) {
         toast.error(
@@ -675,15 +686,10 @@ export function CrearRemitoDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Fecha</Label>
-                    <div className="relative">
-                      <CalendarIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        type="date"
-                        className="pr-10"
-                        value={issueDate}
-                        onChange={(e) => setIssueDate(e.target.value)}
-                      />
-                    </div>
+                    <FechaInput
+                      value={issueDate}
+                      onChange={setIssueDate}
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Origen</Label>

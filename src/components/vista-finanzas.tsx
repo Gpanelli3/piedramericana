@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeftRight, Plus } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -27,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -42,6 +44,7 @@ import {
   listSaldosCuentas,
   registrarMovimientoManual,
   resumenCajaDelDia,
+  sugerirCuentaPorMetodo,
   transferirEntreCuentas,
   type ConceptoMovimiento,
   type CuentaFinancieraRow,
@@ -86,6 +89,34 @@ function etiquetaFormaPago(tipo: CuentaFinancieraRow["tipo"]): string {
   }
 }
 
+function etiquetaCajon(c: { tipo: CuentaFinancieraRow["tipo"]; moneda: "ars" | "usd" }): string {
+  return `${etiquetaFormaPago(c.tipo)} ${c.moneda.toUpperCase()}`;
+}
+
+function emptyMovForm(hoy: string, tipo: "ingreso" | "egreso" = "egreso") {
+  return {
+    tipo,
+    metodo: "efectivo" as MetodoPago,
+    concepto: (tipo === "ingreso" ? "otro" : "gastos") as Exclude<ConceptoMovimiento, "transferencia">,
+    monto: "",
+    moneda: "ars" as "ars" | "usd",
+    fecha: hoy,
+    descripcion: "",
+    supplier_id: "" as string,
+  };
+}
+
+function emptyTransfForm(hoy: string) {
+  return {
+    origenId: "",
+    destinoId: "",
+    monto: "",
+    moneda: "ars" as "ars" | "usd",
+    fecha: hoy,
+    descripcion: "",
+  };
+}
+
 export function VistaFinanzas() {
   const [saldos, setSaldos] = useState<SaldoCuentaRow[]>([]);
   const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
@@ -106,33 +137,37 @@ export function VistaFinanzas() {
     porMetodo: Record<string, number>;
   } | null>(null);
 
-  const [movForm, setMovForm] = useState({
-    tipo: "ingreso" as "ingreso" | "egreso",
-    metodo: "efectivo" as MetodoPago,
-    concepto: "trabajo" as Exclude<ConceptoMovimiento, "transferencia">,
-    monto: "",
-    moneda: "ars" as "ars" | "usd",
-    fecha: hoy,
-    descripcion: "",
-    supplier_id: "" as string,
-  });
+  const [movForm, setMovForm] = useState(() => emptyMovForm(hoy));
 
   const conceptosDisponibles = useMemo(
     () =>
       CONCEPTOS_MOVIMIENTO.filter(
-        (c) => c.para === "ambos" || c.para === movForm.tipo,
+        (c) =>
+          c.value !== "trabajo" &&
+          (c.para === "ambos" || c.para === movForm.tipo),
       ),
     [movForm.tipo],
   );
 
-  const [transfForm, setTransfForm] = useState({
-    origenId: "",
-    destinoId: "",
-    monto: "",
-    moneda: "ars" as "ars" | "usd",
-    fecha: hoy,
-    descripcion: "",
-  });
+  const cajonMovimiento = useMemo(() => {
+    const id = sugerirCuentaPorMetodo(movForm.metodo, movForm.moneda, cuentas);
+    return cuentas.find((c) => c.id === id) ?? null;
+  }, [cuentas, movForm.metodo, movForm.moneda]);
+
+  const [transfForm, setTransfForm] = useState(() => emptyTransfForm(hoy));
+
+  const origenTransf = useMemo(
+    () => cuentas.find((c) => c.id === transfForm.origenId) ?? null,
+    [cuentas, transfForm.origenId],
+  );
+  const destinoTransf = useMemo(
+    () => cuentas.find((c) => c.id === transfForm.destinoId) ?? null,
+    [cuentas, transfForm.destinoId],
+  );
+  const saldoOrigen = useMemo(
+    () => saldos.find((s) => s.cuenta_id === transfForm.origenId)?.saldo_actual ?? null,
+    [saldos, transfForm.origenId],
+  );
 
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -195,18 +230,9 @@ export function VistaFinanzas() {
       toast.error(res.error.message);
       return;
     }
-    toast.success("Movimiento registrado.");
+    toast.success(movForm.tipo === "ingreso" ? "Ingreso anotado." : "Egreso anotado.");
     setDialogMov(false);
-    setMovForm({
-      tipo: "ingreso",
-      metodo: "efectivo",
-      concepto: "trabajo",
-      monto: "",
-      moneda: "ars",
-      fecha: hoy,
-      descripcion: "",
-      supplier_id: "",
-    });
+    setMovForm(emptyMovForm(hoy, movForm.tipo));
     await recargar();
   }
 
@@ -230,9 +256,9 @@ export function VistaFinanzas() {
       toast.error(res.error.message);
       return;
     }
-    toast.success("Transferencia registrada.");
+    toast.success("Plata movida entre cajones.");
     setDialogTransf(false);
-    setTransfForm({ origenId: "", destinoId: "", monto: "", moneda: "ars", fecha: hoy, descripcion: "" });
+    setTransfForm(emptyTransfForm(hoy));
     await recargar();
   }
 
@@ -247,21 +273,37 @@ export function VistaFinanzas() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Finanzas</h1>
-            <p className="text-sm text-muted-foreground">
-              Los cobros de trabajos y pagos normales entran por Ventas y sus procesos. Acá ves el libro y ajustás excepciones.
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Acá ves cuánta plata hay en cada cajón (efectivo, banco, cheques, tarjeta). Los cobros de clientes se cargan en Ventas.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setDialogMov(true)}>
-              <Plus className="mr-1 h-4 w-4" />
-              Ajuste manual
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setMovForm(emptyMovForm(hoy, "egreso"));
+                setDialogMov(true);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Entró o salió plata
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => setDialogTransf(true)}>
-              <ArrowLeftRight className="mr-1 h-4 w-4" />
-              Transferir
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setTransfForm(emptyTransfForm(hoy));
+                setDialogTransf(true);
+              }}
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              Mover entre cajas
             </Button>
           </div>
         </div>
@@ -425,37 +467,64 @@ export function VistaFinanzas() {
       </div>
 
       <Dialog open={dialogMov} onOpenChange={setDialogMov}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ajuste manual</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              Solo para plata fuera de proceso: un ingreso/egreso suelto. Cobros de trabajo, señas y boletas van por Ventas / compras.
-            </p>
+            <DialogTitle>Entró o salió plata</DialogTitle>
+            <DialogDescription>
+              Para un movimiento suelto (nafta, alquiler, un ingreso extra). El cobro de un trabajo se carga en Ventas, no acá.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setMovForm((f) => ({
+                    ...f,
+                    tipo: "ingreso",
+                    concepto: "otro",
+                    supplier_id: "",
+                  }))
+                }
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  movForm.tipo === "ingreso"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-muted/60",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  <ArrowDownLeft className="h-4 w-4 text-green-700" />
+                  Entró plata
+                </span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">Suma al cajón</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setMovForm((f) => ({
+                    ...f,
+                    tipo: "egreso",
+                    concepto: "gastos",
+                  }))
+                }
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  movForm.tipo === "egreso"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-muted/60",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  <ArrowUpRight className="h-4 w-4 text-destructive" />
+                  Salió plata
+                </span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">Resta del cajón</span>
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Tipo</Label>
-                <Select
-                  value={movForm.tipo}
-                  onValueChange={(v) => {
-                    const tipo = v as "ingreso" | "egreso";
-                    setMovForm((f) => ({
-                      ...f,
-                      tipo,
-                      concepto: tipo === "ingreso" ? "trabajo" : "gastos",
-                    }));
-                  }}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ingreso">Ingreso</SelectItem>
-                    <SelectItem value="egreso">Egreso</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Cómo se paga</Label>
+                <Label>Cómo se pagó</Label>
                 <Select
                   value={movForm.metodo}
                   onValueChange={(v) => setMovForm((f) => ({ ...f, metodo: v as MetodoPago }))}
@@ -470,29 +539,6 @@ export function VistaFinanzas() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Concepto</Label>
-                <Select
-                  value={movForm.concepto}
-                  onValueChange={(v) =>
-                    setMovForm((f) => ({
-                      ...f,
-                      concepto: v as Exclude<ConceptoMovimiento, "transferencia">,
-                    }))
-                  }
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {conceptosDisponibles.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-1">
                 <Label>Moneda</Label>
                 <Select
@@ -501,29 +547,66 @@ export function VistaFinanzas() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ars">ARS</SelectItem>
-                    <SelectItem value="usd">USD</SelectItem>
+                    <SelectItem value="ars">Pesos</SelectItem>
+                    <SelectItem value="usd">Dólares</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
+              {conceptosDisponibles.length > 1 ? (
+                <div className="space-y-1">
+                  <Label>Concepto</Label>
+                  <Select
+                    value={movForm.concepto}
+                    onValueChange={(v) =>
+                      setMovForm((f) => ({
+                        ...f,
+                        concepto: v as Exclude<ConceptoMovimiento, "transferencia">,
+                      }))
+                    }
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {conceptosDisponibles.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              <div className={cn("space-y-1", conceptosDisponibles.length <= 1 && "col-span-2")}>
                 <Label>Monto</Label>
-                <Input value={movForm.monto} onChange={(e) => setMovForm((f) => ({ ...f, monto: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label>Fecha</Label>
-                <Input type="date" value={movForm.fecha} onChange={(e) => setMovForm((f) => ({ ...f, fecha: e.target.value }))} />
+                <Input
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={movForm.monto}
+                  onChange={(e) => setMovForm((f) => ({ ...f, monto: e.target.value }))}
+                />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Descripción</Label>
-              <Textarea rows={2} value={movForm.descripcion} onChange={(e) => setMovForm((f) => ({ ...f, descripcion: e.target.value }))} />
+              <Label>Fecha</Label>
+              <FechaInput value={movForm.fecha} onChange={(iso) => setMovForm((f) => ({ ...f, fecha: iso }))} />
             </div>
-            {movForm.tipo === "egreso" && (
+            <div className="space-y-1">
+              <Label>Para qué fue</Label>
+              <Textarea
+                rows={2}
+                placeholder={
+                  movForm.tipo === "ingreso"
+                    ? "Ej: devolución, venta de recorte…"
+                    : "Ej: nafta, viático, alquiler…"
+                }
+                value={movForm.descripcion}
+                onChange={(e) => setMovForm((f) => ({ ...f, descripcion: e.target.value }))}
+              />
+            </div>
+            {movForm.tipo === "egreso" ? (
               <div className="space-y-1">
-                <Label>Proveedor (opcional)</Label>
+                <Label>Proveedor (si aplica)</Label>
                 <Select
                   value={movForm.supplier_id || "__none__"}
                   onValueChange={(v) => setMovForm((f) => ({ ...f, supplier_id: v === "__none__" ? "" : v }))}
@@ -537,78 +620,114 @@ export function VistaFinanzas() {
                   </SelectContent>
                 </Select>
               </div>
-            )}
+            ) : null}
+            <p
+              className={cn(
+                "rounded-md px-3 py-2 text-xs",
+                cajonMovimiento ? "bg-muted text-muted-foreground" : "bg-amber-50 text-amber-800",
+              )}
+            >
+              {cajonMovimiento
+                ? `Se anota en el cajón ${etiquetaCajon(cajonMovimiento)}.`
+                : "No hay un cajón para esa forma de pago y moneda."}
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogMov(false)}>Cancelar</Button>
-            <Button disabled={busy} onClick={() => void onRegistrarMovimiento()}>Guardar</Button>
+            <Button disabled={busy || !cajonMovimiento} onClick={() => void onRegistrarMovimiento()}>
+              {movForm.tipo === "ingreso" ? "Anotar ingreso" : "Anotar egreso"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={dialogTransf} onOpenChange={setDialogTransf}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Mover entre formas de pago</DialogTitle>
+            <DialogTitle>Mover entre cajas</DialogTitle>
+            <DialogDescription>
+              No es plata nueva: sale de un cajón y entra en otro. Ejemplo: depositás efectivo en el banco.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1">
-              <Label>Desde</Label>
-              <Select value={transfForm.origenId} onValueChange={(v) => setTransfForm((f) => ({ ...f, origenId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Origen" /></SelectTrigger>
+              <Label>Sale de</Label>
+              <Select
+                value={transfForm.origenId || undefined}
+                onValueChange={(v) => {
+                  const c = cuentas.find((x) => x.id === v);
+                  setTransfForm((f) => ({
+                    ...f,
+                    origenId: v,
+                    moneda: c?.moneda ?? f.moneda,
+                  }));
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Elegí el cajón de origen" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {etiquetaFormaPago(c.tipo)} {c.moneda.toUpperCase()}
+                      {etiquetaCajon(c)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {origenTransf && saldoOrigen != null ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Saldo actual: {formatMonto(Number(saldoOrigen), origenTransf.moneda)}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1">
-              <Label>Hacia</Label>
-              <Select value={transfForm.destinoId} onValueChange={(v) => setTransfForm((f) => ({ ...f, destinoId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Destino" /></SelectTrigger>
+              <Label>Entra en</Label>
+              <Select
+                value={transfForm.destinoId || undefined}
+                onValueChange={(v) => setTransfForm((f) => ({ ...f, destinoId: v }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Elegí el cajón de destino" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {etiquetaFormaPago(c.tipo)} {c.moneda.toUpperCase()}
+                    <SelectItem key={c.id} value={c.id} disabled={c.id === transfForm.origenId}>
+                      {etiquetaCajon(c)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+            {origenTransf && destinoTransf ? (
+              <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="font-medium">{etiquetaCajon(origenTransf)}</span>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="font-medium">{etiquetaCajon(destinoTransf)}</span>
+              </div>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Monto</Label>
-                <Input value={transfForm.monto} onChange={(e) => setTransfForm((f) => ({ ...f, monto: e.target.value }))} />
+                <Input
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={transfForm.monto}
+                  onChange={(e) => setTransfForm((f) => ({ ...f, monto: e.target.value }))}
+                />
               </div>
               <div className="space-y-1">
-                <Label>Moneda</Label>
-                <Select
-                  value={transfForm.moneda}
-                  onValueChange={(v) => setTransfForm((f) => ({ ...f, moneda: v as "ars" | "usd" }))}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ars">ARS</SelectItem>
-                    <SelectItem value="usd">USD</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Fecha</Label>
+                <FechaInput value={transfForm.fecha} onChange={(iso) => setTransfForm((f) => ({ ...f, fecha: iso }))} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Fecha</Label>
-              <Input type="date" value={transfForm.fecha} onChange={(e) => setTransfForm((f) => ({ ...f, fecha: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label>Descripción (opcional)</Label>
-              <Input value={transfForm.descripcion} onChange={(e) => setTransfForm((f) => ({ ...f, descripcion: e.target.value }))} />
+              <Label>Nota (opcional)</Label>
+              <Input
+                placeholder="Ej: depósito en el banco"
+                value={transfForm.descripcion}
+                onChange={(e) => setTransfForm((f) => ({ ...f, descripcion: e.target.value }))}
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogTransf(false)}>Cancelar</Button>
-            <Button disabled={busy} onClick={() => void onTransferir()}>Transferir</Button>
+            <Button disabled={busy} onClick={() => void onTransferir()}>Mover plata</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

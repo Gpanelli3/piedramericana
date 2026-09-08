@@ -81,7 +81,7 @@ export function VistaProduccion() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Producción · General</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Órdenes agrupadas por venta (estilo Cero)
+              Todas las ventas con OT, agrupadas (incluye entregadas)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -103,7 +103,7 @@ export function VistaProduccion() {
           </div>
         ) : grupos.length === 0 ? (
           <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm leading-relaxed text-muted-foreground">
-            No hay órdenes activas en taller. Se generan cuando registrás la primera seña sobre un
+            No hay órdenes de trabajo. Se generan cuando registrás la primera seña sobre un
             presupuesto aprobado en Ventas.
           </div>
         ) : (
@@ -163,15 +163,19 @@ export function VistaProduccion() {
                               setNavIndex(idx);
                               setDetalleOpen(true);
                             }}
-                            primaryAction={{
-                              label: "Avanzar",
-                              disabled:
-                                busyId === item.orden.id ||
-                                Boolean(item.orden.bloqueada) ||
-                                Boolean(item.orden.pausada) ||
-                                item.orden.etapa === "despacho",
-                              onClick: () => void onAvanzar(item),
-                            }}
+                            primaryAction={
+                              item.orden.estado === "done"
+                                ? undefined
+                                : {
+                                    label: "Avanzar",
+                                    disabled:
+                                      busyId === item.orden.id ||
+                                      Boolean(item.orden.bloqueada) ||
+                                      Boolean(item.orden.pausada) ||
+                                      item.orden.etapa === "despacho",
+                                    onClick: () => void onAvanzar(item),
+                                  }
+                            }
                           />
                         );
                       })}

@@ -606,8 +606,8 @@ export async function persistJobOtProduccion(opts: {
   const vEst = ventaRow.estado as VentaEstado;
 
   let ventaPatch: VentaEstado | null = null;
-  if (nextStatus === "done" && vEst !== "finalizado" && vEst !== "entregado") {
-    ventaPatch = "finalizado";
+  if (nextStatus === "done" && vEst !== "entregado") {
+    ventaPatch = "entregado";
   } else if (
     (vEst === "senado" || vEst === "en_medicion") &&
     nextStatus !== "done" &&

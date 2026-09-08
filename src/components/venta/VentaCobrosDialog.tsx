@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import {
   Select,
   SelectContent,
@@ -27,7 +28,6 @@ import type { Database, JobStatus, VentaEstado } from "@/types/database";
 import {
   getVentaPorPresupuesto,
   listPagosVenta,
-  marcarVentaEntregado,
   registrarPagoSena,
   type ChapaReservaPendiente,
 } from "@/lib/ventas-api";
@@ -86,7 +86,7 @@ function badgeCobro(cobrado: number, saldo: number): BadgeCobro {
   }
   if (saldo <= 0.009) {
     return {
-      label: "Al día",
+      label: "Pagado",
       className: "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-200",
     };
   }
@@ -240,15 +240,16 @@ export function VentaCobrosDialog({
   }, [pagosVentas, moneda]);
 
   const saldo = Math.max(0, total - cobrado);
+  const pagado = saldo <= 0.009;
   const cobroBadge = badgeCobro(cobrado, saldo);
 
-  const etapaLabel =
-    ventaCabecera?.estado === "entregado"
-      ? "Entregada"
-      : etiquetaEtapaOt(otEtapa, otEstado);
+  const etapaLabel = etiquetaEtapaOt(
+    otEtapa,
+    ventaCabecera?.estado === "entregado" ? "done" : otEstado,
+  );
 
   const onRegistrarPago = useCallback(async () => {
-    if (!presupuestoId || pagoBusy) return;
+    if (!presupuestoId || pagoBusy || pagado) return;
     try {
       const n = Number(String(montoDigitado).replace(",", ".").trim());
       if (!Number.isFinite(n) || n <= 0) {
@@ -294,6 +295,7 @@ export function VentaCobrosDialog({
   }, [
     presupuestoId,
     pagoBusy,
+    pagado,
     montoDigitado,
     pagoMoneda,
     pagoFecha,
@@ -303,21 +305,6 @@ export function VentaCobrosDialog({
     onDatosCambiaron,
   ]);
 
-  const onMarcarEntregado = useCallback(async () => {
-    if (!ventaCabecera?.id || pagoBusy || !presupuestoId) return;
-    setPagoBusy(true);
-    const res = await marcarVentaEntregado(ventaCabecera.id);
-    setPagoBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Venta marcada como entregada.");
-    await cargar(presupuestoId);
-    await onDatosCambiaron();
-  }, [ventaCabecera, pagoBusy, presupuestoId, cargar, onDatosCambiaron]);
-
-  const estado = ventaCabecera?.estado;
   const cliente =
     presCabecera?.cliente?.trim() || rowResumen?.cliente?.trim() || "Sin cliente";
   const numero = presCabecera?.numero ?? rowResumen?.numero ?? "—";
@@ -394,7 +381,7 @@ export function VentaCobrosDialog({
                       {saldo <= 0.009 ? "Saldo" : "Pendiente"}
                     </p>
                     <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
-                      {saldo <= 0.009 ? "Al día" : formatMonto(saldo, moneda)}
+                      {saldo <= 0.009 ? "Pagado" : formatMonto(saldo, moneda)}
                     </p>
                   </div>
                   <div className="border-l border-background/15 px-4 py-3">
@@ -417,94 +404,107 @@ export function VentaCobrosDialog({
               </div>
 
               {/* Formulario de pago — arriba, sin scrollear */}
-              <div className="shrink-0 border-b border-border px-6 py-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Registrar pago
-                </p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.4fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)]">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="vc-monto">Monto</Label>
-                    <Input
-                      id="vc-monto"
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={montoDigitado}
-                      onChange={(e) => setMontoDigitado(e.target.value)}
-                      placeholder="0"
-                    />
+              <div className="shrink-0 px-6 pt-3 pb-4">
+                <div
+                  className={cn(
+                    "rounded-xl border p-4",
+                    pagado
+                      ? "border-border bg-muted/40"
+                      : "border-accent/20 bg-accent/[0.08]",
+                  )}
+                >
+                  <p
+                    className={cn(
+                      "mb-3 text-xs font-semibold uppercase tracking-wider",
+                      pagado
+                        ? "text-muted-foreground"
+                        : "text-accent-foreground/75",
+                    )}
+                  >
+                    Registrar pago
+                    {pagado ? " · Total cubierto" : ""}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.4fr)_7.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)]">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="vc-monto">Monto</Label>
+                      <Input
+                        id="vc-monto"
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={montoDigitado}
+                        onChange={(e) => setMontoDigitado(e.target.value)}
+                        placeholder="0"
+                        disabled={pagado}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Moneda</Label>
+                      <Select
+                        value={pagoMoneda}
+                        onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}
+                        disabled={pagado}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ars">ARS</SelectItem>
+                          <SelectItem value="usd">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Cómo se paga</Label>
+                      <Select
+                        value={pagoMetodo}
+                        onValueChange={setPagoMetodo}
+                        disabled={pagado}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {METODOS_COBRO_UI.map((m) => (
+                            <SelectItem key={m.value} value={m.value}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="vc-fecha">Fecha</Label>
+                      <FechaInput
+                        id="vc-fecha"
+                        value={pagoFecha}
+                        onChange={setPagoFecha}
+                        disabled={pagado}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Moneda</Label>
-                    <Select
-                      value={pagoMoneda}
-                      onValueChange={(v) => setPagoMoneda(v as "ars" | "usd")}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ars">ARS</SelectItem>
-                        <SelectItem value="usd">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Cómo se paga</Label>
-                    <Select value={pagoMetodo} onValueChange={setPagoMetodo}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {METODOS_COBRO_UI.map((m) => (
-                          <SelectItem key={m.value} value={m.value}>
-                            {m.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="vc-fecha">Fecha</Label>
-                    <Input
-                      id="vc-fecha"
-                      type="date"
-                      value={pagoFecha}
-                      onChange={(e) => setPagoFecha(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <Label htmlFor="vc-nota">Nota (opcional)</Label>
-                    <Input
-                      id="vc-nota"
-                      value={pagoNota}
-                      onChange={(e) => setPagoNota(e.target.value)}
-                      placeholder="Referencia, n° de transferencia…"
-                    />
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {estado === "finalizado" ? (
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Label htmlFor="vc-nota">Nota (opcional)</Label>
+                      <Input
+                        id="vc-nota"
+                        value={pagoNota}
+                        onChange={(e) => setPagoNota(e.target.value)}
+                        placeholder="Referencia, n° de transferencia…"
+                        disabled={pagado}
+                      />
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
-                        disabled={pagoBusy}
-                        onClick={() => void onMarcarEntregado()}
+                        disabled={pagoBusy || pagado}
+                        onClick={() => void onRegistrarPago()}
                       >
-                        Marcar entregado
+                        <Plus className="mr-1 h-4 w-4" aria-hidden />
+                        Registrar pago
                       </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={pagoBusy}
-                      onClick={() => void onRegistrarPago()}
-                    >
-                      <Plus className="mr-1 h-4 w-4" aria-hidden />
-                      Registrar pago
-                    </Button>
+                    </div>
                   </div>
                 </div>
               </div>

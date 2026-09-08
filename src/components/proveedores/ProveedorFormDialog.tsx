@@ -97,6 +97,7 @@ type ProveedorFormDialogProps = {
   onOpenChange: (open: boolean) => void;
   supplier?: SupplierRow | null;
   onSaved: (supplier: SupplierRow) => void;
+  defaultOrigen?: SupplierOrigen;
 };
 
 export function ProveedorFormDialog({
@@ -104,6 +105,7 @@ export function ProveedorFormDialog({
   onOpenChange,
   supplier = null,
   onSaved,
+  defaultOrigen = "nacional",
 }: ProveedorFormDialogProps) {
   const editando = Boolean(supplier?.id);
   const [draft, setDraft] = useState<ProveedorDraft>(emptyDraft);
@@ -111,8 +113,13 @@ export function ProveedorFormDialog({
 
   useEffect(() => {
     if (!open) return;
-    setDraft(supplier ? supplierToDraft(supplier) : emptyDraft());
-  }, [open, supplier]);
+    if (supplier) {
+      setDraft(supplierToDraft(supplier));
+      return;
+    }
+    const base = emptyDraft();
+    setDraft({ ...base, origen: defaultOrigen });
+  }, [open, supplier, defaultOrigen]);
 
   const toggleRubro = (rubro: string) => {
     setDraft((d) => ({

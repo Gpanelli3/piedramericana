@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -48,6 +48,7 @@ import {
   type OtProduccionItem,
   type OtSaldoVenta,
 } from "@/lib/produccion-api";
+import { etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { cn } from "@/lib/utils";
 import {
@@ -75,17 +76,6 @@ type Props = {
   navIndex?: number;
   onNavChange?: (index: number) => void;
 };
-
-const ETAPA_LABEL: Record<string, string> = {
-  medicion: "Medición",
-  corte: "Corte",
-  produccion: "Producción",
-  despacho: "Despacho",
-};
-
-function etapaLabel(e: string) {
-  return ETAPA_LABEL[e] ?? e;
-}
 
 function fmtMoneda(n: number, moneda: "ars" | "usd") {
   return moneda === "usd"
@@ -376,11 +366,10 @@ export function OtDetalleDialog({
                           Fecha compromiso de entrega
                         </Label>
                         <div className="flex items-center gap-2">
-                          <Input
-                            type="date"
-                            className="h-8 max-w-[9rem] text-xs"
+                          <FechaInput
+                            className="h-8 max-w-[11rem] text-xs"
                             value={fechaLocal}
-                            onChange={(e) => setFechaLocal(e.target.value)}
+                            onChange={setFechaLocal}
                           />
                           <Button
                             type="button"
@@ -623,7 +612,7 @@ export function OtDetalleDialog({
                           disabled={e === etapa}
                           onClick={() => void onEtapaSelect(e)}
                         >
-                          {etapaLabel(e)}
+                          {etiquetaEtapaKanban(e)}
                           {e === etapa ? " (actual)" : ""}
                         </DropdownMenuItem>
                       ))}
@@ -638,7 +627,7 @@ export function OtDetalleDialog({
                     disabled={!puedeMover || busy}
                     onClick={() => void onAvanzar()}
                   >
-                    Pasar a {etapaLabel(nextEtapa)}
+                    Pasar a {etiquetaEtapaKanban(nextEtapa)}
                     <ChevronRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 ) : permitirEntregar && !done && etapa === "despacho" ? (

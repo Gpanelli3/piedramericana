@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, History, Layers, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, History, Layers, Package, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,8 +28,25 @@ import {
   type ChapaInventarioRow,
   type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
+import {
+  consumirOtStockUnidades,
+  formatQtyUnidad,
+  liberarOtStockUnidades,
+  listOtStockUnidades,
+  listStockProductosUnidades,
+  reservarOtStockUnidades,
+  type OtStockUnidadRow,
+  type StockProductoUnidad,
+} from "@/lib/stock-unidades-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Props = {
   otId: string;
@@ -62,6 +79,10 @@ export function OtStockPanel({
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
+  const [unidadesOt, setUnidadesOt] = useState<OtStockUnidadRow[]>([]);
+  const [productosDisponibles, setProductosDisponibles] = useState<StockProductoUnidad[]>([]);
+  const [productoId, setProductoId] = useState("");
+  const [productoQty, setProductoQty] = useState("1");
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
   const [consumoOpen, setConsumoOpen] = useState(false);
@@ -78,17 +99,23 @@ export function OtStockPanel({
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const [r, u, mov] = await Promise.all([
+    const [r, u, mov, und, prods] = await Promise.all([
       listChapasPorOt(otId, ["Reservada"]),
       listChapasPorOt(otId, ["Usada", "Baja"]),
       listTrazabilidadStockPorOt(otId),
+      listOtStockUnidades(otId),
+      listStockProductosUnidades(),
     ]);
     if (r.error) toast.error(r.error.message);
     if (u.error) toast.error(u.error.message);
     if (mov.error) toast.error(mov.error.message);
+    if (und.error) toast.error(und.error.message);
+    if (prods.error) toast.error(prods.error.message);
     setReservadas(r.data);
     setUsadas(u.data);
     setMovimientos(mov.data);
+    setUnidadesOt(und.data);
+    setProductosDisponibles(prods.data);
     setLoading(false);
   }, [otId]);
 
@@ -96,7 +123,11 @@ export function OtStockPanel({
     void reload();
   }, [reload]);
 
-  const reservaPendiente = requiereReservaStock && reservadas.length === 0;
+  const unidadesReservadas = unidadesOt.filter((u) => u.qty_reservada > 0);
+  const reservaPendiente =
+    requiereReservaStock && reservadas.length === 0 && unidadesReservadas.length === 0;
+
+  const productosParaReservar = productosDisponibles.filter((p) => p.qty_disponible > 0);
 
   const cargarSugerencias = useCallback(async () => {
     const sug = await sugerirChapasParaOt({ materialHint, cantidad: 1 });
@@ -228,6 +259,55 @@ export function OtStockPanel({
     onChanged?.();
   };
 
+  const onReservarProducto = async () => {
+    const qty = Number(String(productoQty).replace(",", "."));
+    if (!productoId) {
+      toast.error("Elegí un producto.");
+      return;
+    }
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error("Indicá una cantidad mayor a 0.");
+      return;
+    }
+    setBusy(true);
+    const res = await reservarOtStockUnidades({ otId, materialId: productoId, qty });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Producto reservado a la OT.");
+    setProductoQty("1");
+    await reload();
+    onChanged?.();
+  };
+
+  const onConsumirProducto = async (materialId: string) => {
+    setBusy(true);
+    const res = await consumirOtStockUnidades({ otId, materialId });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Producto consumido.");
+    await reload();
+    onChanged?.();
+  };
+
+  const onLiberarProducto = async (materialId: string) => {
+    setBusy(true);
+    const res = await liberarOtStockUnidades({ otId, materialId });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Producto liberado.");
+    await reload();
+    onChanged?.();
+  };
+
   if (!isSupabaseConfigured) {
     return (
       <p className="text-xs text-muted-foreground">Stock remoto no disponible en esta sesión.</p>
@@ -265,7 +345,8 @@ export function OtStockPanel({
             <div className="min-w-0 space-y-1">
               <p className="font-semibold">Reserva pendiente</p>
               <p className="text-amber-900/80 dark:text-amber-100/80">
-                La OT pasó a corte. Reservá placas para no venderlas a otro cliente.
+                La OT necesita stock asignado. Reservá placas o productos para no venderlos a otro
+                cliente.
                 {loteSugerido ? ` Lote sugerido: ${loteSugerido}.` : null}
               </p>
               {sugeridas.length > 0 ? (
@@ -355,6 +436,112 @@ export function OtStockPanel({
         </ul>
       )}
 
+      <div className="space-y-2 border-t border-border/60 pt-3">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <Package className="h-3.5 w-3.5" />
+          Productos
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label className="text-xs">Producto</Label>
+            <Select value={productoId || undefined} onValueChange={setProductoId}>
+              <SelectTrigger className="h-8 w-full text-xs">
+                <SelectValue placeholder="Elegí un producto…" />
+              </SelectTrigger>
+              <SelectContent>
+                {productosParaReservar.length === 0 ? (
+                  <SelectItem value="__none" disabled>
+                    Sin stock de productos
+                  </SelectItem>
+                ) : (
+                  productosParaReservar.map((p) => (
+                    <SelectItem key={p.material_id} value={p.material_id}>
+                      {p.name} · {formatQtyUnidad(p.qty_disponible, p.unit)} disp.
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-24 space-y-1">
+            <Label className="text-xs" htmlFor="ot-prod-qty">
+              Cantidad
+            </Label>
+            <Input
+              id="ot-prod-qty"
+              className="h-8 text-xs"
+              inputMode="decimal"
+              value={productoQty}
+              onChange={(e) => setProductoQty(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={busy || productosParaReservar.length === 0}
+            onClick={() => void onReservarProducto()}
+          >
+            Reservar
+          </Button>
+        </div>
+
+        {unidadesOt.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Sin productos asignados. Los adoquines y demás unidades se reservan acá.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {unidadesOt.map((u) => (
+              <li
+                key={u.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{u.name}</span>
+                  <span className="text-muted-foreground">
+                    {u.qty_reservada > 0
+                      ? ` · ${formatQtyUnidad(u.qty_reservada, u.unit)} reserv.`
+                      : ""}
+                    {u.qty_consumida > 0
+                      ? ` · ${formatQtyUnidad(u.qty_consumida, u.unit)} cons.`
+                      : ""}
+                  </span>
+                </div>
+                {u.qty_reservada > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-xs"
+                      disabled={busy}
+                      onClick={() => void onConsumirProducto(u.material_id)}
+                    >
+                      Consumir
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-xs"
+                      disabled={busy}
+                      onClick={() => void onLiberarProducto(u.material_id)}
+                    >
+                      Liberar
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    Consumido
+                  </Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {movimientos.length > 0 ? (
         <div className="space-y-1.5 border-t border-border/60 pt-2">
           <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -368,6 +555,7 @@ export function OtStockPanel({
                   <span className="font-medium text-foreground">{etiquetaMov(m.tipo)}</span>
                   {m.chapa_bulto ? ` · ${m.chapa_bulto}` : ""}
                   {m.chapa_lote ? ` · lote ${m.chapa_lote}` : ""}
+                  {!m.chapa_bulto && m.detalle ? ` · ${m.detalle}` : ""}
                 </span>
                 <span className="shrink-0 tabular-nums">{m.created_at.slice(0, 10)}</span>
               </li>

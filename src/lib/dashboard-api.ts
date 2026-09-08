@@ -1,6 +1,7 @@
 import { listPresupuestosResumen } from "@/lib/presupuestos-api";
 import { loadOtKanbanView } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
+import { etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
 
 export type ProximaEntregaRow = {
   id: string;
@@ -18,13 +19,6 @@ export type DashboardResumen = {
   otsEnProduccion: number;
   ventasSinSena: number;
   proximasEntregas: ProximaEntregaRow[];
-};
-
-const ETAPA_LABEL: Record<string, string> = {
-  medicion: "Medición",
-  corte: "Corte",
-  produccion: "Producción",
-  despacho: "Despacho",
 };
 
 function hoyIso(): string {
@@ -79,7 +73,7 @@ export async function fetchDashboardResumen(): Promise<{
       titulo: t.orden.titulo?.trim() || t.presupuestoFuente?.numero || "OT",
       cliente: t.presupuestoFuente?.cliente?.trim() || "—",
       fecha: t.orden.fecha_programada as string,
-      etapa: ETAPA_LABEL[t.orden.etapa as string] ?? String(t.orden.etapa),
+      etapa: etiquetaEtapaKanban(String(t.orden.etapa)),
     }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
     .slice(0, 5);

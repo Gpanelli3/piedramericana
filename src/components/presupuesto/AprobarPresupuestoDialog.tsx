@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -137,7 +138,7 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="ap-fecha">Fecha del pago</Label>
-                <Input id="ap-fecha" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+                <FechaInput id="ap-fecha" value={fecha} onChange={setFecha} />
               </div>
               <div className="space-y-1.5">
                 <Label>Cómo se paga</Label>

@@ -205,7 +205,7 @@ export function ObrasCobrosPrintPage() {
                           {formatMonto(cobrado, r.moneda)}
                         </td>
                         <td className="border border-neutral-200 px-2 py-1.5 text-right font-medium tabular-nums">
-                          {saldo <= 0.009 ? "Al día" : formatMonto(saldo, r.moneda)}
+                          {saldo <= 0.009 ? "Pagado" : formatMonto(saldo, r.moneda)}
                         </td>
                         <td className="border border-neutral-200 px-2 py-1.5">
                           {r.vendedor_nombre?.trim() || "—"}

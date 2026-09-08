@@ -23,6 +23,7 @@ import { HistorialRemitosTab } from "@/components/stock/HistorialRemitosTab";
 import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTab";
 import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab";
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
+import { StockProductosUnidadesTab } from "@/components/stock/StockProductosUnidadesTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
 import { CargaManualPlanchasDialog } from "@/components/stock/CargaManualPlanchasDialog";
 import {
@@ -30,6 +31,10 @@ import {
   fetchMaterialsForStock,
   type MaterialOption,
 } from "@/lib/stock-api";
+import {
+  listStockProductosUnidades,
+  type StockProductoUnidad,
+} from "@/lib/stock-unidades-api";
 import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
@@ -41,6 +46,9 @@ export function VistaStock() {
   const [disponibilidadOpen, setDisponibilidadOpen] = useState(false);
   const [materialDisponibilidad, setMaterialDisponibilidad] = useState<string | null>(null);
   const [materialesCatalogo, setMaterialesCatalogo] = useState<MaterialOption[]>([]);
+  const [productosUnidades, setProductosUnidades] = useState<StockProductoUnidad[]>([]);
+  const [productosLoading, setProductosLoading] = useState(false);
+  const [productosError, setProductosError] = useState<string | null>(null);
   const [historialBump, setHistorialBump] = useState(0);
   const [catalogoOpen, setCatalogoOpen] = useState(false);
   const [recortesOpen, setRecortesOpen] = useState(false);
@@ -58,9 +66,31 @@ export function VistaStock() {
     }
   }, []);
 
+  const reloadProductos = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setProductosUnidades([]);
+      setProductosError(null);
+      return;
+    }
+    setProductosLoading(true);
+    const { data, error } = await listStockProductosUnidades();
+    setProductosLoading(false);
+    if (error) {
+      setProductosError(error.message);
+      setProductosUnidades([]);
+      return;
+    }
+    setProductosError(null);
+    setProductosUnidades(data);
+  }, []);
+
   useEffect(() => {
     void reloadMateriales();
   }, [reloadMateriales, chapas.length, historialBump]);
+
+  useEffect(() => {
+    void reloadProductos();
+  }, [reloadProductos, historialBump]);
 
   const refreshHistorialRelated = useCallback(() => {
     setHistorialBump((n) => n + 1);
@@ -78,8 +108,9 @@ export function VistaStock() {
     return {
       planchas: disponibles.length,
       materiales: materiales.size,
+      productos: productosUnidades.length,
     };
-  }, [chapas]);
+  }, [chapas, productosUnidades]);
 
   const existingBultosLower = useMemo(
     () => new Set(chapas.map((c) => c.bulto.toLowerCase())),
@@ -158,6 +189,9 @@ export function VistaStock() {
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {resumen.planchas} planchas en stock · {resumen.materiales} materiales
+              {resumen.productos > 0
+                ? ` · ${resumen.productos} producto${resumen.productos === 1 ? "" : "s"}`
+                : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -235,6 +269,12 @@ export function VistaStock() {
           materiales={materialesCatalogo}
           onOpenMaterial={openDisponibilidad}
           onCargaManual={() => setCargaManualOpen(true)}
+        />
+
+        <StockProductosUnidadesTab
+          productos={productosUnidades}
+          loading={productosLoading}
+          error={productosError}
         />
       </div>
 

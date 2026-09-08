@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import {
   Collapsible,
   CollapsibleContent,
@@ -202,14 +203,11 @@ export function StepOrdenes({
                             <Label htmlFor={`${ot.key}-fecha-entrega`} className="text-xs font-medium">
                               Fecha compromiso de entrega
                             </Label>
-                            <Input
+                            <FechaInput
                               id={`${ot.key}-fecha-entrega`}
-                              type="date"
                               className="h-9 text-sm"
                               value={ot.fechaEntrega}
-                              onChange={(e) =>
-                                patchOrden(ot.key, { fechaEntrega: e.target.value })
-                              }
+                              onChange={(iso) => patchOrden(ot.key, { fechaEntrega: iso })}
                             />
                             <p className="text-[10px] text-muted-foreground leading-snug">
                               Queda en la OT de producción al señar (fecha programada).

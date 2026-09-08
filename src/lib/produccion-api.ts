@@ -188,14 +188,25 @@ function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
   }
 
   const grupos = [...map.values(), ...sinVenta];
-  grupos.sort((a, b) => a.presupuestoNumero.localeCompare(b.presupuestoNumero, "es"));
+  const grupoTieneActivas = (g: VentaGrupoOt) => g.ots.some((ot) => ot.orden.estado !== "done");
+  grupos.sort((a, b) => {
+    const aAct = grupoTieneActivas(a) ? 0 : 1;
+    const bAct = grupoTieneActivas(b) ? 0 : 1;
+    if (aAct !== bAct) return aAct - bAct;
+    return a.presupuestoNumero.localeCompare(b.presupuestoNumero, "es");
+  });
   for (const g of grupos) {
-    g.ots.sort((a, b) => a.orden.titulo.localeCompare(b.orden.titulo, "es"));
+    g.ots.sort((a, b) => {
+      const aDone = a.orden.estado === "done" ? 1 : 0;
+      const bDone = b.orden.estado === "done" ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      return a.orden.titulo.localeCompare(b.orden.titulo, "es");
+    });
   }
   return grupos;
 }
 
-/** Vista General: OTs activas agrupadas por venta. */
+/** Vista General: todas las OTs de venta (incluye entregadas; excluye canceladas). */
 export async function getOtsAgrupadas(): Promise<{
   data: VentaGrupoOt[];
   error: Error | null;
@@ -205,7 +216,6 @@ export async function getOtsAgrupadas(): Promise<{
     .select("*")
     .not("venta_id", "is", null)
     .neq("estado", "cancelled")
-    .neq("estado", "done")
     .order("creado_en", { ascending: false });
 
   if (error) return { data: [], error: new Error(error.message) };

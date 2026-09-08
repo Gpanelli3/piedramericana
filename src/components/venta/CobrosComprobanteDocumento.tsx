@@ -56,7 +56,7 @@ function formatoFecha(s: string): string {
 
 function estadoCobroLabel(cobrado: number, saldo: number): string {
   if (cobrado <= 0.009) return "Sin seña";
-  if (saldo <= 0.009) return "Al día";
+  if (saldo <= 0.009) return "Pagado";
   return "Con anticipo";
 }
 
@@ -156,7 +156,7 @@ export function CobrosComprobanteDocumento({
             {saldo <= 0.009 ? "Saldo" : "Saldo pendiente"}
           </p>
           <p className="mt-1 text-sm font-bold tabular-nums">
-            {saldo <= 0.009 ? "Al día" : formatMonto(saldo, moneda)}
+            {saldo <= 0.009 ? "Pagado" : formatMonto(saldo, moneda)}
           </p>
         </div>
       </section>

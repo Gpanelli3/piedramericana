@@ -170,6 +170,7 @@ export type CreateRemitoPayload = {
   notes?: string | null;
   origen_placa: OrigenPlaca;
   created_by?: string | null;
+  importacion_id?: string | null;
   lines: RemitoLineInput[];
 };
 
@@ -218,6 +219,7 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
     notes: payload.notes?.slice(0, 200) ?? null,
     origen_placa: payload.origen_placa,
     created_by: createdBy,
+    importacion_id: payload.importacion_id ?? null,
     lines: payload.lines.map((l, i) => {
       const modo: ModoMedidasRemito = l.modo_medidas ?? "iguales";
       return {

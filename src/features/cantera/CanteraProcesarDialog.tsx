@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -216,7 +217,7 @@ export function CanteraProcesarDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Fecha</Label>
-                  <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                  <FechaInput value={issueDate} onChange={setIssueDate} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Notas</Label>

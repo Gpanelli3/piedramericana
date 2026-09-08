@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -213,10 +214,9 @@ export function CanteraProcesarTab({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Fecha</Label>
-                  <Input
-                    type="date"
+                  <FechaInput
                     value={issueDate}
-                    onChange={(e) => setIssueDate(e.target.value)}
+                    onChange={setIssueDate}
                   />
                 </div>
               </div>

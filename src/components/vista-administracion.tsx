@@ -354,7 +354,7 @@ export function VistaAdministracion() {
                           </TableCell>
                           <TableCell className="py-3 tabular-nums text-sm font-semibold">
                             {saldo <= 0.009 ?
-                              <span className="font-medium text-green-700 dark:text-green-400">Al día</span>
+                              <span className="font-medium text-green-700 dark:text-green-400">Pagado</span>
                             : (
                               <span className="text-destructive">{formatMonto(saldo, r.moneda)}</span>
                             )}

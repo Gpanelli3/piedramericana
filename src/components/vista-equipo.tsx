@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Banknote, Gift, UserCog, Users } from "lucide-react";
+import { Banknote, Gift, Wallet, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { EmpleadosCatalogo } from "@/components/equipo/EmpleadosCatalogo";
+import { SueldosCatalogo } from "@/components/equipo/SueldosCatalogo";
+import { AdelantosCatalogo } from "@/components/equipo/AdelantosCatalogo";
 import { VistaModuloPendiente } from "@/components/vista-modulo-pendiente";
 import {
   EQUIPO_SECCION_LABELS,
@@ -17,15 +20,15 @@ const EQUIPO_META: Record<
 > = {
   empleados: {
     icono: Users,
-    resumen: "Alta de personal, puestos y estado activo. Todavía sin desarrollar.",
+    resumen: "Alta de personal, puestos y estado activo.",
   },
   sueldos: {
     icono: Banknote,
-    resumen: "Control interno de liquidaciones (no AFIP). Todavía sin desarrollar.",
+    resumen: "Liquidación mensual interna (no AFIP): base, extras y descuentos.",
   },
   adelantos: {
-    icono: UserCog,
-    resumen: "Adelantos y viáticos. Todavía sin desarrollar.",
+    icono: Wallet,
+    resumen: "Adelantos y viáticos a descontar en la liquidación del mes.",
   },
   incentivos: {
     icono: Gift,
@@ -33,14 +36,61 @@ const EQUIPO_META: Record<
   },
 };
 
+function EquipoShell({
+  seccion,
+  children,
+}: {
+  seccion: EquipoSeccion;
+  children: ReactNode;
+}) {
+  const meta = EQUIPO_META[seccion];
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+      <header className="border-b border-border bg-white">
+        <div className="px-8 pt-5 pb-5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            Equipo · {EQUIPO_SECCION_LABELS[seccion]}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">{meta.resumen}</p>
+        </div>
+      </header>
+      <main className="p-8 [scrollbar-gutter:stable]">{children}</main>
+    </div>
+  );
+}
+
 export function VistaEquipo() {
   const [searchParams] = useSearchParams();
   const seccion = useMemo(
     () => equipoSeccionDesdeParam(searchParams.get("eq")),
     [searchParams],
   );
-  const meta = EQUIPO_META[seccion];
 
+  if (seccion === "empleados") {
+    return (
+      <EquipoShell seccion="empleados">
+        <EmpleadosCatalogo />
+      </EquipoShell>
+    );
+  }
+
+  if (seccion === "sueldos") {
+    return (
+      <EquipoShell seccion="sueldos">
+        <SueldosCatalogo />
+      </EquipoShell>
+    );
+  }
+
+  if (seccion === "adelantos") {
+    return (
+      <EquipoShell seccion="adelantos">
+        <AdelantosCatalogo />
+      </EquipoShell>
+    );
+  }
+
+  const meta = EQUIPO_META[seccion];
   return (
     <VistaModuloPendiente
       titulo={`Equipo · ${EQUIPO_SECCION_LABELS[seccion]}`}

@@ -10,8 +10,10 @@ import {
   avanzarEtapaOt,
   coalesceEtapaOt,
   getOtsPorFiltro,
+  siguienteEtapaOt,
   type OtProduccionItem,
 } from "@/lib/produccion-api";
+import { etiquetaAvanceEtapa, etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
 
 export function VistaProduccionTab() {
   const [items, setItems] = useState<OtProduccionItem[]>([]);
@@ -49,7 +51,8 @@ export function VistaProduccionTab() {
       return;
     }
     const etapa = coalesceEtapaOt(item.orden.etapa);
-    toast.success(etapa === "corte" ? "Pasó a Producción." : "Pasó a Despacho.");
+    const next = siguienteEtapaOt(etapa);
+    toast.success(next ? `Pasó a ${etiquetaEtapaKanban(next)}.` : "Etapa actualizada.");
     await refresh();
   };
 
@@ -58,13 +61,13 @@ export function VistaProduccionTab() {
       <header className="border-b border-border bg-white px-6 py-4 sm:px-8 dark:bg-background">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Producción · Fabricación</h1>
+            <h1 className="text-xl font-bold text-foreground">Producción · Producción</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Cola de corte y armado / producción
+              Cola de corte y producción
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm font-medium">
-            {items.length} en fabricación
+            {items.length} en producción
           </Badge>
         </div>
       </header>
@@ -80,6 +83,7 @@ export function VistaProduccionTab() {
           <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
             {items.map((item) => {
               const etapa = coalesceEtapaOt(item.orden.etapa);
+              const next = siguienteEtapaOt(etapa);
               return (
                 <OtListRow
                   key={item.orden.id}
@@ -89,7 +93,7 @@ export function VistaProduccionTab() {
                     setDetalleOpen(true);
                   }}
                   primaryAction={{
-                    label: etapa === "corte" ? "A Producción" : "A Despacho",
+                    label: next ? etiquetaAvanceEtapa(next) : "Avanzar",
                     disabled:
                       busyId === item.orden.id ||
                       Boolean(item.orden.bloqueada) ||
