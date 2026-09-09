@@ -15,9 +15,10 @@ type Props = {
   productos: StockProductoUnidad[];
   loading?: boolean;
   error?: string | null;
+  onOpenProducto?: (producto: StockProductoUnidad) => void;
 };
 
-export function StockProductosUnidadesTab({ productos, loading, error }: Props) {
+export function StockProductosUnidadesTab({ productos, loading, error, onOpenProducto }: Props) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="border-b border-border px-4 py-3">
@@ -65,7 +66,11 @@ export function StockProductosUnidadesTab({ productos, loading, error }: Props) 
               </TableRow>
             ) : (
               productos.map((p) => (
-                <TableRow key={p.material_id} className="hover:bg-muted/40">
+                <TableRow
+                  key={p.material_id}
+                  className={onOpenProducto ? "cursor-pointer hover:bg-muted/40" : "hover:bg-muted/40"}
+                  onClick={onOpenProducto ? () => onOpenProducto(p) : undefined}
+                >
                   <TableCell className="pl-4 text-sm">
                     <span className="inline-flex items-center gap-2 font-medium text-foreground">
                       <Package className="h-4 w-4 shrink-0 text-primary" />

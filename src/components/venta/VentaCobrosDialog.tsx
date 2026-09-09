@@ -378,14 +378,6 @@ export function VentaCobrosDialog({
                 <div className="grid grid-cols-3 overflow-hidden rounded-xl bg-foreground text-background">
                   <div className="px-4 py-3">
                     <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
-                      {saldo <= 0.009 ? "Saldo" : "Pendiente"}
-                    </p>
-                    <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
-                      {saldo <= 0.009 ? "Pagado" : formatMonto(saldo, moneda)}
-                    </p>
-                  </div>
-                  <div className="border-l border-background/15 px-4 py-3">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
                       Total
                     </p>
                     <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
@@ -398,6 +390,14 @@ export function VentaCobrosDialog({
                     </p>
                     <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
                       {formatMonto(cobrado, moneda)}
+                    </p>
+                  </div>
+                  <div className="border-l border-background/15 px-4 py-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-background/60">
+                      {saldo <= 0.009 ? "Saldo" : "Pendiente"}
+                    </p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight">
+                      {saldo <= 0.009 ? "Pagado" : formatMonto(saldo, moneda)}
                     </p>
                   </div>
                 </div>

@@ -72,6 +72,10 @@ export type OrdenTrabajoWizard = {
   mEntrega: boolean;
   mColocacion: boolean;
   totalMec: string;
+  /** Si true, esta OT no incluye medición/entrega/colocación (el MEC global no la cubre). */
+  excluirMec: boolean;
+  /** Motivo corto cuando `excluirMec` (ej. mesa redonda). */
+  obsMec: string;
   panelExpandido: boolean;
 };
 
@@ -113,6 +117,8 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     mEntrega: true,
     mColocacion: true,
     totalMec: "1",
+    excluirMec: false,
+    obsMec: "",
     panelExpandido: true,
   };
 }

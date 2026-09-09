@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Ruler } from "lucide-react";
 import {
   approxM2Linea,
   fetchMedidasOt,
@@ -15,7 +14,33 @@ import {
   m2CambioSignificativo,
   type MedidaItemEditable,
 } from "@/lib/ot-medidas-api";
-import { formatMetraje } from "@/lib/presupuesto-calculos";
+import {
+  etiquetaVersionPresupuesto,
+  formatDifMetraje,
+  formatMetraje,
+  parseDecimalInput,
+} from "@/lib/presupuesto-calculos";
+
+function formatMonto(n: number, moneda: "ars" | "usd"): string {
+  const pref = moneda === "usd" ? "u$s" : "$";
+  return `${pref} ${n.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatDim(v: string): string {
+  const n = parseDecimalInput(v);
+  if (!(n > 0)) return v.trim() || "—";
+  return n.toLocaleString("es-AR", { maximumFractionDigits: 3 });
+}
+
+function medidasItemTexto(it: MedidaItemEditable): string {
+  if (it.muestraAlto || it.muestraAncho) {
+    return `${formatDim(it.altoM)} × ${formatDim(it.anchoM)} m`;
+  }
+  return `cant. ${it.cantidad.trim() || "—"}`;
+}
 
 type Props = {
   otId: string;
@@ -31,7 +56,12 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
   const [editando, setEditando] = useState(false);
   const [items, setItems] = useState<MedidaItemEditable[]>([]);
   const [notas, setNotas] = useState("");
-  const [m2Total, setM2Total] = useState(0);
+  const [totalVigente, setTotalVigente] = useState(0);
+  const [totalVenta, setTotalVenta] = useState(0);
+  const [moneda, setMoneda] = useState<"ars" | "usd">("ars");
+  const [nroVersion, setNroVersion] = useState(1);
+  const [m2Venta, setM2Venta] = useState(0);
+  const [m2Obra, setM2Obra] = useState(0);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -45,7 +75,12 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
     setItems(res.data.items);
     setConfirmadas(res.data.medidasConfirmadas);
     setNotas(res.data.notasMedicion);
-    setM2Total(res.data.materialM2);
+    setTotalVigente(res.data.total);
+    setTotalVenta(res.data.totalVenta);
+    setMoneda(res.data.moneda);
+    setNroVersion(res.data.nroVersion);
+    setM2Venta(res.data.m2Venta);
+    setM2Obra(res.data.m2Obra);
     setEditando(!res.data.medidasConfirmadas && destacado);
   }, [otId, destacado]);
 
@@ -83,9 +118,13 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
     }
     setConfirmadas(true);
     setEditando(false);
-    setM2Total(res.m2Nuevo);
+    setTotalVigente(res.totalNuevo);
+    setTotalVenta(res.totalAnterior);
+    setNroVersion(res.nroVersion);
+    setM2Venta(res.m2Anterior);
+    setM2Obra(res.m2Nuevo);
     if (m2CambioSignificativo(res.m2Anterior, res.m2Nuevo)) {
-      toast.success("Medidas guardadas. Revisá en Ventas si el precio debe ajustarse.");
+      toast.success("Medidas confirmadas. El presupuesto pasó a " + etiquetaVersionPresupuesto(res.nroVersion) + ".");
     } else {
       toast.success("Medidas confirmadas.");
     }
@@ -109,6 +148,10 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
   }
 
   const mostrarForm = editando || (destacado && !confirmadas);
+  const m2ObraMostrado = mostrarForm ? items.reduce((s, it) => s + it.m2Approx, 0) : m2Obra;
+  const m2Dif = m2ObraMostrado - m2Venta;
+  const totalDif = totalVigente - totalVenta;
+  const deltaSignificativo = m2CambioSignificativo(m2Venta, m2ObraMostrado);
 
   return (
     <div
@@ -119,22 +162,27 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
       }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Ruler className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">Medidas del presupuesto</p>
+        <p className="text-sm font-medium text-foreground">Medidas del presupuesto</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {nroVersion > 1 ? (
+            <span className="rounded-sm border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+              {etiquetaVersionPresupuesto(nroVersion)}
+            </span>
+          ) : null}
+          {!confirmadas ? (
+            <Badge variant="outline" className="text-[10px]">
+              Opcional
+            </Badge>
+          ) : null}
+          {deltaSignificativo ? (
+            <Badge
+              variant="outline"
+              className="border-amber-200 bg-amber-50 text-[10px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              Revisar $
+            </Badge>
+          ) : null}
         </div>
-        {confirmadas ? (
-          <Badge
-            variant="outline"
-            className="border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-          >
-            Confirmadas
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="text-[10px]">
-            Opcional
-          </Badge>
-        )}
       </div>
 
       {destacado && !confirmadas ? (
@@ -143,10 +191,28 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
         </p>
       ) : null}
 
-      <p className="text-xs text-muted-foreground tabular-nums">
-        Material aprox.:{" "}
-        <span className="font-medium text-foreground">{formatMetraje(m2Total)} m²</span>
-      </p>
+      <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
+        <div className="grid grid-cols-3 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span>Cotizado</span>
+          <span className="text-center">Obra</span>
+          <span className="text-right">Dif.</span>
+        </div>
+        <div className="grid grid-cols-3 items-baseline gap-y-1 px-3 py-2 tabular-nums">
+          <span className="text-muted-foreground">{formatMetraje(m2Venta)} m²</span>
+          <span className="text-center font-medium text-foreground">
+            {formatMetraje(m2ObraMostrado)} m²
+          </span>
+          <span className="text-right text-muted-foreground">{formatDifMetraje(m2Dif)}</span>
+          <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
+          <span className="text-center font-medium text-foreground">
+            {formatMonto(totalVigente, moneda)}
+          </span>
+          <span className="text-right text-muted-foreground">
+            {totalDif >= 0 ? "+" : ""}
+            {formatMonto(totalDif, moneda)}
+          </span>
+        </div>
+      </div>
 
       {mostrarForm ? (
         <div className="space-y-3">
@@ -197,7 +263,7 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-muted-foreground tabular-nums">
+              <p className="text-[10px] tabular-nums text-muted-foreground">
                 ≈ {formatMetraje(it.m2Approx)} m²
               </p>
             </div>
@@ -233,20 +299,29 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
         </div>
       ) : (
         <div className="space-y-2">
-          <ul className="space-y-1.5 text-xs text-muted-foreground">
-            {items.map((it) => (
-              <li key={`${it.ordenKey}-${it.itemKey}`} className="flex flex-wrap justify-between gap-x-2">
-                <span className="text-foreground">{it.articuloLabel}</span>
-                <span className="tabular-nums">
-                  {it.muestraAlto || it.muestraAncho
-                    ? `${it.altoM || "—"} × ${it.anchoM || "—"} m`
-                    : `cant. ${it.cantidad || "—"}`}
-                  {" · "}
-                  {formatMetraje(it.m2Approx)} m²
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-hidden rounded-md border border-border/70 bg-background">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span>Ítem</span>
+              <span>Medidas</span>
+              <span className="text-right">m²</span>
+            </div>
+            <ul>
+              {items.map((it) => (
+                <li
+                  key={`${it.ordenKey}-${it.itemKey}`}
+                  className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3 border-t border-border/40 px-3 py-2 text-xs first:border-t-0"
+                >
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {it.articuloLabel}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">{medidasItemTexto(it)}</span>
+                  <span className="text-right tabular-nums font-medium text-foreground">
+                    {formatMetraje(it.m2Approx)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
           {notas ? (
             <p className="text-xs text-muted-foreground">
               Notas: <span className="text-foreground">{notas}</span>

@@ -1,11 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import {
-  EstadoOtBadges,
-  formatFechaCorta,
-  otTituloDisplay,
-} from "@/components/produccion/ot-ui";
+import { EstadoOtBadges, otTituloDisplay } from "@/components/produccion/ot-ui";
 import type { OtProduccionItem } from "@/lib/produccion-api";
 import { ArrowRight, Eye } from "lucide-react";
 import type { ReactNode } from "react";
@@ -29,14 +25,10 @@ export function OtListRow({ item, onVer, primaryAction, extra }: Props) {
           <p className="truncate text-sm font-medium text-foreground">{otTituloDisplay(item)}</p>
           <EstadoOtBadges item={item} />
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="truncate text-xs text-muted-foreground">
           {item.cliente}
           <span className="mx-1.5 text-border">·</span>
           {item.materialLabel}
-          <span className="mx-1.5 text-border">·</span>
-          <span className="tabular-nums">{item.m2Display}</span>
-          <span className="mx-1.5 text-border">·</span>
-          Entrega {formatFechaCorta(item.orden.fecha_programada)}
         </p>
         {item.orden.bloqueada && item.orden.motivo_bloqueo ? (
           <p className="text-[11px] text-red-700 dark:text-red-300">

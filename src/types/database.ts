@@ -22,6 +22,7 @@ export type VentaEstado =
   | "finalizado"
   | "entregado";
 export type EtapaOtKanban = "medicion" | "corte" | "produccion" | "despacho";
+export type OtTipo = "normal" | "reposicion";
 export type UnidadArticuloDb = "M2" | "ML" | "UNI";
 export type RolOperativo =
   | "vendedor"
@@ -479,6 +480,9 @@ export interface Database {
           requiere_reserva_stock: boolean;
           bloqueada: boolean;
           motivo_bloqueo: string | null;
+          orden_key: string | null;
+          tipo: OtTipo;
+          ot_origen_id: string | null;
         };
         Insert: {
           id?: string;
@@ -498,6 +502,9 @@ export interface Database {
           requiere_reserva_stock?: boolean;
           bloqueada?: boolean;
           motivo_bloqueo?: string | null;
+          orden_key?: string | null;
+          tipo?: OtTipo;
+          ot_origen_id?: string | null;
         };
         Update: {
           id?: string;
@@ -517,6 +524,9 @@ export interface Database {
           requiere_reserva_stock?: boolean;
           bloqueada?: boolean;
           motivo_bloqueo?: string | null;
+          orden_key?: string | null;
+          tipo?: OtTipo;
+          ot_origen_id?: string | null;
         };
         Relationships: [
           {
@@ -538,6 +548,13 @@ export interface Database {
             columns: ["venta_id"];
             isOneToOne: false;
             referencedRelation: "ventas";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_ot_origen_id_fkey";
+            columns: ["ot_origen_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
             referencedColumns: ["id"];
           },
         ];
@@ -1172,6 +1189,7 @@ export interface Database {
           moneda: "ars" | "usd";
           status: PresupuestoEstado;
           payload: Json;
+          nro_version: number;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -1185,6 +1203,7 @@ export interface Database {
           moneda: "ars" | "usd";
           status?: PresupuestoEstado;
           payload?: Json;
+          nro_version?: number;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1198,6 +1217,7 @@ export interface Database {
           moneda?: "ars" | "usd";
           status?: PresupuestoEstado;
           payload?: Json;
+          nro_version?: number;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1215,6 +1235,44 @@ export interface Database {
             columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      presupuesto_versiones: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+          nro: number;
+          total: number;
+          m2: number;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+          nro: number;
+          total?: number;
+          m2?: number;
+          payload: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+          nro?: number;
+          total?: number;
+          m2?: number;
+          payload?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "presupuesto_versiones_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: false;
+            referencedRelation: "presupuestos";
             referencedColumns: ["id"];
           },
         ];

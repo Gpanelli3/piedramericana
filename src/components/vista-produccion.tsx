@@ -143,6 +143,11 @@ export function VistaProduccion() {
                         <p className="text-xs text-muted-foreground">
                           {etiquetaVentaEstado(g.ventaEstado)} · {g.ots.length} OT
                           {g.ots.length === 1 ? "" : "s"}
+                          <span className="mx-1.5 text-border">·</span>
+                          <span className="tabular-nums">
+                            Cot. {g.m2Venta.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} · Obra{" "}
+                            {g.m2Obra.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                          </span>
                         </p>
                       </div>
                       <Badge variant="secondary" className="shrink-0 tabular-nums">

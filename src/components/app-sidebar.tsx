@@ -169,6 +169,8 @@ function limpiarParamsDeOtrosModulos(n: URLSearchParams, tab: WorkspaceTab) {
   }
   if (tab !== "produccion") n.delete("ot");
   if (tab !== "equipo") n.delete("eq");
+  if (tab !== "clientes") n.delete("cid");
+  if (tab !== "administracion") n.delete("pid");
 }
 
 type ExpandableNavProps = {
@@ -463,6 +465,13 @@ export function AppSidebar() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => gotoVentasQuery("lista", "todos")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
                   onClick={() => gotoVentasQuery("lista", "aprobados")}
                   className={submenuLinkCn(pv !== "nuevo" && ft === "aprobados")}
                 >
@@ -481,13 +490,6 @@ export function AppSidebar() {
                   className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados")}
                 >
                   Rechazados
-                </button>
-                <button
-                  type="button"
-                  onClick={() => gotoVentasQuery("lista", "todos")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "todos")}
-                >
-                  Todos
                 </button>
               </ExpandableNavItem>
             );

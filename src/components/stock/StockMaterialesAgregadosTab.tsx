@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -11,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, ArrowUpDown, Box, Plus } from "lucide-react";
+import { Search, ArrowUpDown, Box } from "lucide-react";
 import type { ChapaRow, MaterialCatalogLookup } from "@/lib/stock-api";
 import { aggregateChapasPorMaterial } from "@/lib/stock-api";
 
@@ -20,7 +19,9 @@ type SortKey =
   | "familia"
   | "codigo"
   | "planchasDisponibles"
+  | "planchasReservadas"
   | "m2Disponibles"
+  | "m2Reservados"
   | "m2Retazo"
   | "retazosCount"
   | "costoUsdTotal";
@@ -29,7 +30,6 @@ type Props = {
   chapas: ChapaRow[];
   materiales: MaterialCatalogLookup[];
   onOpenMaterial: (materialLabel: string) => void;
-  onCargaManual?: () => void;
 };
 
 function formatM2(n: number) {
@@ -51,7 +51,6 @@ export function StockMaterialesAgregadosTab({
   chapas,
   materiales,
   onOpenMaterial,
-  onCargaManual,
 }: Props) {
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("materialLabel");
@@ -128,7 +127,7 @@ export function StockMaterialesAgregadosTab({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="border-b border-border px-4 py-3">
         <div className="relative w-full sm:w-56">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -139,17 +138,6 @@ export function StockMaterialesAgregadosTab({
             aria-label="Filtrar materiales"
           />
         </div>
-        {onCargaManual ? (
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 shrink-0 gap-1.5"
-            onClick={onCargaManual}
-          >
-            <Plus className="h-4 w-4" />
-            Carga manual
-          </Button>
-        ) : null}
       </div>
       <div className="overflow-x-auto">
         <Table>
@@ -158,8 +146,10 @@ export function StockMaterialesAgregadosTab({
               <SortHead label="Material" column="materialLabel" />
               <SortHead label="Familia" column="familia" />
               <SortHead label="Código" column="codigo" />
-              <SortHead label="Planchas" column="planchasDisponibles" align="right" />
+              <SortHead label="Disp." column="planchasDisponibles" align="right" />
+              <SortHead label="Reserv." column="planchasReservadas" align="right" />
               <SortHead label="M² disp." column="m2Disponibles" align="right" />
+              <SortHead label="M² res." column="m2Reservados" align="right" />
               <SortHead label="M² retazo" column="m2Retazo" align="right" />
               <SortHead label="Retazos" column="retazosCount" align="right" />
               <SortHead label="Costo USD" column="costoUsdTotal" align="right" />
@@ -168,7 +158,7 @@ export function StockMaterialesAgregadosTab({
           <TableBody>
             {filas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
                   {q.trim() ? `No hay resultados para «${q}».` : "Sin materiales en stock."}
                 </TableCell>
               </TableRow>
@@ -200,8 +190,14 @@ export function StockMaterialesAgregadosTab({
                   <TableCell className="text-right text-sm tabular-nums font-medium">
                     {row.planchasDisponibles}
                   </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                    {row.planchasReservadas > 0 ? row.planchasReservadas : "—"}
+                  </TableCell>
                   <TableCell className="text-right text-sm tabular-nums font-semibold">
                     {formatM2(row.m2Disponibles)}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                    {row.m2Reservados > 0 ? formatM2(row.m2Reservados) : "—"}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                     {row.m2Retazo > 0 ? formatM2(row.m2Retazo) : "—"}

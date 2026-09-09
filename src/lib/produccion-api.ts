@@ -4,11 +4,15 @@ import {
   textoDesdeOtPayloadClienteMaterial,
   type OtKanbanFuentePayload,
 } from "@/lib/ventas-api";
+import { fetchM2TriosPorPresupuestos, m2CambioSignificativo } from "@/lib/ot-medidas-api";
+import { formatMetraje, type M2Trio } from "@/lib/presupuesto-calculos";
+import { bajaChapaPorRotura, reservarChapasAOt } from "@/lib/stock-ot-api";
 import type {
   Database,
   EtapaOtKanban,
   JobStatus,
   Json,
+  OtTipo,
   VentaEstado,
 } from "@/types/database";
 import type { ProduccionOtFiltro } from "@/types/workspace";
@@ -28,8 +32,14 @@ export type OtProduccionItem = {
   cliente: string;
   materialLabel: string;
   m2Display: string;
+  m2Venta: number;
+  m2Obra: number;
+  m2Dif: number;
+  m2Significativo: boolean;
   vendedorLabel: string;
   direccionObra: string;
+  esReposicion: boolean;
+  otOrigenTitulo: string | null;
 };
 
 export type VentaGrupoOt = {
@@ -38,6 +48,8 @@ export type VentaGrupoOt = {
   presupuestoNumero: string;
   cliente: string;
   ots: OtProduccionItem[];
+  m2Venta: number;
+  m2Obra: number;
 };
 
 export type UrgenciaOt = "vencida" | "urgente" | "ok" | "sin_fecha";
@@ -88,16 +100,52 @@ export function urgenciaOt(fechaProgramada: string | null | undefined): Urgencia
   return "ok";
 }
 
-function direccionDesdePresupuesto(pres: OtKanbanFuentePayload | null): string {
-  const p = parsePayload((pres?.payload ?? null) as Json);
-  if (!p) return "—";
-  const ot0 = p.ordenes?.[0];
+function direccionDesdeOrden(ordenWizard: {
+  obraFormattedAddress?: string;
+  direccionObra?: string;
+  referenciaObra?: string;
+} | undefined): string {
   const dir =
-    ot0?.obraFormattedAddress?.trim() ||
-    ot0?.direccionObra?.trim() ||
-    ot0?.referenciaObra?.trim() ||
+    ordenWizard?.obraFormattedAddress?.trim() ||
+    ordenWizard?.direccionObra?.trim() ||
+    ordenWizard?.referenciaObra?.trim() ||
     "";
   return dir || "—";
+}
+
+function direccionDesdePresupuesto(pres: OtKanbanFuentePayload | null, ordenKey?: string | null): string {
+  const p = parsePayload((pres?.payload ?? null) as Json);
+  if (!p) return "—";
+  const ot =
+    (ordenKey ? p.ordenes?.find((o) => o.key === ordenKey) : null) ?? p.ordenes?.[0];
+  return direccionDesdeOrden(ot);
+}
+
+function materialDesdeOrden(
+  pres: OtKanbanFuentePayload | null,
+  ordenKey: string | null,
+  fallback: string,
+): string {
+  const p = parsePayload((pres?.payload ?? null) as Json);
+  if (!p) return fallback;
+  const ot = ordenKey ? p.ordenes?.find((o) => o.key === ordenKey) : p.ordenes?.[0];
+  const fromChapa = ot?.chapaSugeridaLabel?.trim();
+  const fromTitulo = ot?.titulo?.trim();
+  return fromChapa || fromTitulo || fallback;
+}
+
+function trioDeOt(
+  orden: OrdenTrabajoRow,
+  trios: Map<string, { total: M2Trio; porOrdenKey: Map<string, M2Trio> }>,
+  presupuestoId: string | null,
+): M2Trio {
+  const empty = { venta: 0, obra: 0, dif: 0 };
+  if (!presupuestoId) return empty;
+  const pack = trios.get(presupuestoId);
+  if (!pack) return empty;
+  const key = (orden.orden_key ?? "").trim();
+  if (key && pack.porOrdenKey.has(key)) return pack.porOrdenKey.get(key)!;
+  return pack.total;
 }
 
 async function enrichOts(
@@ -136,10 +184,37 @@ async function enrichOts(
     }
   }
 
+  const triosRes = await fetchM2TriosPorPresupuestos(
+    [...fuentePorId.values()].map((p) => ({ id: p.id, payload: p.payload })),
+  );
+  if (triosRes.error) return { data: [], error: triosRes.error };
+
+  const origenIds = [
+    ...new Set(list.map((o) => o.ot_origen_id).filter(Boolean) as string[]),
+  ];
+  const origenTituloById = new Map<string, string>();
+  for (const o of list) {
+    origenTituloById.set(o.id, o.titulo);
+  }
+  const missingOrigen = origenIds.filter((id) => !origenTituloById.has(id));
+  if (missingOrigen.length > 0) {
+    const { data: origenes } = await supabase
+      .from("ordenes_trabajo")
+      .select("id,titulo")
+      .in("id", missingOrigen);
+    for (const o of origenes ?? []) {
+      origenTituloById.set(o.id, o.titulo);
+    }
+  }
+
   const data: OtProduccionItem[] = list.map((orden) => {
     const venta = orden.venta_id ? ventaById.get(orden.venta_id) ?? null : null;
     const presupuesto = venta ? fuentePorId.get(venta.presupuesto_id) ?? null : null;
     const labels = textoDesdeOtPayloadClienteMaterial(presupuesto);
+    const ordenKey = (orden.orden_key ?? "").trim() || null;
+    const trio = trioDeOt(orden, triosRes.data, presupuesto?.id ?? venta?.presupuesto_id ?? null);
+    const m2Display =
+      trio.obra > 0 || trio.venta > 0 ? `${formatMetraje(trio.obra)} m²` : labels.m2Display;
     return {
       orden,
       ventaId: venta?.id ?? orden.venta_id,
@@ -147,10 +222,18 @@ async function enrichOts(
       presupuestoId: presupuesto?.id ?? venta?.presupuesto_id ?? null,
       presupuestoNumero: presupuesto?.numero ?? "—",
       cliente: presupuesto?.cliente?.trim() || "—",
-      materialLabel: labels.materialLabel,
-      m2Display: labels.m2Display,
+      materialLabel: materialDesdeOrden(presupuesto, ordenKey, labels.materialLabel),
+      m2Display,
+      m2Venta: trio.venta,
+      m2Obra: trio.obra,
+      m2Dif: trio.dif,
+      m2Significativo: m2CambioSignificativo(trio.venta, trio.obra),
       vendedorLabel: labels.vendedorLabel,
-      direccionObra: direccionDesdePresupuesto(presupuesto),
+      direccionObra: direccionDesdePresupuesto(presupuesto, ordenKey),
+      esReposicion: orden.tipo === "reposicion",
+      otOrigenTitulo: orden.ot_origen_id
+        ? origenTituloById.get(orden.ot_origen_id) ?? null
+        : null,
     };
   });
 
@@ -170,6 +253,8 @@ function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
         presupuestoNumero: item.presupuestoNumero,
         cliente: item.cliente,
         ots: [item],
+        m2Venta: 0,
+        m2Obra: 0,
       });
       continue;
     }
@@ -181,6 +266,8 @@ function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
         presupuestoNumero: item.presupuestoNumero,
         cliente: item.cliente,
         ots: [],
+        m2Venta: 0,
+        m2Obra: 0,
       };
       map.set(vid, g);
     }
@@ -200,8 +287,12 @@ function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
       const aDone = a.orden.estado === "done" ? 1 : 0;
       const bDone = b.orden.estado === "done" ? 1 : 0;
       if (aDone !== bDone) return aDone - bDone;
+      if (a.esReposicion !== b.esReposicion) return a.esReposicion ? 1 : -1;
       return a.orden.titulo.localeCompare(b.orden.titulo, "es");
     });
+    const paraM2 = g.ots.filter((ot) => !ot.esReposicion);
+    g.m2Venta = paraM2.reduce((s, ot) => s + ot.m2Venta, 0);
+    g.m2Obra = paraM2.reduce((s, ot) => s + ot.m2Obra, 0);
   }
   return grupos;
 }
@@ -253,6 +344,36 @@ export async function getOtsPorFiltro(
   });
 
   const { data, error } = await q;
+  if (error) return { data: [], error: new Error(error.message) };
+  return enrichOts((data as OrdenTrabajoRow[] | null) ?? []);
+}
+
+export async function getOtsAgrupadasPorFiltro(
+  filtro: FiltroTab,
+): Promise<{ data: VentaGrupoOt[]; error: Error | null }> {
+  const res = await getOtsPorFiltro(filtro);
+  if (res.error) return { data: [], error: res.error };
+  return { data: agruparPorVenta(res.data), error: null };
+}
+
+/** OTs de la venta ligada a un cobro (`ventas_pagos.id`). */
+export async function getOtsDesdePagoId(
+  pagoId: string,
+): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
+  const { data: pago, error: pErr } = await supabase
+    .from("ventas_pagos")
+    .select("venta_id")
+    .eq("id", pagoId)
+    .maybeSingle();
+  if (pErr) return { data: [], error: new Error(pErr.message) };
+  if (!pago?.venta_id) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .select("*")
+    .eq("venta_id", pago.venta_id)
+    .neq("estado", "cancelled")
+    .order("creado_en", { ascending: true });
   if (error) return { data: [], error: new Error(error.message) };
   return enrichOts((data as OrdenTrabajoRow[] | null) ?? []);
 }
@@ -375,6 +496,93 @@ export async function marcarOtEntregada(otId: string): Promise<{ error: Error | 
     ordenTrabajoId: otId,
     patch: { status: "done" },
   });
+}
+
+export async function registrarRoturaYReposicion(opts: {
+  otOrigenId: string;
+  chapaId: string;
+  motivo: string;
+  crearReposicion?: boolean;
+  chapaNuevaId?: string | null;
+  created_by?: string | null;
+}): Promise<{ otReposicionId: string | null; error: Error | null }> {
+  const motivo = opts.motivo.trim();
+  if (!motivo) return { otReposicionId: null, error: new Error("Indicá el motivo de la rotura.") };
+
+  const prev = await supabase
+    .from("ordenes_trabajo")
+    .select("*")
+    .eq("id", opts.otOrigenId)
+    .maybeSingle();
+  if (prev.error) return { otReposicionId: null, error: new Error(prev.error.message) };
+  const origen = prev.data as OrdenTrabajoRow | null;
+  if (!origen) return { otReposicionId: null, error: new Error("OT de origen no encontrada.") };
+
+  const baja = await bajaChapaPorRotura({
+    chapaId: opts.chapaId,
+    otId: opts.otOrigenId,
+    motivo,
+    created_by: opts.created_by ?? null,
+  });
+  if (baja.error) return { otReposicionId: null, error: baja.error };
+
+  const now = new Date().toISOString();
+  const notasOrigen = [origen.notas?.trim(), `Rotura: ${motivo}`].filter(Boolean).join("\n");
+  const pausa = await supabase
+    .from("ordenes_trabajo")
+    .update({
+      pausada: true,
+      notas: notasOrigen || null,
+      actualizado_en: now,
+    })
+    .eq("id", opts.otOrigenId);
+  if (pausa.error) return { otReposicionId: null, error: new Error(pausa.error.message) };
+
+  if (opts.crearReposicion === false) {
+    return { otReposicionId: null, error: null };
+  }
+
+  const tituloBase = origen.titulo.replace(/^Reposición\s*·\s*/i, "").trim() || origen.titulo;
+  const etapaHija: EtapaOtKanban =
+    coalesceEtapaOt(origen.etapa) === "medicion" ? "medicion" : "corte";
+  const ins = await supabase
+    .from("ordenes_trabajo")
+    .insert({
+      titulo: `Reposición · ${tituloBase}`,
+      id_cotizacion: origen.id_cotizacion,
+      venta_id: origen.venta_id,
+      id_cliente: origen.id_cliente,
+      estado: "pending",
+      fecha_programada: origen.fecha_programada,
+      notas: `Reposición de ${tituloBase}. ${motivo}`,
+      actualizado_en: now,
+      etapa: etapaHija,
+      pausada: false,
+      bloqueada: false,
+      requiere_reserva_stock: !opts.chapaNuevaId,
+      medidas_confirmadas: origen.medidas_confirmadas,
+      fecha_medidas_confirmadas: origen.fecha_medidas_confirmadas,
+      orden_key: origen.orden_key,
+      tipo: "reposicion" as OtTipo,
+      ot_origen_id: origen.id,
+    })
+    .select("id")
+    .single();
+  if (ins.error) return { otReposicionId: null, error: new Error(ins.error.message) };
+  const nuevaId = ins.data?.id ?? null;
+  if (!nuevaId) return { otReposicionId: null, error: new Error("No se pudo crear la OT de reposición.") };
+
+  if (opts.chapaNuevaId) {
+    const res = await reservarChapasAOt({
+      otId: nuevaId,
+      chapaIds: [opts.chapaNuevaId],
+      permitirMezclaLotes: true,
+      created_by: opts.created_by ?? null,
+    });
+    if (res.error) return { otReposicionId: nuevaId, error: res.error };
+  }
+
+  return { otReposicionId: nuevaId, error: null };
 }
 
 /** Extrae fecha de entrega del payload del presupuesto (primer OT o logística). */

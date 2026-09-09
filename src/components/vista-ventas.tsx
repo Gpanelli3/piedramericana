@@ -29,7 +29,10 @@ import {
   patchPresupuestoStatus,
   listArticulosConPrecios,
   listArticulos,
+  listPresupuestoVersiones,
+  getPresupuestoVersion,
   type PresupuestoRowLista,
+  type PresupuestoVersionLista,
 } from "@/lib/presupuestos-api";
 import { listMaterials } from "@/lib/materials-api";
 import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
@@ -43,7 +46,11 @@ import type { Database } from "@/types/database";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
-import { parseMoneyInput, mecAlgunoActivo } from "@/components/presupuesto/wizard/validacion";
+import { parseMoneyInput } from "@/components/presupuesto/wizard/validacion";
+import {
+  etiquetaVersionPresupuesto,
+  importeMecPresupuesto,
+} from "@/lib/presupuesto-calculos";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -80,6 +87,10 @@ export function VistaVentas() {
   const [docArticulos, setDocArticulos] = useState<ArticuloConPrecio[]>([]);
   const [docMaterials, setDocMaterials] = useState<MaterialWizardRow[]>([]);
   const [docCatalogoCargando, setDocCatalogoCargando] = useState(false);
+  const [versiones, setVersiones] = useState<PresupuestoVersionLista[]>([]);
+  const [viendoNro, setViendoNro] = useState<number | null>(null);
+  const [payloadHistorico, setPayloadHistorico] = useState<PresupuestoPayloadV1 | null>(null);
+  const [historicoCargando, setHistoricoCargando] = useState(false);
 
   const refreshLista = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -101,6 +112,11 @@ export function VistaVentas() {
   useEffect(() => {
     void refreshLista();
   }, [refreshLista]);
+
+  const cargarVersiones = useCallback(async (id: string) => {
+    const res = await listPresupuestoVersiones(id);
+    setVersiones(res.data ?? []);
+  }, []);
 
   const limpiarRid = useCallback(() => {
     setSearchParams(
@@ -130,6 +146,9 @@ export function VistaVentas() {
       setResumenAbierto(true);
       setResumenCargando(true);
       setFilaResumen(null);
+      setViendoNro(null);
+      setPayloadHistorico(null);
+      setVersiones([]);
       const { data, error } = await getPresupuestoById(id);
       setResumenCargando(false);
       if (error || !data) {
@@ -138,8 +157,9 @@ export function VistaVentas() {
         return;
       }
       setFilaResumen(data as PresupuestoRow);
+      void cargarVersiones(id);
     },
-    [setSearchParams],
+    [setSearchParams, cargarVersiones],
   );
 
   useEffect(() => {
@@ -152,6 +172,9 @@ export function VistaVentas() {
       setResumenAbierto(true);
       setResumenCargando(true);
       setFilaResumen(null);
+      setViendoNro(null);
+      setPayloadHistorico(null);
+      setVersiones([]);
       const { data, error } = await getPresupuestoById(docId);
       if (cancelled) return;
       setResumenCargando(false);
@@ -162,6 +185,7 @@ export function VistaVentas() {
         return;
       }
       setFilaResumen(data as PresupuestoRow);
+      void cargarVersiones(docId);
     }
 
     void load(rid);
@@ -169,21 +193,49 @@ export function VistaVentas() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, limpiarRid]);
+  }, [searchParams, limpiarRid, cargarVersiones]);
 
   const cerrarResumen = useCallback(() => {
     setResumenAbierto(false);
     setFilaResumen(null);
     setDocArticulos([]);
     setDocMaterials([]);
+    setVersiones([]);
+    setViendoNro(null);
+    setPayloadHistorico(null);
     limpiarRid();
   }, [limpiarRid]);
 
   const payloadRaw = filaResumen?.payload != null ? filaResumen.payload : null;
-  const payload: PresupuestoPayloadV1 | null =
+  const payloadVigente: PresupuestoPayloadV1 | null =
     payloadRaw && isPresupuestoPayloadV1(payloadRaw)
       ? hydratePresupuestoPayloadV1(payloadRaw)
       : null;
+  const payload: PresupuestoPayloadV1 | null =
+    viendoNro != null && payloadHistorico ? payloadHistorico : payloadVigente;
+
+  const nroVigente = filaResumen?.nro_version ?? 1;
+  const nroAnterior = nroVigente > 1 ? nroVigente - 1 : null;
+  const hayVersionAnterior =
+    nroAnterior != null && versiones.some((v) => v.nro === nroAnterior);
+
+  const verVersionAnterior = useCallback(async () => {
+    if (!filaResumen || nroAnterior == null) return;
+    setHistoricoCargando(true);
+    const res = await getPresupuestoVersion(filaResumen.id, nroAnterior);
+    setHistoricoCargando(false);
+    if (res.error || !res.data) {
+      toast.error(res.error?.message ?? "No se encontró la versión anterior.");
+      return;
+    }
+    setPayloadHistorico(res.data.payload);
+    setViendoNro(nroAnterior);
+  }, [filaResumen, nroAnterior]);
+
+  const verVigente = useCallback(() => {
+    setViendoNro(null);
+    setPayloadHistorico(null);
+  }, []);
 
   useEffect(() => {
     if (!filaResumen || !resumenAbierto) return;
@@ -381,6 +433,13 @@ export function VistaVentas() {
                     <span className="font-semibold text-foreground tabular-nums">
                       {filaResumen.numero}
                     </span>
+                    {nroVigente > 1 || viendoNro != null ? (
+                      <span className="rounded-sm border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
+                        {viendoNro != null
+                          ? etiquetaVersionPresupuesto(viendoNro, "historica")
+                          : etiquetaVersionPresupuesto(nroVigente)}
+                      </span>
+                    ) : null}
                     <span className="text-muted-foreground">·</span>
                     <span className="text-foreground">{filaResumen.cliente}</span>
                     <span className="text-muted-foreground">·</span>
@@ -407,7 +466,7 @@ export function VistaVentas() {
             </DialogDescription>
           </DialogHeader>
           <div className="overflow-y-auto px-4 py-5 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
-            {!filaResumen || resumenCargando || docCatalogoCargando ? (
+            {!filaResumen || resumenCargando || docCatalogoCargando || historicoCargando ? (
               <div className="text-sm text-muted-foreground py-10 text-center">
                 Cargando…
               </div>
@@ -434,16 +493,21 @@ export function VistaVentas() {
                 mMedicion={payload.mMedicionGlobal}
                 mEntrega={payload.mEntregaGlobal}
                 mColocacion={payload.mColocacionGlobal}
-                totalMec={
-                  mecAlgunoActivo(
-                    payload.mMedicionGlobal,
-                    payload.mEntregaGlobal,
-                    payload.mColocacionGlobal,
-                  )
-                    ? parseMoneyInput(payload.totalMecGlobal)
-                    : 0
-                }
+                totalMec={importeMecPresupuesto({
+                  mMedicion: payload.mMedicionGlobal,
+                  mEntrega: payload.mEntregaGlobal,
+                  mColocacion: payload.mColocacionGlobal,
+                  totalMec: payload.totalMecGlobal,
+                  ordenes: payload.ordenes,
+                })}
                 obsMec={payload.obsServiciosMec}
+                versionLabel={
+                  viendoNro != null
+                    ? etiquetaVersionPresupuesto(viendoNro, "historica")
+                    : nroVigente > 1
+                      ? etiquetaVersionPresupuesto(nroVigente)
+                      : ""
+                }
                 className="mx-auto max-w-3xl bg-white p-4 sm:p-5 shadow-sm border border-neutral-200 print:shadow-none print:border-0 print:p-0"
               />
             )}
@@ -460,6 +524,27 @@ export function VistaVentas() {
               </Button>
             </DialogClose>
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {hayVersionAnterior && viendoNro == null ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={!filaResumen || historicoCargando}
+                  onClick={() => void verVersionAnterior()}
+                >
+                  Ver V{nroAnterior}
+                </Button>
+              ) : null}
+              {viendoNro != null ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={verVigente}
+                >
+                  Ver vigente
+                </Button>
+              ) : null}
               {filaResumen?.status === "pendiente" ? (
                 <Button
                   type="button"
@@ -480,7 +565,13 @@ export function VistaVentas() {
                 variant="outline"
                 className="gap-1.5"
                 disabled={!filaResumen}
-                onClick={() => navigate(`/presupuestos/${filaResumen!.id}/imprimir`)}
+                onClick={() =>
+                  navigate(
+                    viendoNro != null
+                      ? `/presupuestos/${filaResumen!.id}/imprimir?vn=${viendoNro}`
+                      : `/presupuestos/${filaResumen!.id}/imprimir`,
+                  )
+                }
               >
                 <Printer className="h-4 w-4" />
                 Imprimir
@@ -489,7 +580,13 @@ export function VistaVentas() {
                 type="button"
                 className="gap-1.5"
                 disabled={!filaResumen}
-                onClick={() => descargarPdf(filaResumen!.id)}
+                onClick={() =>
+                  navigate(
+                    viendoNro != null
+                      ? `/presupuestos/${filaResumen!.id}/imprimir?descargar=1&vn=${viendoNro}`
+                      : `/presupuestos/${filaResumen!.id}/imprimir?descargar=1`,
+                  )
+                }
               >
                 <Download className="h-4 w-4" />
                 Descargar PDF

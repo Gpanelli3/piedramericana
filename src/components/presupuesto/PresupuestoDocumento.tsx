@@ -36,6 +36,7 @@ export type PresupuestoDocumentoProps = {
   mColocacion: boolean;
   totalMec: number;
   obsMec?: string;
+  versionLabel?: string;
   className?: string;
 };
 
@@ -115,6 +116,8 @@ type GrupoDoc = {
   direccionObra?: string;
   referenciaObra?: string;
   planoNombre?: string;
+  excluirMec: boolean;
+  obsMec: string;
   filas: FilaDoc[];
   subtotal: number;
 };
@@ -140,6 +143,7 @@ export function PresupuestoDocumento({
   mColocacion,
   totalMec,
   obsMec = "",
+  versionLabel = "",
   className,
 }: PresupuestoDocumentoProps) {
   const suf = monedaSuffix(moneda);
@@ -195,6 +199,8 @@ export function PresupuestoDocumento({
         direccionObra: direccion,
         referenciaObra: referencia,
         planoNombre,
+        excluirMec: Boolean(ot.excluirMec),
+        obsMec: (ot.obsMec ?? "").trim(),
         filas,
         subtotal: subOt,
       });
@@ -236,6 +242,11 @@ export function PresupuestoDocumento({
           <p className="text-base font-bold tabular-nums">
             {numero?.trim() || "Borrador"}
           </p>
+          {versionLabel.trim() ? (
+            <p className="mt-1 rounded-sm border border-neutral-400 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-neutral-700">
+              {versionLabel.trim()}
+            </p>
+          ) : null}
           <p className="text-[11px] text-neutral-600 tabular-nums mt-0.5">{fechaMostrada}</p>
         </div>
         <div className="flex flex-col justify-center px-3 py-3 text-[11px] text-neutral-700 space-y-0.5">
@@ -306,11 +317,17 @@ export function PresupuestoDocumento({
                 <tr className="bg-neutral-100 border-t border-neutral-800">
                   <td colSpan={5} className="px-2 py-1.5 font-semibold">
                     <p>{g.titulo}</p>
-                    {g.direccionObra || g.referenciaObra || g.planoNombre ? (
+                    {g.direccionObra || g.referenciaObra || g.planoNombre || g.excluirMec ? (
                       <div className="mt-0.5 space-y-0.5 text-[10px] font-normal text-neutral-600">
                         {g.direccionObra ? <p>Obra: {g.direccionObra}</p> : null}
                         {g.referenciaObra ? <p>Ref.: {g.referenciaObra}</p> : null}
                         {g.planoNombre ? <p>Plano: {g.planoNombre}</p> : null}
+                        {g.excluirMec ? (
+                          <p>
+                            No incluye MEC
+                            {g.obsMec ? ` — ${g.obsMec}` : ""}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </td>

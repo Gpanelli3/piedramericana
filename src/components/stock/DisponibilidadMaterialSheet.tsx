@@ -18,7 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchSlabsByMaterialLabel, fetchScrapsByMaterialLabel, type StockScrapRow } from "@/lib/stock-api";
+import {
+  esChapaRetazo,
+  fetchOtTitulosByIds,
+  fetchScrapsByMaterialLabel,
+  fetchSlabsByMaterialLabel,
+  type StockScrapRow,
+} from "@/lib/stock-api";
 import type { ChapaRow } from "@/contexts/StockContext";
 
 function m2(largoCm: number, anchoCm: number): number {
@@ -27,6 +33,19 @@ function m2(largoCm: number, anchoCm: number): number {
 
 function formatM2(n: number): string {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}
+
+function estadoBadgeClass(estado: ChapaRow["estado"]): string {
+  if (estado === "Disponible") {
+    return "border border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800";
+  }
+  if (estado === "Reservada") {
+    return "border border-amber-200 bg-amber-50 text-[10px] text-amber-900";
+  }
+  if (estado === "Usada") {
+    return "border border-slate-200 bg-slate-100 text-[10px] text-slate-700";
+  }
+  return "border border-red-200 bg-red-50 text-[10px] text-red-800";
 }
 
 type DisponibilidadMaterialSheetProps = {
@@ -45,6 +64,7 @@ export function DisponibilidadMaterialSheet({
 }: DisponibilidadMaterialSheetProps) {
   const [slabs, setSlabs] = useState<ChapaRow[]>([]);
   const [scraps, setScraps] = useState<StockScrapRow[]>([]);
+  const [otTitulos, setOtTitulos] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -55,15 +75,20 @@ export function DisponibilidadMaterialSheet({
       try {
         const s = await fetchSlabsByMaterialLabel(materialLabel);
         const sc = await fetchScrapsByMaterialLabel(materialLabel);
+        const remote = s.length > 0 ? s : chapasLocales.filter((c) => c.material === materialLabel);
+        const titulos = await fetchOtTitulosByIds(
+          remote.map((c) => c.otReservaId).filter((id): id is string => Boolean(id)),
+        );
         if (!cancel) {
-          const remote = s.length > 0 ? s : chapasLocales.filter((c) => c.material === materialLabel);
           setSlabs(remote);
           setScraps(sc);
+          setOtTitulos(titulos);
         }
       } catch {
         if (!cancel) {
           setSlabs(chapasLocales.filter((c) => c.material === materialLabel));
           setScraps([]);
+          setOtTitulos(new Map());
         }
       } finally {
         if (!cancel) setLoading(false);
@@ -80,7 +105,7 @@ export function DisponibilidadMaterialSheet({
   const reservadas = slabs.filter((c) => c.estado === "Reservada");
   const m2Disp = disponibles.reduce((acc, c) => acc + m2(c.largoCm, c.anchoCm), 0);
   const m2Res = reservadas.reduce((acc, c) => acc + m2(c.largoCm, c.anchoCm), 0);
-  const qtyScraps = scraps.reduce((a, r) => a + Number(r.cantidad), 0);
+  const retazos = slabs.filter((c) => c.estado === "Disponible" && esChapaRetazo(c));
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -96,12 +121,14 @@ export function DisponibilidadMaterialSheet({
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                <p className="text-[11px] text-muted-foreground">Bultos totales</p>
-                <p className="text-lg font-semibold tabular-nums">{slabs.length}</p>
+                <p className="text-[11px] text-muted-foreground">Chapas activas</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {disponibles.length + reservadas.length}
+                </p>
               </div>
               <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                <p className="text-[11px] text-muted-foreground">Recortes (cant.)</p>
-                <p className="text-lg font-semibold tabular-nums">{qtyScraps}</p>
+                <p className="text-[11px] text-muted-foreground">Retazos disp.</p>
+                <p className="text-lg font-semibold tabular-nums">{retazos.length}</p>
               </div>
               <div className="rounded-lg border border-border bg-emerald-500/10 px-3 py-2">
                 <p className="text-[11px] text-muted-foreground">m² disponible</p>
@@ -125,63 +152,73 @@ export function DisponibilidadMaterialSheet({
                       <TableHead className="text-xs">Medidas</TableHead>
                       <TableHead className="text-right text-xs">m²</TableHead>
                       <TableHead className="text-center text-xs">Estado</TableHead>
+                      <TableHead className="text-xs">OT</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {slabs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="py-6 text-center text-xs text-muted-foreground">
+                        <TableCell colSpan={5} className="py-6 text-center text-xs text-muted-foreground">
                           Sin chapas para este material.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      slabs.map((c) => (
-                        <TableRow key={c.bulto}>
-                          <TableCell className="font-mono text-xs">{c.bulto}</TableCell>
-                          <TableCell className="tabular-nums text-xs text-muted-foreground">
-                            {c.largoCm} × {c.anchoCm} cm
-                            {c.espesorCm != null && c.espesorCm > 0
-                              ? ` · ${c.espesorCm} cm esp`
-                              : ""}
-                          </TableCell>
-                          <TableCell className="text-right text-xs font-semibold tabular-nums">
-                            {formatM2(m2(c.largoCm, c.anchoCm))}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge
-                              variant="secondary"
-                              className={
-                                c.estado === "Disponible"
-                                  ? "border border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800"
-                                  : "border border-amber-200 bg-amber-50 text-[10px] text-amber-900"
-                              }
-                            >
-                              {c.estado}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      slabs.map((c) => {
+                        const otLabel = c.otReservaId ? otTitulos.get(c.otReservaId) : null;
+                        const retazo = esChapaRetazo(c);
+                        return (
+                          <TableRow key={c.id ?? c.bulto}>
+                            <TableCell className="font-mono text-xs">
+                              <span className="inline-flex flex-wrap items-center gap-1">
+                                {c.bulto}
+                                {retazo ? (
+                                  <Badge variant="outline" className="text-[9px] font-normal">
+                                    Retazo
+                                  </Badge>
+                                ) : null}
+                              </span>
+                            </TableCell>
+                            <TableCell className="tabular-nums text-xs text-muted-foreground">
+                              {c.largoCm} × {c.anchoCm} cm
+                              {c.espesorCm != null && c.espesorCm > 0
+                                ? ` · ${c.espesorCm} cm esp`
+                                : ""}
+                            </TableCell>
+                            <TableCell className="text-right text-xs font-semibold tabular-nums">
+                              {formatM2(m2(c.largoCm, c.anchoCm))}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className={estadoBadgeClass(c.estado)}>
+                                {c.estado}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="max-w-[9rem] truncate text-xs text-muted-foreground">
+                              {c.estado === "Reservada" || c.estado === "Usada" || c.estado === "Baja"
+                                ? otLabel || "—"
+                                : "—"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
               </div>
             </div>
 
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Recortes registrados (ingresos)
-              </p>
-              <div className="space-y-2">
-                {scraps.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
-                    No hay registros de recorte para este material.
-                  </p>
-                ) : (
-                  scraps.map((r) => (
+            {scraps.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Historial de recortes
+                </p>
+                <div className="space-y-2">
+                  {scraps.map((r) => (
                     <div key={r.id} className="rounded-lg border border-border bg-card p-3 text-xs shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-semibold">{r.accion}</span>
-                        <span className="text-muted-foreground">{new Date(r.created_at).toLocaleString("es-AR")}</span>
+                        <span className="text-muted-foreground">
+                          {new Date(r.created_at).toLocaleString("es-AR")}
+                        </span>
                       </div>
                       <p className="mt-1 text-muted-foreground">{r.ingreso_tipo}</p>
                       <p className="mt-1 tabular-nums">
@@ -189,17 +226,16 @@ export function DisponibilidadMaterialSheet({
                         {r.n_chapa ? (
                           <>
                             {" "}
-                            · Chapa{" "}
-                            <span className="font-mono">{r.n_chapa}</span>
+                            · Chapa <span className="font-mono">{r.n_chapa}</span>
                           </>
                         ) : null}
                       </p>
                       {r.observacion ? <p className="mt-2 text-muted-foreground">{r.observacion}</p> : null}
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         )}
       </SheetContent>

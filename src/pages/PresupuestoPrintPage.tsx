@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import {
   getPresupuestoById,
+  getPresupuestoVersion,
   listArticulos,
   listArticulosConPrecios,
 } from "@/lib/presupuestos-api";
@@ -20,10 +21,11 @@ import {
   isPresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
+import { parseMoneyInput } from "@/components/presupuesto/wizard/validacion";
 import {
-  mecAlgunoActivo,
-  parseMoneyInput,
-} from "@/components/presupuesto/wizard/validacion";
+  etiquetaVersionPresupuesto,
+  importeMecPresupuesto,
+} from "@/lib/presupuesto-calculos";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -32,12 +34,23 @@ export function PresupuestoPrintPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const autoDescargar = searchParams.get("descargar") === "1";
+  const vnParam = searchParams.get("vn");
+  const vnPedido = (() => {
+    if (!vnParam) return null;
+    const n = Number.parseInt(vnParam, 10);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  })();
   const autoPrintDone = useRef(false);
 
   const [cargando, setCargando] = useState(true);
   const [fila, setFila] = useState<PresupuestoRow | null>(null);
   const [articulos, setArticulos] = useState<ArticuloConPrecio[]>([]);
   const [materials, setMaterials] = useState<MaterialWizardRow[]>([]);
+  const [payloadHistorico, setPayloadHistorico] = useState<
+    ReturnType<typeof hydratePresupuestoPayloadV1> | null
+  >(null);
+  const [nroMostrado, setNroMostrado] = useState<number | null>(null);
+  const [esHistorica, setEsHistorica] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +71,25 @@ export function PresupuestoPrintPage() {
       }
       const row = res.data as PresupuestoRow;
       setFila(row);
+
+      if (vnPedido != null) {
+        const ver = await getPresupuestoVersion(id, vnPedido);
+        if (cancelled) return;
+        if (ver.error || !ver.data) {
+          toast.error(ver.error?.message ?? "No encontramos esa versión.");
+          setPayloadHistorico(null);
+          setNroMostrado(row.nro_version ?? 1);
+          setEsHistorica(false);
+        } else {
+          setPayloadHistorico(ver.data.payload);
+          setNroMostrado(ver.data.nro);
+          setEsHistorica(true);
+        }
+      } else {
+        setPayloadHistorico(null);
+        setNroMostrado(row.nro_version ?? 1);
+        setEsHistorica(false);
+      }
 
       const raw = row.payload;
       const listaId =
@@ -80,7 +112,7 @@ export function PresupuestoPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, vnPedido]);
 
   useEffect(() => {
     if (!autoDescargar || cargando || !fila || autoPrintDone.current) return;
@@ -91,10 +123,15 @@ export function PresupuestoPrintPage() {
     return () => window.clearTimeout(t);
   }, [autoDescargar, cargando, fila]);
 
-  const payload =
+  const payloadVigente =
     fila?.payload && isPresupuestoPayloadV1(fila.payload)
       ? hydratePresupuestoPayloadV1(fila.payload)
       : null;
+  const payload = payloadHistorico ?? payloadVigente;
+  const versionLabel =
+    nroMostrado != null && (esHistorica || nroMostrado > 1)
+      ? etiquetaVersionPresupuesto(nroMostrado, esHistorica ? "historica" : "vigente")
+      : "";
 
   const origenLabel = useMemo(() => {
     if (!payload) return "";
@@ -160,16 +197,15 @@ export function PresupuestoPrintPage() {
             mMedicion={payload.mMedicionGlobal}
             mEntrega={payload.mEntregaGlobal}
             mColocacion={payload.mColocacionGlobal}
-            totalMec={
-              mecAlgunoActivo(
-                payload.mMedicionGlobal,
-                payload.mEntregaGlobal,
-                payload.mColocacionGlobal,
-              )
-                ? parseMoneyInput(payload.totalMecGlobal)
-                : 0
-            }
+            totalMec={importeMecPresupuesto({
+              mMedicion: payload.mMedicionGlobal,
+              mEntrega: payload.mEntregaGlobal,
+              mColocacion: payload.mColocacionGlobal,
+              totalMec: payload.totalMecGlobal,
+              ordenes: payload.ordenes,
+            })}
             obsMec={payload.obsServiciosMec}
+            versionLabel={versionLabel}
             className="shadow-sm border border-neutral-200 bg-white p-4 sm:p-5 print:shadow-none print:border-0 print:p-0"
           />
         )}

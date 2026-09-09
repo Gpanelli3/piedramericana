@@ -171,3 +171,97 @@ export function formatQtyUnidad(n: number, unit: string): string {
   const qty = n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
   return `${qty} ${unit.trim() || "u."}`;
 }
+
+export type ProductoOtUso = {
+  ot_id: string;
+  ot_titulo: string;
+  qty_reservada: number;
+  qty_consumida: number;
+};
+
+export type ProductoMovimiento = {
+  id: string;
+  tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+  detalle: string | null;
+  created_at: string;
+  ot_id: string | null;
+  ot_titulo: string | null;
+};
+
+export type StockProductoDetalle = {
+  ots: ProductoOtUso[];
+  movimientos: ProductoMovimiento[];
+  qty_consumida: number;
+};
+
+function otTituloFromJoin(
+  raw:
+    | { titulo?: string | null }
+    | { titulo?: string | null }[]
+    | null
+    | undefined,
+): string {
+  const ot = Array.isArray(raw) ? raw[0] : raw;
+  return ot?.titulo?.trim() || "OT";
+}
+
+export async function getStockProductoDetalle(materialId: string): Promise<{
+  data: StockProductoDetalle;
+  error: Error | null;
+}> {
+  const empty: StockProductoDetalle = { ots: [], movimientos: [], qty_consumida: 0 };
+  if (!isSupabaseConfigured) return { data: empty, error: null };
+
+  const { data: usos, error: usosErr } = await supabase
+    .from("ot_stock_unidades")
+    .select("ot_id,qty_reservada,qty_consumida,ordenes_trabajo ( titulo )")
+    .eq("material_id", materialId)
+    .order("updated_at", { ascending: false });
+
+  if (usosErr) return { data: empty, error: new Error(usosErr.message) };
+
+  const ots: ProductoOtUso[] = (usos ?? []).map((row) => ({
+    ot_id: row.ot_id,
+    ot_titulo: otTituloFromJoin(
+      (row as { ordenes_trabajo?: { titulo?: string | null } | { titulo?: string | null }[] | null })
+        .ordenes_trabajo,
+    ),
+    qty_reservada: asNum(row.qty_reservada),
+    qty_consumida: asNum(row.qty_consumida),
+  }));
+
+  const qty_consumida = ots.reduce((acc, r) => acc + r.qty_consumida, 0);
+  const otIds = [...new Set(ots.map((o) => o.ot_id))];
+  const tituloByOt = new Map(ots.map((o) => [o.ot_id, o.ot_titulo]));
+
+  if (otIds.length === 0) {
+    return { data: { ots, movimientos: [], qty_consumida }, error: null };
+  }
+
+  const { data: mat } = await supabase.from("materials").select("name").eq("id", materialId).maybeSingle();
+  const nombre = (mat?.name ?? "").trim();
+
+  const { data: movs, error: movErr } = await supabase
+    .from("stock_movimientos")
+    .select("id,tipo,detalle,created_at,ot_id")
+    .in("ot_id", otIds)
+    .is("chapa_id", null)
+    .order("created_at", { ascending: false })
+    .limit(80);
+
+  if (movErr) return { data: { ots, movimientos: [], qty_consumida }, error: new Error(movErr.message) };
+
+  const movimientos: ProductoMovimiento[] = (movs ?? [])
+    .filter((m) => !nombre || (m.detalle ?? "").startsWith(nombre))
+    .slice(0, 40)
+    .map((m) => ({
+      id: m.id,
+      tipo: m.tipo as ProductoMovimiento["tipo"],
+      detalle: m.detalle,
+      created_at: m.created_at,
+      ot_id: m.ot_id,
+      ot_titulo: m.ot_id ? tituloByOt.get(m.ot_id) ?? null : null,
+    }));
+
+  return { data: { ots, movimientos, qty_consumida }, error: null };
+}

@@ -1,6 +1,10 @@
-import type { PresupuestoEstado } from "@/types/database";
-import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import type { Json, PresupuestoEstado } from "@/types/database";
 import type { ArticuloConPrecio, ListaPrecioRow } from "@/types/articulos";
+import {
+  hydratePresupuestoPayloadV1,
+  isPresupuestoPayloadV1,
+  type PresupuestoPayloadV1,
+} from "@/types/presupuesto-payload";
 import {
   mergeVentasResumenIntoPresupuestos,
   type VentaResumenMerged,
@@ -101,6 +105,65 @@ export async function approvePresupuestoWithVenta(presupuestoId: string): Promis
 
 export async function getPresupuestoById(id: string) {
   return supabase.from("presupuestos").select("*").eq("id", id).maybeSingle();
+}
+
+export type PresupuestoVersionLista = {
+  id: string;
+  presupuesto_id: string;
+  nro: number;
+  total: number;
+  m2: number;
+  created_at: string;
+};
+
+export type PresupuestoVersionDetalle = PresupuestoVersionLista & {
+  payload: PresupuestoPayloadV1;
+};
+
+export async function listPresupuestoVersiones(presupuestoId: string): Promise<{
+  data: PresupuestoVersionLista[] | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("presupuesto_versiones")
+    .select("id, presupuesto_id, nro, total, m2, created_at")
+    .eq("presupuesto_id", presupuestoId)
+    .order("nro", { ascending: true });
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: (data ?? []) as PresupuestoVersionLista[], error: null };
+}
+
+export async function getPresupuestoVersion(
+  presupuestoId: string,
+  nro: number,
+): Promise<{
+  data: PresupuestoVersionDetalle | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("presupuesto_versiones")
+    .select("id, presupuesto_id, nro, total, m2, payload, created_at")
+    .eq("presupuesto_id", presupuestoId)
+    .eq("nro", nro)
+    .maybeSingle();
+  if (error) return { data: null, error: new Error(error.message) };
+  if (!data) return { data: null, error: null };
+  const raw = data.payload as Json;
+  if (!isPresupuestoPayloadV1(raw)) {
+    return { data: null, error: new Error("La versión guardada no es compatible.") };
+  }
+  return {
+    data: {
+      id: data.id,
+      presupuesto_id: data.presupuesto_id,
+      nro: data.nro,
+      total: Number(data.total) || 0,
+      m2: Number(data.m2) || 0,
+      created_at: data.created_at,
+      payload: hydratePresupuestoPayloadV1(raw),
+    },
+    error: null,
+  };
 }
 
 export async function insertPresupuestoRow(input: {

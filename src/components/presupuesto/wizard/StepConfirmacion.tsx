@@ -47,6 +47,7 @@ type StepConfirmacionProps = {
   totalesTotalM2: number;
   totalesTotalMl: number;
   totalesTotalTon: number;
+  mecExcluidoTodasOts?: boolean;
 };
 
 function formatMoney(n: number): string {
@@ -140,10 +141,12 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
     totalesTotalM2,
     totalesTotalMl,
     totalesTotalTon,
+    mecExcluidoTodasOts = false,
   } = props;
 
   const monedaLabel = monedaPresupuesto === "usd" ? "USD" : "ARS";
-  const mecActivo = mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal);
+  const mecActivo =
+    !mecExcluidoTodasOts && mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal);
 
   return (
     <SectionPresupuesto borderAccentClass="border-t-4 border-t-violet-500">
@@ -204,7 +207,9 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
               <div>
                 <h3 className="text-xs font-semibold text-foreground">Servicios MEC</h3>
                 <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
-                  Marcá lo que se cobra. Si hay alguno activo, el importe es obligatorio.
+                  {mecExcluidoTodasOts
+                    ? "Todas las OTs están marcadas sin MEC: el importe pasa a $0."
+                    : "Marcá lo que se cobra. Si hay alguno activo, el importe es obligatorio."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -213,6 +218,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                     id="mg-m-step"
                     checked={mMedicionGlobal}
                     onCheckedChange={(c) => setMMedicionGlobal(Boolean(c))}
+                    disabled={mecExcluidoTodasOts}
                   />
                   <Label htmlFor="mg-m-step" className="text-xs font-medium">
                     Medición
@@ -223,6 +229,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                     id="mg-e-step"
                     checked={mEntregaGlobal}
                     onCheckedChange={(c) => setMEntregaGlobal(Boolean(c))}
+                    disabled={mecExcluidoTodasOts}
                   />
                   <Label htmlFor="mg-e-step" className="text-xs font-medium">
                     Entrega
@@ -233,6 +240,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                     id="mg-c-step"
                     checked={mColocacionGlobal}
                     onCheckedChange={(c) => setMColocacionGlobal(Boolean(c))}
+                    disabled={mecExcluidoTodasOts}
                   />
                   <Label htmlFor="mg-c-step" className="text-xs font-medium">
                     Colocación

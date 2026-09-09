@@ -96,6 +96,8 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
       mEntrega: ot.mEntrega !== false,
       mColocacion: ot.mColocacion !== false,
       totalMec: typeof ot.totalMec === "string" ? ot.totalMec : "1",
+      excluirMec: ot.excluirMec === true,
+      obsMec: typeof ot.obsMec === "string" ? ot.obsMec : "",
       panelExpandido: ot.panelExpandido !== false,
     };
   });

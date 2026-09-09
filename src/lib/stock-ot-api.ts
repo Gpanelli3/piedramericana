@@ -307,8 +307,8 @@ export async function bajaChapaPorRotura(opts: {
   if (selErr) return { error: new Error(selErr.message) };
   const c = chapa as ChapaInventarioRow | null;
   if (!c) return { error: new Error("Chapa no encontrada.") };
-  if (c.estado !== "Disponible" && c.estado !== "Reservada") {
-    return { error: new Error("Solo se puede dar de baja una chapa Disponible o Reservada.") };
+  if (c.estado !== "Disponible" && c.estado !== "Reservada" && c.estado !== "Usada") {
+    return { error: new Error("Solo se puede dar de baja una chapa Disponible, Reservada o Usada.") };
   }
 
   const detalle = [opts.motivo, opts.observacion?.trim()].filter(Boolean).join(" · ");

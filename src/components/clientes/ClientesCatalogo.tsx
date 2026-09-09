@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,15 +15,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
-import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
+import { ClienteFicha } from "@/components/clientes/ClienteFicha";
+import {
+  getClientById,
+  listClients,
+  type ClientePresupuesto,
+} from "@/lib/clients-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 export function ClientesCatalogo() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const cid = searchParams.get("cid");
+
   const [filas, setFilas] = useState<ClientePresupuesto[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editando, setEditando] = useState<ClientePresupuesto | null>(null);
+  const [ficha, setFicha] = useState<ClientePresupuesto | null>(null);
 
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -45,6 +55,44 @@ export function ClientesCatalogo() {
     void recargar();
   }, [recargar]);
 
+  useEffect(() => {
+    if (!cid) {
+      setFicha(null);
+      return;
+    }
+    const enLista = filas.find((c) => c.id === cid);
+    if (enLista) {
+      setFicha(enLista);
+      return;
+    }
+    if (cargando) return;
+
+    let cancelado = false;
+    void getClientById(cid).then((res) => {
+      if (cancelado) return;
+      if (res.error) {
+        toast.error(res.error.message);
+        return;
+      }
+      if (!res.data) {
+        toast.error("No se encontró el cliente.");
+        setSearchParams(
+          (prev) => {
+            const n = new URLSearchParams(prev);
+            n.delete("cid");
+            return n;
+          },
+          { replace: true },
+        );
+        return;
+      }
+      setFicha(res.data);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [cid, filas, cargando, setSearchParams]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return filas;
@@ -57,6 +105,34 @@ export function ClientesCatalogo() {
         c.direccion.toLowerCase().includes(q),
     );
   }, [busqueda, filas]);
+
+  const abrirFicha = (c: ClientePresupuesto) => {
+    setFicha(c);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set("ws", "clientes");
+        n.set("cid", c.id);
+        return n;
+      },
+      { replace: false },
+    );
+  };
+
+  const cerrarFicha = () => {
+    setFicha(null);
+    setDialogAbierto(false);
+    setEditando(null);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("cid");
+        n.set("ws", "clientes");
+        return n;
+      },
+      { replace: false },
+    );
+  };
 
   const abrirNuevo = () => {
     setEditando(null);
@@ -73,7 +149,21 @@ export function ClientesCatalogo() {
       const sin = prev.filter((c) => c.id !== cliente.id);
       return [...sin, cliente].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     });
+    if (ficha?.id === cliente.id) setFicha(cliente);
   };
+
+  if (ficha) {
+    return (
+      <ClienteFicha
+        cliente={ficha}
+        onBack={cerrarFicha}
+        onUpdated={onSaved}
+        dialogAbierto={dialogAbierto}
+        setDialogAbierto={setDialogAbierto}
+        onEdit={() => abrirEditar(ficha)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -127,7 +217,11 @@ export function ClientesCatalogo() {
                 </TableRow>
               ) : (
                 filtrados.map((c) => (
-                  <TableRow key={c.id}>
+                  <TableRow
+                    key={c.id}
+                    className="cursor-pointer"
+                    onClick={() => abrirFicha(c)}
+                  >
                     <TableCell className="font-medium">{c.nombre}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {c.contacto && c.contacto !== c.nombre ? c.contacto : "—"}
@@ -144,7 +238,10 @@ export function ClientesCatalogo() {
                         size="icon"
                         className="h-8 w-8"
                         title="Editar"
-                        onClick={() => abrirEditar(c)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abrirEditar(c);
+                        }}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>

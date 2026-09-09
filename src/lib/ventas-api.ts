@@ -255,49 +255,97 @@ async function crearJobOtSiAusente(opts: {
   presupuestoNumero: string;
   clienteNombre: string;
   payload: Json;
-}): Promise<{ otId: string | null; error: Error | null }> {
+}): Promise<{
+  otId: string | null;
+  otIds: string[];
+  otByOrdenKey: Record<string, string>;
+  error: Error | null;
+}> {
+  const empty = { otId: null as string | null, otIds: [] as string[], otByOrdenKey: {} as Record<string, string> };
   const exist = await supabase
     .from("ordenes_trabajo")
-    .select("id")
+    .select("id,orden_key,tipo")
     .eq("venta_id", opts.ventaId)
-    .maybeSingle();
-  if (exist.error) return { otId: null, error: new Error(exist.error.message) };
-  if (exist.data?.id) return { otId: exist.data.id, error: null };
+    .neq("estado", "cancelled");
+  if (exist.error) return { ...empty, error: new Error(exist.error.message) };
+
+  const existentes = (exist.data ?? []).filter((r) => r.tipo !== "reposicion");
+  if (existentes.length > 0) {
+    const otByOrdenKey: Record<string, string> = {};
+    for (const r of existentes) {
+      if (r.orden_key) otByOrdenKey[r.orden_key] = r.id;
+    }
+    return {
+      otId: existentes[0]?.id ?? null,
+      otIds: existentes.map((r) => r.id),
+      otByOrdenKey,
+      error: null,
+    };
+  }
 
   const id_cliente = await resolveClientId(opts.payload, opts.clienteNombre);
-  const titulo = `OT · ${opts.presupuestoNumero}`;
-  const now = new Date().toISOString();
   const parsed = parsePayload(opts.payload);
-  const fechaEntregaRaw =
-    parsed?.ordenes
-      ?.map((o) => o.fechaEntrega?.trim())
-      .find((f) => f && f.length >= 10) ||
+  const ordenes = parsed?.ordenes ?? [];
+  const now = new Date().toISOString();
+  const fechaFallbackRaw =
     parsed?.logistica?.fechaEntrega?.trim() ||
+    ordenes.map((o) => o.fechaEntrega?.trim()).find((f) => f && f.length >= 10) ||
     "";
-  const fecha_programada =
-    fechaEntregaRaw.length >= 10
-      ? `${fechaEntregaRaw.slice(0, 10)}T12:00:00.000Z`
-      : null;
-  const ins = await supabase
-    .from("ordenes_trabajo")
-    .insert({
-      titulo,
-      id_cotizacion: null,
-      venta_id: opts.ventaId,
-      id_cliente,
-      estado: "pending",
-      fecha_programada,
-      notas: `OT desde venta (${opts.presupuestoNumero}).`,
-      actualizado_en: now,
-      etapa: "medicion",
-      pausada: false,
-      bloqueada: false,
-      requiere_reserva_stock: true,
-    })
-    .select("id")
-    .single();
-  if (ins.error) return { otId: null, error: new Error(ins.error.message) };
-  return { otId: ins.data?.id ?? null, error: null };
+  const fechaFallback =
+    fechaFallbackRaw.length >= 10 ? `${fechaFallbackRaw.slice(0, 10)}T12:00:00.000Z` : null;
+
+  const filas =
+    ordenes.length > 0
+      ? ordenes.map((orden) => {
+          const tituloOt = (orden.titulo ?? "").trim();
+          const fechaRaw = orden.fechaEntrega?.trim() || "";
+          const fecha_programada =
+            fechaRaw.length >= 10 ? `${fechaRaw.slice(0, 10)}T12:00:00.000Z` : fechaFallback;
+          return {
+            titulo: tituloOt || `OT · ${opts.presupuestoNumero}`,
+            id_cotizacion: null as string | null,
+            venta_id: opts.ventaId,
+            id_cliente,
+            estado: "pending" as const,
+            fecha_programada,
+            notas: `OT desde venta (${opts.presupuestoNumero}).`,
+            actualizado_en: now,
+            etapa: "medicion" as const,
+            pausada: false,
+            bloqueada: false,
+            requiere_reserva_stock: true,
+            orden_key: orden.key,
+            tipo: "normal" as const,
+          };
+        })
+      : [
+          {
+            titulo: `OT · ${opts.presupuestoNumero}`,
+            id_cotizacion: null as string | null,
+            venta_id: opts.ventaId,
+            id_cliente,
+            estado: "pending" as const,
+            fecha_programada: fechaFallback,
+            notas: `OT desde venta (${opts.presupuestoNumero}).`,
+            actualizado_en: now,
+            etapa: "medicion" as const,
+            pausada: false,
+            bloqueada: false,
+            requiere_reserva_stock: true,
+            orden_key: null as string | null,
+            tipo: "normal" as const,
+          },
+        ];
+
+  const ins = await supabase.from("ordenes_trabajo").insert(filas).select("id,orden_key");
+  if (ins.error) return { ...empty, error: new Error(ins.error.message) };
+  const created = ins.data ?? [];
+  const otByOrdenKey: Record<string, string> = {};
+  for (const r of created) {
+    if (r.orden_key) otByOrdenKey[r.orden_key] = r.id;
+  }
+  const otIds = created.map((r) => r.id);
+  return { otId: otIds[0] ?? null, otIds, otByOrdenKey, error: null };
 }
 
 /**
@@ -305,7 +353,8 @@ async function crearJobOtSiAusente(opts: {
  * Las que ya no están Disponibles vuelven en `pendientes` para que la UI pida reemplazo.
  */
 export async function intentarReservarChapasSenaladas(opts: {
-  otId: string;
+  otId?: string | null;
+  otByOrdenKey?: Record<string, string>;
   payload: Json;
   created_by?: string | null;
 }): Promise<{ error: Error | null; pendientes: ChapaReservaPendiente[]; reservadas: number }> {
@@ -313,10 +362,13 @@ export async function intentarReservarChapasSenaladas(opts: {
   const ordenes = parsed?.ordenes ?? [];
   const pendientes: ChapaReservaPendiente[] = [];
   let reservadas = 0;
+  const fallbackOtId = opts.otId ?? Object.values(opts.otByOrdenKey ?? {})[0] ?? null;
 
   for (const ot of ordenes) {
     const chapaId = typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null;
     if (!chapaId) continue;
+    const targetOtId = opts.otByOrdenKey?.[ot.key] ?? fallbackOtId;
+    if (!targetOtId) continue;
 
     const { data: chapa, error: cErr } = await supabase
       .from("chapas_inventario")
@@ -334,14 +386,14 @@ export async function intentarReservarChapasSenaladas(opts: {
       chapa?.material_label ||
       "Material";
 
-    if (chapa?.estado === "Reservada" && chapa.ot_reserva_id === opts.otId) {
+    if (chapa?.estado === "Reservada" && chapa.ot_reserva_id === targetOtId) {
       reservadas += 1;
       continue;
     }
 
     if (!chapa || chapa.estado !== "Disponible") {
       pendientes.push({
-        otId: opts.otId,
+        otId: targetOtId,
         ordenKey: ot.key,
         chapaIdFallida: chapaId,
         bulto,
@@ -351,14 +403,14 @@ export async function intentarReservarChapasSenaladas(opts: {
     }
 
     const res = await reservarChapasAOt({
-      otId: opts.otId,
+      otId: targetOtId,
       chapaIds: [chapaId],
       permitirMezclaLotes: true,
       created_by: opts.created_by ?? null,
     });
     if (res.error) {
       pendientes.push({
-        otId: opts.otId,
+        otId: targetOtId,
         ordenKey: ot.key,
         chapaIdFallida: chapaId,
         bulto,
@@ -542,6 +594,7 @@ export async function registrarPagoSena(opts: {
 
   const reserva = await intentarReservarChapasSenaladas({
     otId: otRes.otId,
+    otByOrdenKey: otRes.otByOrdenKey,
     payload: presCast.payload as Json,
     created_by: opts.created_by ?? null,
   });
@@ -606,11 +659,20 @@ export async function persistJobOtProduccion(opts: {
   const vEst = ventaRow.estado as VentaEstado;
 
   let ventaPatch: VentaEstado | null = null;
-  if (nextStatus === "done" && vEst !== "entregado") {
-    ventaPatch = "entregado";
+  if (nextStatus === "done") {
+    const sibs = await supabase
+      .from("ordenes_trabajo")
+      .select("id,estado")
+      .eq("venta_id", ot.venta_id)
+      .neq("estado", "cancelled");
+    const todasDone = (sibs.data ?? []).every(
+      (s) => s.id === opts.ordenTrabajoId || s.estado === "done",
+    );
+    if (!sibs.error && todasDone && vEst !== "entregado") {
+      ventaPatch = "entregado";
+    }
   } else if (
     (vEst === "senado" || vEst === "en_medicion") &&
-    nextStatus !== "done" &&
     nextStatus !== "cancelled"
   ) {
     /** Seña ya habilitó taller: alinear estado comercial con producción. */

@@ -3,6 +3,7 @@ import type { ArticuloConPrecio } from "@/types/articulos";
 import {
   articuloConPrecioToMock,
   parseDecimalInput,
+  todasOtsExcluyenMec,
 } from "@/lib/presupuesto-calculos";
 
 export const MSG_MEC_INCORRECTO =
@@ -140,6 +141,9 @@ export function validateMecRequisitos(
     ordenes: OrdenTrabajoWizard[];
   },
 ): string | null {
+  if (todasOtsExcluyenMec(params.ordenes)) {
+    return null;
+  }
   if (mecScope === "global") {
     if (
       !validarTotalMecSiAplica(

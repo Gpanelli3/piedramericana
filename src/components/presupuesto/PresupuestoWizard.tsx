@@ -36,20 +36,22 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useArticulos } from "@/hooks/useArticulos";
-import { articuloConPrecioToMock } from "@/lib/presupuesto-calculos";
-import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
-import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
-import { listMaterials } from "@/lib/materials-api";
-import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import {
+  articuloConPrecioToMock,
   buildLineaCalcInput,
   computeLineaPresupuesto,
   dimensionesHabilitadas,
   formatMetraje,
   formatToneladas,
+  importeMecPresupuesto,
   labelUnidad,
   materialPesoEstimadoDesdeOt,
+  todasOtsExcluyenMec,
 } from "@/lib/presupuesto-calculos";
+import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
+import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
+import { listMaterials } from "@/lib/materials-api";
+import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import { PresupuestoStepper } from "@/components/presupuesto/PresupuestoStepper";
@@ -69,9 +71,7 @@ import {
   validarPresupuestoCompleto,
   validateCliente,
   validateMaterialesOt,
-  validateMecRequisitos,
   validateOrdenesItems,
-  mecAlgunoActivo,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 
@@ -649,10 +649,14 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   }, [totalesItems.totalConDesc, monedaPresupuesto]);
 
   const totalMecImporte = useMemo(() => {
-    return mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal)
-      ? parseMoneyInput(totalMecGlobal)
-      : 0;
-  }, [mMedicionGlobal, mEntregaGlobal, mColocacionGlobal, totalMecGlobal]);
+    return importeMecPresupuesto({
+      mMedicion: mMedicionGlobal,
+      mEntrega: mEntregaGlobal,
+      mColocacion: mColocacionGlobal,
+      totalMec: totalMecGlobal,
+      ordenes,
+    });
+  }, [mMedicionGlobal, mEntregaGlobal, mColocacionGlobal, totalMecGlobal, ordenes]);
 
   const totalPresupuesto = totalesItems.totalConDesc + totalMecImporte;
 
@@ -866,17 +870,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       const errItems = validateOrdenesItems(ordenes, articulosBd);
       if (errItems) {
         setGrabarError(errItems);
-        return;
-      }
-      const errMec = validateMecRequisitos("global", {
-        mMedicionGlobal,
-        mEntregaGlobal,
-        mColocacionGlobal,
-        totalMecGlobal,
-        ordenes,
-      });
-      if (errMec) {
-        setGrabarError(errMec);
         return;
       }
     }
@@ -1183,6 +1176,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               totalesTotalM2={totalesItems.totalM2}
               totalesTotalMl={totalesItems.totalMl}
               totalesTotalTon={totalesItems.totalTon}
+              mecExcluidoTodasOts={todasOtsExcluyenMec(ordenes)}
             />
           ) : null}
         </div>

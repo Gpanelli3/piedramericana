@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { PickMaterial, SectionPresupuesto } from "./fields";
 import { PickChapaParaOt } from "./PickChapaParaOt";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
@@ -299,6 +301,49 @@ export function StepOrdenes({
                               </Button>
                             </div>
                           </div>
+                        </div>
+
+                        <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <Checkbox
+                              id={`${ot.key}-excluir-mec`}
+                              checked={ot.excluirMec}
+                              onCheckedChange={(c) =>
+                                patchOrden(ot.key, {
+                                  excluirMec: Boolean(c),
+                                  obsMec: Boolean(c) ? ot.obsMec : "",
+                                })
+                              }
+                              className="mt-0.5"
+                            />
+                            <div className="min-w-0 space-y-1">
+                              <Label
+                                htmlFor={`${ot.key}-excluir-mec`}
+                                className="text-xs font-medium leading-snug"
+                              >
+                                Esta OT no incluye MEC
+                              </Label>
+                              <p className="text-[10px] text-muted-foreground leading-snug">
+                                El importe MEC del presupuesto no cubre esta orden (p. ej. mesa redonda).
+                              </p>
+                            </div>
+                          </div>
+                          {ot.excluirMec ? (
+                            <div className="space-y-1 pl-6">
+                              <Label htmlFor={`${ot.key}-obs-mec`} className="text-[10px]">
+                                Motivo (opcional)
+                              </Label>
+                              <Textarea
+                                id={`${ot.key}-obs-mec`}
+                                rows={2}
+                                className="resize-none text-xs"
+                                maxLength={200}
+                                placeholder="Ej. mesa redonda — el cliente retira"
+                                value={ot.obsMec}
+                                onChange={(e) => patchOrden(ot.key, { obsMec: e.target.value })}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </CollapsibleContent>

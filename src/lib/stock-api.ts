@@ -425,6 +425,15 @@ function m2DeChapa(largoCm: number, anchoCm: number): number {
   return (largoCm / 100) * (anchoCm / 100);
 }
 
+export function esChapaRetazo(c: {
+  chapaOrigenId?: string | null;
+  motivoEstado?: string | null;
+}): boolean {
+  if (c.chapaOrigenId) return true;
+  const m = (c.motivoEstado ?? "").toLowerCase();
+  return m.includes("retazo") || m.includes("recorte");
+}
+
 export type MaterialCatalogLookup = {
   id: string;
   name: string;
@@ -473,7 +482,7 @@ export function aggregateChapasPorMaterial(
       map.set(key, row);
     }
     const m2 = m2DeChapa(c.largoCm, c.anchoCm);
-    const esRetazo = Boolean(c.chapaOrigenId);
+    const esRetazo = esChapaRetazo(c);
     if (c.estado === "Disponible") {
       row.planchasDisponibles += 1;
       row.planchasTotalActivas += 1;
@@ -505,71 +514,6 @@ export async function fetchStockAgregadoPorMaterial(): Promise<MaterialStockAgre
     fetchMaterialsForStock(),
   ]);
   return aggregateChapasPorMaterial(chapas, materials);
-}
-
-export type CreateManualSlabsPayload = {
-  material_id: string;
-  material_label?: string;
-  modo_medidas?: "iguales" | "distintas";
-  /** Modo iguales */
-  qty_slabs?: number;
-  largo_cm?: number;
-  ancho_cm?: number;
-  espesor_cm?: number | null;
-  /** Modo distintas: una fila por plancha */
-  medidas?: Array<{
-    largo_cm: number;
-    ancho_cm: number;
-    espesor_cm?: number | null;
-  }>;
-  lote_codigo?: string | null;
-  costo_usd?: number | null;
-  origen_placa?: OrigenPlaca;
-  notes?: string | null;
-  created_by?: string | null;
-};
-
-export async function createManualSlabs(payload: CreateManualSlabsPayload): Promise<number> {
-  if (!isSupabaseConfigured) {
-    throw new Error("Supabase no está configurado");
-  }
-  const modo = payload.modo_medidas ?? "iguales";
-  const body =
-    modo === "distintas"
-      ? {
-          material_id: payload.material_id,
-          material_label: payload.material_label ?? "",
-          modo_medidas: "distintas",
-          medidas: (payload.medidas ?? []).map((m) => ({
-            largo_cm: m.largo_cm,
-            ancho_cm: m.ancho_cm,
-            espesor_cm: m.espesor_cm ?? null,
-          })),
-          lote_codigo: payload.lote_codigo ?? null,
-          costo_usd: payload.costo_usd ?? null,
-          origen_placa: payload.origen_placa ?? "otro",
-          notes: payload.notes ?? null,
-          created_by: payload.created_by ?? null,
-        }
-      : {
-          material_id: payload.material_id,
-          material_label: payload.material_label ?? "",
-          modo_medidas: "iguales",
-          qty_slabs: payload.qty_slabs ?? 1,
-          largo_cm: payload.largo_cm ?? 0,
-          ancho_cm: payload.ancho_cm ?? 0,
-          espesor_cm: payload.espesor_cm ?? null,
-          lote_codigo: payload.lote_codigo ?? null,
-          costo_usd: payload.costo_usd ?? null,
-          origen_placa: payload.origen_placa ?? "otro",
-          notes: payload.notes ?? null,
-          created_by: payload.created_by ?? null,
-        };
-  const { data, error } = await supabase.rpc("create_manual_slabs", {
-    p_payload: body,
-  });
-  if (error) throw new Error(error.message || "No se pudo cargar las planchas");
-  return Number(data ?? 0);
 }
 
 export type BachaClienteRow = Database["public"]["Tables"]["bachas_clientes"]["Row"];
@@ -624,7 +568,7 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
   const { data, error } = await supabase
     .from("chapas_inventario")
     .select(
-      "id,bulto,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,created_at",
+      "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
     )
     .eq("material_label", label)
     .order("bulto", { ascending: true });
@@ -633,16 +577,123 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
     slabRowToChapa({
       id: r.id,
       bulto: r.bulto,
+      material_id: r.material_id,
       material_label: r.material_label,
       largo_cm: Number(r.largo_cm),
       ancho_cm: Number(r.ancho_cm),
+      espesor_cm: (r as { espesor_cm?: number | null }).espesor_cm ?? null,
       estado: r.estado as ChapaRow["estado"],
       lote_codigo: r.lote_codigo,
       ot_reserva_id: r.ot_reserva_id,
       motivo_estado: r.motivo_estado,
       origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
+      chapa_origen_id: r.chapa_origen_id ?? null,
     }),
   );
+}
+
+export async function fetchOtTitulosByIds(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const map = new Map<string, string>();
+  if (!isSupabaseConfigured || unique.length === 0) return map;
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .select("id,titulo")
+    .in("id", unique);
+  if (error) throw error;
+  for (const row of data ?? []) {
+    map.set(row.id, (row.titulo ?? "").trim() || `OT`);
+  }
+  return map;
+}
+
+export type CreateRetazoManualInput = {
+  material_id: string | null;
+  material_label: string;
+  largo_cm: number;
+  ancho_cm: number;
+  cantidad: number;
+  bulto?: string | null;
+  observacion?: string | null;
+  created_by?: string | null;
+};
+
+async function nextBultoLibre(candidate: string): Promise<string> {
+  let n = 0;
+  let tryBulto = candidate;
+  while (n < 80) {
+    const { data } = await supabase.from("chapas_inventario").select("id").eq("bulto", tryBulto).maybeSingle();
+    if (!data) return tryBulto;
+    n += 1;
+    tryBulto = `${candidate}-R${n}`;
+  }
+  return `${candidate}-${Date.now().toString(36)}`;
+}
+
+export async function createRetazosManual(rows: CreateRetazoManualInput[]): Promise<number> {
+  if (!isSupabaseConfigured) throw new Error("Supabase no está configurado");
+  if (rows.length === 0) return 0;
+
+  let inserted = 0;
+  const seq = new Date()
+    .toISOString()
+    .replace(/[-:TZ.]/g, "")
+    .slice(2, 14);
+
+  for (const row of rows) {
+    const qty = Math.max(1, Math.floor(row.cantidad));
+    const baseBulto = row.bulto?.trim() || `REC-${seq}`;
+    const motivoBase = row.observacion?.trim()
+      ? `Retazo manual · ${row.observacion.trim()}`
+      : "Retazo manual";
+    const motivo = motivoBase.slice(0, 200);
+
+    for (let i = 0; i < qty; i += 1) {
+      const candidate = qty === 1 && row.bulto?.trim() ? baseBulto : `${baseBulto}${qty > 1 ? `-${String(i + 1).padStart(2, "0")}` : ""}`;
+      const bulto = await nextBultoLibre(candidate);
+      const { data: chapa, error: insErr } = await supabase
+        .from("chapas_inventario")
+        .insert({
+          bulto,
+          material_id: row.material_id,
+          material_label: row.material_label,
+          largo_cm: row.largo_cm,
+          ancho_cm: row.ancho_cm,
+          estado: "Disponible",
+          origen_placa: "otro",
+          motivo_estado: motivo,
+        })
+        .select("id")
+        .single();
+      if (insErr) throw new Error(insErr.message);
+      inserted += 1;
+
+      await supabase.from("stock_movimientos").insert({
+        chapa_id: chapa.id,
+        ot_id: null,
+        tipo: "retazo_alta",
+        detalle: `Retazo ${bulto} ${row.largo_cm}×${row.ancho_cm} cm`,
+        created_by: row.created_by ?? null,
+      });
+    }
+
+    await supabase.from("stock_scraps").insert({
+      accion: "Reingresar",
+      ingreso_tipo: "Recorte Cuadrado/Rectangulo",
+      material_id: row.material_id,
+      material_label: row.material_label,
+      cantidad: qty,
+      n_chapa: row.bulto?.trim() || null,
+      observacion:
+        `${row.largo_cm}×${row.ancho_cm} cm${row.observacion?.trim() ? ` · ${row.observacion.trim()}` : ""}`.slice(
+          0,
+          500,
+        ),
+      created_by: row.created_by ?? null,
+    });
+  }
+
+  return inserted;
 }
 
 export async function fetchScrapsByMaterialLabel(label: string): Promise<StockScrapRow[]> {

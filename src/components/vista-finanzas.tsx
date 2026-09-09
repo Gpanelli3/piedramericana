@@ -53,6 +53,8 @@ import {
   type SaldoCuentaRow,
 } from "@/lib/finanzas-api";
 import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
+import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
+import { getOtsDesdePagoId, type OtProduccionItem } from "@/lib/produccion-api";
 import { cn } from "@/lib/utils";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
@@ -127,6 +129,9 @@ export function VistaFinanzas() {
   const [dialogMov, setDialogMov] = useState(false);
   const [dialogTransf, setDialogTransf] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [otDetalle, setOtDetalle] = useState<OtProduccionItem | null>(null);
+  const [otDetalleOpen, setOtDetalleOpen] = useState(false);
+  const [abriendoOt, setAbriendoOt] = useState(false);
   const [suppliersFinanzas, setSuppliersFinanzas] = useState<SupplierRow[]>([]);
 
   const hoy = new Date().toISOString().slice(0, 10);
@@ -201,6 +206,28 @@ export function VistaFinanzas() {
     if (filtroCuenta === "todas") return movimientos;
     return movimientos.filter((m) => m.cuenta_id === filtroCuenta);
   }, [movimientos, filtroCuenta]);
+
+  const abrirOtDesdeMovimiento = async (m: MovimientoCajaRow) => {
+    if (m.referencia_tipo !== "venta_pago" || !m.referencia_id) {
+      toast.message("Este movimiento no está ligado a una OT.");
+      return;
+    }
+    if (abriendoOt) return;
+    setAbriendoOt(true);
+    const res = await getOtsDesdePagoId(m.referencia_id);
+    setAbriendoOt(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    const item = res.data[0] ?? null;
+    if (!item) {
+      toast.error("No hay OT para este cobro.");
+      return;
+    }
+    setOtDetalle(item);
+    setOtDetalleOpen(true);
+  };
 
   const totalesPorMoneda = useMemo(() => {
     const ars = saldos.filter((s) => s.moneda === "ars").reduce((a, s) => a + Number(s.saldo_actual), 0);
@@ -436,8 +463,13 @@ export function VistaFinanzas() {
                     ) : (
                       movFiltrados.map((m) => {
                         const esSalida = m.tipo === "egreso" || m.tipo === "transferencia_salida";
+                        const ligaOt = m.referencia_tipo === "venta_pago" && Boolean(m.referencia_id);
                         return (
-                          <TableRow key={m.id}>
+                          <TableRow
+                            key={m.id}
+                            className={ligaOt ? "cursor-pointer" : undefined}
+                            onClick={() => void abrirOtDesdeMovimiento(m)}
+                          >
                             <TableCell className="tabular-nums text-sm">{m.fecha}</TableCell>
                             <TableCell className="text-sm">{etiquetaMetodo(m.metodo)}</TableCell>
                             <TableCell className="text-sm">{etiquetaConcepto(m.concepto)}</TableCell>
@@ -466,13 +498,20 @@ export function VistaFinanzas() {
         </Tabs>
       </div>
 
+      <OtDetalleDialog
+        item={otDetalle}
+        open={otDetalleOpen}
+        onOpenChange={(o) => {
+          setOtDetalleOpen(o);
+          if (!o) setOtDetalle(null);
+        }}
+        onChanged={() => void recargar()}
+      />
+
       <Dialog open={dialogMov} onOpenChange={setDialogMov}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Entró o salió plata</DialogTitle>
-            <DialogDescription>
-              Para un movimiento suelto (nafta, alquiler, un ingreso extra). El cobro de un trabajo se carga en Ventas, no acá.
-            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid grid-cols-2 gap-2">
@@ -663,7 +702,7 @@ export function VistaFinanzas() {
                   }));
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Elegí el cajón de origen" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Elegí el cajón de origen" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
@@ -684,7 +723,7 @@ export function VistaFinanzas() {
                 value={transfForm.destinoId || undefined}
                 onValueChange={(v) => setTransfForm((f) => ({ ...f, destinoId: v }))}
               >
-                <SelectTrigger><SelectValue placeholder="Elegí el cajón de destino" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Elegí el cajón de destino" /></SelectTrigger>
                 <SelectContent>
                   {cuentas.map((c) => (
                     <SelectItem key={c.id} value={c.id} disabled={c.id === transfForm.origenId}>

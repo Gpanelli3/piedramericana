@@ -11,8 +11,9 @@ import {
   type UrgenciaOt,
 } from "@/lib/produccion-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { formatDifMetraje, formatMetraje } from "@/lib/presupuesto-calculos";
 import type { JobStatus, VentaEstado } from "@/types/database";
-import { AlertTriangle, Lock, Pause } from "lucide-react";
+import { AlertTriangle, Lock, Pause, RotateCcw } from "lucide-react";
 
 const ETAPA_BADGE: Record<EtapaOtId, string> = {
   medicion: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200",
@@ -88,6 +89,24 @@ export function EstadoOtBadges({ item }: { item: OtProduccionItem }) {
           Pausada
         </Badge>
       ) : null}
+      {item.esReposicion ? (
+        <Badge
+          variant="outline"
+          className="gap-1 border-violet-200 bg-violet-50 text-[10px] text-violet-800 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200"
+          title={item.otOrigenTitulo ? `De ${item.otOrigenTitulo}` : undefined}
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reposición
+        </Badge>
+      ) : null}
+      {item.m2Significativo ? (
+        <Badge
+          variant="outline"
+          className="border-amber-200 bg-amber-50 text-[10px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          Revisar $
+        </Badge>
+      ) : null}
       {!orden.medidas_confirmadas && coalesceEtapaOt(orden.etapa) === "medicion" ? (
         <Badge variant="outline" className="text-[10px]">
           Sin medidas
@@ -123,4 +142,16 @@ export function formatFechaCorta(iso: string | null | undefined): string {
 
 export function otTituloDisplay(item: OtProduccionItem): string {
   return item.orden.titulo?.trim() || `OT · ${item.presupuestoNumero}`;
+}
+
+export function M2TrioTexto({ item }: { item: OtProduccionItem }) {
+  return (
+    <span className="tabular-nums">
+      Cot. {formatMetraje(item.m2Venta)}
+      <span className="mx-1 text-border">·</span>
+      Obra {formatMetraje(item.m2Obra)}
+      <span className="mx-1 text-border">·</span>
+      {formatDifMetraje(item.m2Dif)}
+    </span>
+  );
 }

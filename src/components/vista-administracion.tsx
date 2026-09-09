@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,7 @@ function formatoFecha(iso: string): string {
 
 export function VistaAdministracion() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
@@ -94,6 +95,32 @@ export function VistaAdministracion() {
   useEffect(() => {
     void recargar();
   }, [recargar]);
+
+  const limpiarPid = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        if (!prev.get("pid")) return prev;
+        const n = new URLSearchParams(prev);
+        n.delete("pid");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
+  useEffect(() => {
+    const pid = searchParams.get("pid");
+    if (!pid || cargando) return;
+    const fila = filas.find((r) => r.id === pid);
+    if (!fila) {
+      toast.error("No hay una venta abierta para ese presupuesto.");
+      limpiarPid();
+      return;
+    }
+    setFilaCobros(fila);
+    setCobrosAbierto(true);
+    limpiarPid();
+  }, [cargando, filas, searchParams, limpiarPid]);
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();

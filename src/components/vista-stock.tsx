@@ -12,10 +12,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, History, Plus } from "lucide-react";
+import { ChevronDown, Download, History, Plus, Truck } from "lucide-react";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
@@ -25,7 +24,7 @@ import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab"
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { StockProductosUnidadesTab } from "@/components/stock/StockProductosUnidadesTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
-import { CargaManualPlanchasDialog } from "@/components/stock/CargaManualPlanchasDialog";
+import { DisponibilidadProductoSheet } from "@/components/stock/DisponibilidadProductoSheet";
 import {
   aggregateChapasPorMaterial,
   fetchMaterialsForStock,
@@ -42,7 +41,6 @@ export function VistaStock() {
   const { user } = useAuth();
   const { chapas, setChapas, reloadChapas, slabsLoading } = useStock();
   const [remitoOpen, setRemitoOpen] = useState(false);
-  const [cargaManualOpen, setCargaManualOpen] = useState(false);
   const [disponibilidadOpen, setDisponibilidadOpen] = useState(false);
   const [materialDisponibilidad, setMaterialDisponibilidad] = useState<string | null>(null);
   const [materialesCatalogo, setMaterialesCatalogo] = useState<MaterialOption[]>([]);
@@ -53,6 +51,8 @@ export function VistaStock() {
   const [catalogoOpen, setCatalogoOpen] = useState(false);
   const [recortesOpen, setRecortesOpen] = useState(false);
   const [historialOpen, setHistorialOpen] = useState(false);
+  const [productoDetalle, setProductoDetalle] = useState<StockProductoUnidad | null>(null);
+  const [productoOpen, setProductoOpen] = useState(false);
 
   const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -85,6 +85,10 @@ export function VistaStock() {
   }, []);
 
   useEffect(() => {
+    void reloadChapas();
+  }, [reloadChapas]);
+
+  useEffect(() => {
     void reloadMateriales();
   }, [reloadMateriales, chapas.length, historialBump]);
 
@@ -102,11 +106,13 @@ export function VistaStock() {
 
   const resumen = useMemo(() => {
     const disponibles = chapas.filter((c) => c.estado === "Disponible");
+    const reservadas = chapas.filter((c) => c.estado === "Reservada");
     const materiales = new Set(
-      disponibles.map((c) => c.material.trim() || "Sin material"),
+      [...disponibles, ...reservadas].map((c) => c.material.trim() || "Sin material"),
     );
     return {
       planchas: disponibles.length,
+      reservadas: reservadas.length,
       materiales: materiales.size,
       productos: productosUnidades.length,
     };
@@ -153,8 +159,10 @@ export function VistaStock() {
         "Material",
         "Familia",
         "Código",
-        "Planchas",
+        "Disp.",
+        "Reservadas",
         "M2 disp.",
+        "M2 res.",
         "M2 retazo",
         "Retazos",
         "Costo USD",
@@ -164,7 +172,9 @@ export function VistaStock() {
         r.familia ?? "",
         r.codigo ?? "",
         r.planchasDisponibles,
+        r.planchasReservadas,
         r.m2Disponibles.toFixed(2),
+        r.m2Reservados > 0 ? r.m2Reservados.toFixed(2) : "",
         r.m2Retazo > 0 ? r.m2Retazo.toFixed(2) : "",
         r.retazosCount > 0 ? r.retazosCount : "",
         r.costoUsdTotal != null ? Math.round(r.costoUsdTotal) : "",
@@ -188,28 +198,33 @@ export function VistaStock() {
               ) : null}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {resumen.planchas} planchas en stock · {resumen.materiales} materiales
+              {resumen.planchas} disponibles
+              {resumen.reservadas > 0 ? ` · ${resumen.reservadas} reservadas` : ""}
+              {` · ${resumen.materiales} materiales`}
               {resumen.productos > 0
                 ? ` · ${resumen.productos} producto${resumen.productos === 1 ? "" : "s"}`
                 : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" className="h-10 gap-1.5" onClick={() => setRemitoOpen(true)}>
+              <Truck className="h-4 w-4" />
+              Ingreso remito
+            </Button>
+            <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Exportar CSV
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button type="button" variant="outline" className="h-10 gap-1.5">
-                  Exportar
+                  Más
                   <ChevronDown className="h-4 w-4 opacity-70" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={exportCsv}>Exportar CSV</DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setHistorialOpen(true)}>
                   Historial de remitos
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setRemitoOpen(true)}>
-                  Ingreso con remito
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setCatalogoOpen(true)}>
                   Nombres de materiales
@@ -224,25 +239,6 @@ export function VistaStock() {
       </header>
 
       <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-6">
-        <CargaManualPlanchasDialog
-          open={cargaManualOpen}
-          onOpenChange={setCargaManualOpen}
-          materiales={materialesOpciones}
-          onMaterialCreated={(m) => {
-            setMaterialesCatalogo((prev) =>
-              [...prev.filter((x) => x.id !== m.id), m].sort((a, b) =>
-                a.name.localeCompare(b.name, "es"),
-              ),
-            );
-          }}
-          userId={user?.id}
-          onSuccess={async () => {
-            await reloadChapas();
-            await reloadMateriales();
-            refreshHistorialRelated();
-          }}
-        />
-
         <CrearRemitoDialog
           open={remitoOpen}
           onOpenChange={setRemitoOpen}
@@ -264,17 +260,29 @@ export function VistaStock() {
           chapasLocales={chapas}
         />
 
+        <DisponibilidadProductoSheet
+          producto={productoDetalle}
+          open={productoOpen}
+          onOpenChange={(o) => {
+            setProductoOpen(o);
+            if (!o) setProductoDetalle(null);
+          }}
+        />
+
         <StockMaterialesAgregadosTab
           chapas={chapas}
           materiales={materialesCatalogo}
           onOpenMaterial={openDisponibilidad}
-          onCargaManual={() => setCargaManualOpen(true)}
         />
 
         <StockProductosUnidadesTab
           productos={productosUnidades}
           loading={productosLoading}
           error={productosError}
+          onOpenProducto={(p) => {
+            setProductoDetalle(p);
+            setProductoOpen(true);
+          }}
         />
       </div>
 
@@ -324,16 +332,19 @@ export function VistaStock() {
       </Dialog>
 
       <Dialog open={recortesOpen} onOpenChange={setRecortesOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Cargar recorte</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground -mt-2 mb-2">
-            Retazos sueltos que no son plancha completa.
+            Entra como chapa Disponible con largo × ancho. Queda usable en stock y en OTs.
           </p>
           <RecortesPorMaterialTab
             materiales={materialesCatalogo}
-            onCommitted={refreshHistorialRelated}
+            onCommitted={async () => {
+              await reloadChapas();
+              refreshHistorialRelated();
+            }}
           />
         </DialogContent>
       </Dialog>

@@ -3,10 +3,16 @@ import {
   articuloConPrecioToMock,
   buildLineaCalcInput,
   computeLineaPresupuesto,
+  computePresupuestoComercial,
   computePresupuestoTotalM2,
   formatMetraje,
+  importeMecPresupuesto,
+  trioM2DeOrden,
 } from "@/lib/presupuesto-calculos";
-import { normalizeLineaItemFromPayload } from "@/lib/presupuesto-payload-normalize";
+import {
+  normalizeLineaItemFromPayload,
+  normalizeOrdenesFromPayload,
+} from "@/lib/presupuesto-payload-normalize";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { OrdenTrabajoWizard } from "@/components/presupuesto/wizard/types";
 
@@ -173,6 +179,8 @@ describe("computePresupuestoTotalM2", () => {
         mEntrega: true,
         mColocacion: true,
         totalMec: "1",
+        excluirMec: false,
+        obsMec: "",
         panelExpandido: true,
       },
       {
@@ -220,11 +228,89 @@ describe("computePresupuestoTotalM2", () => {
         mEntrega: true,
         mColocacion: true,
         totalMec: "1",
+        excluirMec: false,
+        obsMec: "",
         panelExpandido: true,
       },
     ];
     const total = computePresupuestoTotalM2(ordenes, articulos);
     expect(total).toBeCloseTo(4.04 + 3, 2);
+  });
+});
+
+describe("trioM2DeOrden", () => {
+  const articulos: ArticuloConPrecio[] = [
+    art({ id: "1", codigo: "MES-ALZ", descripcion: "Mesada", unidad: "M2", precio: 100 }),
+  ];
+
+  function otM2(key: string, cantidad: string): OrdenTrabajoWizard {
+    return {
+      key,
+      titulo: key,
+      fecha: "",
+      tecnicoId: "",
+      fechaMedicion: "",
+      fechaEntrega: "",
+      materialId: "",
+      chapaSugeridaId: null,
+      chapaSugeridaBulto: "",
+      chapaSugeridaLabel: "",
+      tipoColocacion: "bajo",
+      bachaId: "",
+      items: [
+        {
+          key: "l1",
+          articuloId: "1",
+          modoIngreso: "manual",
+          cantidad,
+          precioUnitario: "100",
+          altoM: "",
+          anchoM: "",
+          desperdicioPct: "",
+        },
+      ],
+      direccionObra: "",
+      obraLat: null,
+      obraLng: null,
+      obraFormattedAddress: "",
+      referenciaObra: "",
+      planoAdjunto: null,
+      mMedicion: false,
+      mEntrega: false,
+      mColocacion: false,
+      totalMec: "",
+      excluirMec: false,
+      obsMec: "",
+      panelExpandido: true,
+    };
+  }
+
+  it("parte m² venta/obra por orden.key", () => {
+    const venta = [otM2("cocina", "4"), otM2("bano", "2")];
+    const obra = [otM2("cocina", "4.5"), otM2("bano", "2")];
+    const cocina = trioM2DeOrden({
+      ordenKey: "cocina",
+      ordenesVenta: venta,
+      ordenesObra: obra,
+      articulos,
+    });
+    expect(cocina.venta).toBeCloseTo(4, 2);
+    expect(cocina.obra).toBeCloseTo(4.5, 2);
+    expect(cocina.dif).toBeCloseTo(0.5, 2);
+  });
+
+  it("sin orden_key usa el total del presupuesto", () => {
+    const venta = [otM2("cocina", "4"), otM2("bano", "2")];
+    const obra = [otM2("cocina", "5"), otM2("bano", "2")];
+    const t = trioM2DeOrden({
+      ordenKey: null,
+      ordenesVenta: venta,
+      ordenesObra: obra,
+      articulos,
+    });
+    expect(t.venta).toBeCloseTo(6, 2);
+    expect(t.obra).toBeCloseTo(7, 2);
+    expect(t.dif).toBeCloseTo(1, 2);
   });
 });
 
@@ -253,5 +339,140 @@ describe("formatMetraje", () => {
 
   it("conserva hasta 3 decimales útiles", () => {
     expect(formatMetraje(4.125)).toBe("4,125");
+  });
+});
+
+describe("computePresupuestoComercial", () => {
+  const articulos: ArticuloConPrecio[] = [
+    art({ id: "1", codigo: "MES-ALZ", descripcion: "Mesada", unidad: "M2", precio: 100 }),
+  ];
+
+  function otBase(patch: Partial<OrdenTrabajoWizard> = {}): OrdenTrabajoWizard {
+    return {
+      key: "ot1",
+      titulo: "Cocina",
+      fecha: "",
+      tecnicoId: "",
+      fechaMedicion: "",
+      fechaEntrega: "",
+      materialId: "mat",
+      chapaSugeridaId: null,
+      chapaSugeridaBulto: "",
+      chapaSugeridaLabel: "",
+      tipoColocacion: "bajo",
+      bachaId: "sin",
+      items: [
+        {
+          key: "l1",
+          articuloId: "1",
+          modoIngreso: "manual",
+          cantidad: "10",
+          precioUnitario: "100",
+          altoM: "",
+          anchoM: "",
+          desperdicioPct: "",
+        },
+      ],
+      direccionObra: "",
+      obraLat: null,
+      obraLng: null,
+      obraFormattedAddress: "",
+      referenciaObra: "",
+      planoAdjunto: null,
+      mMedicion: true,
+      mEntrega: true,
+      mColocacion: true,
+      totalMec: "1",
+      excluirMec: false,
+      obsMec: "",
+      panelExpandido: true,
+      ...patch,
+    };
+  }
+
+  it("el descuento no come el MEC", () => {
+    const r = computePresupuestoComercial({
+      ordenes: [otBase()],
+      articulos,
+      descuentoGlobalPct: "10",
+      mMedicionGlobal: true,
+      mEntregaGlobal: true,
+      mColocacionGlobal: true,
+      totalMecGlobal: "200",
+    });
+    expect(r.subtotalItems).toBe(1000);
+    expect(r.netoItems).toBe(900);
+    expect(r.mec).toBe(200);
+    expect(r.total).toBe(1100);
+  });
+
+  it("si todas las OTs excluyen MEC el importe es 0", () => {
+    const r = computePresupuestoComercial({
+      ordenes: [otBase({ excluirMec: true, obsMec: "mesa redonda" })],
+      articulos,
+      descuentoGlobalPct: "0",
+      mMedicionGlobal: true,
+      mEntregaGlobal: true,
+      mColocacionGlobal: true,
+      totalMecGlobal: "200",
+    });
+    expect(r.mec).toBe(0);
+    expect(r.total).toBe(1000);
+    expect(
+      importeMecPresupuesto({
+        mMedicion: true,
+        mEntrega: true,
+        mColocacion: true,
+        totalMec: "200",
+        ordenes: [otBase({ excluirMec: true })],
+      }),
+    ).toBe(0);
+  });
+
+  it("recalcula m² y $ aunque el artículo no esté en el catálogo", () => {
+    const r = computePresupuestoComercial({
+      ordenes: [
+        otBase({
+          items: [
+            {
+              key: "l1",
+              articuloId: "inactivo-o-borrado",
+              modoIngreso: "dimensiones",
+              cantidad: "1",
+              precioUnitario: "200",
+              altoM: "2.5",
+              anchoM: "3.5",
+              desperdicioPct: "",
+            },
+          ],
+        }),
+      ],
+      articulos: [],
+      descuentoGlobalPct: "0",
+      mMedicionGlobal: true,
+      mEntregaGlobal: true,
+      mColocacionGlobal: true,
+      totalMecGlobal: "200",
+    });
+    expect(r.m2).toBeCloseTo(8.75, 2);
+    expect(r.subtotalItems).toBeCloseTo(1750, 2);
+    expect(r.mec).toBe(200);
+    expect(r.total).toBeCloseTo(1950, 2);
+  });
+});
+
+describe("normalizeOrdenesFromPayload MEC", () => {
+  it("lee excluirMec y obsMec", () => {
+    const ordenes = normalizeOrdenesFromPayload([
+      {
+        key: "ot1",
+        titulo: "Mesa",
+        excluirMec: true,
+        obsMec: "mesa redonda",
+        items: [],
+      },
+    ]);
+    expect(ordenes[0]?.excluirMec).toBe(true);
+    expect(ordenes[0]?.obsMec).toBe("mesa redonda");
   });
 });

@@ -30,7 +30,7 @@ import {
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
-import { EtapaBadge, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
+import { EtapaBadge, M2TrioTexto, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
 import {
   avanzarEtapaOt,
   coalesceEtapaOt,
@@ -48,7 +48,7 @@ import {
   type OtProduccionItem,
   type OtSaldoVenta,
 } from "@/lib/produccion-api";
-import { etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
+import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { cn } from "@/lib/utils";
 import {
@@ -245,6 +245,15 @@ export function OtDetalleDialog({
                   <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                     {item.orden.titulo}
                   </span>
+                  {item.esReposicion ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold uppercase tracking-wide border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200"
+                    >
+                      Reposición
+                      {item.otOrigenTitulo ? ` · ${item.otOrigenTitulo}` : ""}
+                    </Badge>
+                  ) : null}
                   <Badge
                     variant="outline"
                     className={cn(
@@ -345,7 +354,9 @@ export function OtDetalleDialog({
                       </div>
                       <div>
                         <p className="text-muted-foreground">m²</p>
-                        <p className="font-medium tabular-nums text-foreground">{item.m2Display}</p>
+                        <p className="font-medium tabular-nums text-foreground">
+                          <M2TrioTexto item={item} />
+                        </p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Ingreso</p>
@@ -405,6 +416,7 @@ export function OtDetalleDialog({
                       otId={item.orden.id}
                       materialHint={item.materialLabel}
                       requiereReservaStock={Boolean(item.orden.requiere_reserva_stock)}
+                      otTitulo={item.orden.titulo}
                       onChanged={refresh}
                     />
                   </AccordionContent>
@@ -416,14 +428,6 @@ export function OtDetalleDialog({
                     <span className="flex items-center gap-2">
                       <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
                       Medidas
-                      {item.orden.medidas_confirmadas ? (
-                        <Badge
-                          variant="outline"
-                          className="ml-1 border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-                        >
-                          Confirmadas
-                        </Badge>
-                      ) : null}
                     </span>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
@@ -627,7 +631,7 @@ export function OtDetalleDialog({
                     disabled={!puedeMover || busy}
                     onClick={() => void onAvanzar()}
                   >
-                    Pasar a {etiquetaEtapaKanban(nextEtapa)}
+                    Pasar a {etiquetaTabDestino(nextEtapa)}
                     <ChevronRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
                 ) : permitirEntregar && !done && etapa === "despacho" ? (

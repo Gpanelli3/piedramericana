@@ -105,6 +105,7 @@ type OtLite = {
   actualizado_en: string;
   creado_en: string;
   venta_id: string | null;
+  tipo?: string | null;
 };
 
 type ChapaLite = {
@@ -272,7 +273,7 @@ export async function fetchReportesDashboard(
     supabase
       .from("ordenes_trabajo")
       .select(
-        "id, titulo, etapa, estado, pausada, fecha_programada, actualizado_en, creado_en, venta_id",
+        "id, titulo, etapa, estado, pausada, fecha_programada, actualizado_en, creado_en, venta_id, tipo",
       ),
     supabase
       .from("chapas_inventario")
@@ -317,6 +318,7 @@ export async function fetchReportesDashboard(
 
   const otByVenta = new Map<string, OtLite>();
   for (const ot of ots) {
+    if (ot.tipo === "reposicion") continue;
     if (ot.venta_id && !otByVenta.has(ot.venta_id)) otByVenta.set(ot.venta_id, ot);
   }
 
@@ -358,6 +360,7 @@ export async function fetchReportesDashboard(
   // —— Vencen en 7 días ——
   let vencen7d = 0;
   for (const ot of ots) {
+    if (ot.tipo === "reposicion") continue;
     if (ot.estado === "done" || ot.estado === "cancelled") continue;
     const venta = ot.venta_id ? ventaById.get(ot.venta_id) : undefined;
     const payload = venta ? payloadByPres.get(venta.presupuesto_id) ?? null : null;

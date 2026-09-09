@@ -38,7 +38,9 @@ import {
   type OtStockUnidadRow,
   type StockProductoUnidad,
 } from "@/lib/stock-unidades-api";
+import { registrarRoturaYReposicion } from "@/lib/produccion-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useStock } from "@/contexts/StockContext";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -52,6 +54,7 @@ type Props = {
   otId: string;
   materialHint?: string;
   requiereReservaStock?: boolean;
+  otTitulo?: string;
   onChanged?: () => void;
 };
 
@@ -74,8 +77,10 @@ export function OtStockPanel({
   otId,
   materialHint,
   requiereReservaStock = false,
+  otTitulo,
   onChanged,
 }: Props) {
+  const { reloadChapas } = useStock();
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
@@ -95,6 +100,11 @@ export function OtStockPanel({
   const [retazosByChapa, setRetazosByChapa] = useState<
     Record<string, Array<{ largo: string; ancho: string }>>
   >({});
+  const [roturaChapa, setRoturaChapa] = useState<ChapaInventarioRow | null>(null);
+  const [roturaMotivo, setRoturaMotivo] = useState("");
+  const [roturaCrearOt, setRoturaCrearOt] = useState(true);
+  const [roturaChapaNuevaId, setRoturaChapaNuevaId] = useState<string>("");
+  const [roturaDisponibles, setRoturaDisponibles] = useState<ChapaInventarioRow[]>([]);
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -185,6 +195,7 @@ export function OtStockPanel({
         : "Chapas sugeridas reservadas.",
     );
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -209,6 +220,7 @@ export function OtStockPanel({
     else toast.success("Chapas reservadas a la OT.");
     setReservarOpen(false);
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -222,6 +234,49 @@ export function OtStockPanel({
     }
     toast.success("Chapa liberada.");
     await reload();
+    await reloadChapas();
+    onChanged?.();
+  };
+
+  const abrirRotura = async (chapa: ChapaInventarioRow) => {
+    setRoturaChapa(chapa);
+    setRoturaMotivo("");
+    setRoturaCrearOt(true);
+    setRoturaChapaNuevaId("");
+    const needle = materialHint && materialHint !== "—" ? materialHint.split(" ")[0] : undefined;
+    const { data, error } = await listChapasDisponibles({ materialNeedle: needle });
+    if (error) toast.error(error.message);
+    setRoturaDisponibles((data ?? []).filter((c) => c.id !== chapa.id));
+  };
+
+  const onConfirmarRotura = async () => {
+    if (!roturaChapa) return;
+    const motivo = roturaMotivo.trim();
+    if (!motivo) {
+      toast.error("Indicá el motivo de la rotura.");
+      return;
+    }
+    setBusy(true);
+    const res = await registrarRoturaYReposicion({
+      otOrigenId: otId,
+      chapaId: roturaChapa.id,
+      motivo,
+      crearReposicion: roturaCrearOt,
+      chapaNuevaId: roturaCrearOt && roturaChapaNuevaId ? roturaChapaNuevaId : null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    setRoturaChapa(null);
+    toast.success(
+      res.otReposicionId
+        ? `Rotura registrada. Se creó la OT de reposición${otTitulo ? ` de ${otTitulo}` : ""}.`
+        : "Rotura registrada.",
+    );
+    await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -256,6 +311,7 @@ export function OtStockPanel({
     toast.success("Corte registrado: chapas consumidas y retazos dados de alta.");
     setConsumoOpen(false);
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -279,6 +335,7 @@ export function OtStockPanel({
     toast.success("Producto reservado a la OT.");
     setProductoQty("1");
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -292,6 +349,7 @@ export function OtStockPanel({
     }
     toast.success("Producto consumido.");
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -305,6 +363,7 @@ export function OtStockPanel({
     }
     toast.success("Producto liberado.");
     await reload();
+    await reloadChapas();
     onChanged?.();
   };
 
@@ -409,6 +468,16 @@ export function OtStockPanel({
                 >
                   Liberar
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs text-red-700 dark:text-red-300"
+                  disabled={busy}
+                  onClick={() => void abrirRotura(c)}
+                >
+                  Rotura
+                </Button>
               </div>
             </li>
           ))}
@@ -422,6 +491,7 @@ export function OtStockPanel({
                 {c.lote_codigo ? ` · lote ${c.lote_codigo}` : ""}
                 {c.motivo_estado ? ` · ${c.motivo_estado}` : ""}
               </div>
+              <div className="flex shrink-0 items-center gap-1">
               <Badge
                 variant="outline"
                 className={cn(
@@ -431,6 +501,19 @@ export function OtStockPanel({
               >
                 {c.estado}
               </Badge>
+              {c.estado !== "Baja" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs text-red-700 dark:text-red-300"
+                  disabled={busy}
+                  onClick={() => void abrirRotura(c)}
+                >
+                  Rotura
+                </Button>
+              ) : null}
+              </div>
             </li>
           ))}
         </ul>
@@ -721,6 +804,65 @@ export function OtStockPanel({
             </Button>
             <Button disabled={busy} onClick={() => void onConsumir()}>
               Confirmar consumo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(roturaChapa)} onOpenChange={(open) => !open && setRoturaChapa(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rotura de chapa</DialogTitle>
+            <DialogDescription>
+              La placa pasa a Baja y esta OT se pausa. Si reponés, se crea una OT hija ligada a esta
+              {roturaChapa ? ` (${roturaChapa.bulto})` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Motivo</Label>
+              <Input
+                className="h-8 text-xs"
+                placeholder="Quebrada al cortar, veta, etc."
+                value={roturaMotivo}
+                onChange={(e) => setRoturaMotivo(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox
+                checked={roturaCrearOt}
+                onCheckedChange={(v) => setRoturaCrearOt(v === true)}
+              />
+              Crear OT de reposición ligada a esta
+            </label>
+            {roturaCrearOt ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Chapa de reemplazo (opcional)</Label>
+                <Select
+                  value={roturaChapaNuevaId || "__none"}
+                  onValueChange={(v) => setRoturaChapaNuevaId(v === "__none" ? "" : v)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Reservar después…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Reservar después</SelectItem>
+                    {roturaDisponibles.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.bulto} · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoturaChapa(null)}>
+              Cancelar
+            </Button>
+            <Button disabled={busy} onClick={() => void onConfirmarRotura()}>
+              Registrar rotura
             </Button>
           </DialogFooter>
         </DialogContent>

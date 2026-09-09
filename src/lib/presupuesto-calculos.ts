@@ -213,21 +213,175 @@ export function formatToneladas(n: number): string {
   });
 }
 
+/**
+ * Si el artículo no está en el catálogo (p. ej. inactivo), igual se cotiza
+ * con m² por dimensiones y el precio unitario ya cargado en la línea.
+ */
+export function articuloCalculoParaLinea(
+  artBd: ArticuloConPrecio | undefined,
+  line: { articuloId: string },
+): ArticuloCalculo {
+  if (artBd) return articuloConPrecioToMock(artBd);
+  return {
+    id: line.articuloId,
+    codigo: "",
+    descripcion: "Ítem",
+    unidad: "M2",
+    calculaMaterial: true,
+    precioUnitario: 0,
+  };
+}
+
 export function computePresupuestoTotalM2(
   ordenes: OrdenTrabajoWizard[],
   articulos: ArticuloConPrecio[],
 ): number {
   let totalM2 = 0;
   for (const ot of ordenes) {
-    for (const line of ot.items) {
-      const artBd = articulos.find((a) => a.id === line.articuloId);
-      if (!artBd) continue;
-      const art = articuloConPrecioToMock(artBd);
-      const calc = buildLineaCalcInput(art, line);
-      totalM2 += computeLineaPresupuesto(art, calc).m2Linea;
-    }
+    totalM2 += computeOrdenTotalM2(ot, articulos);
   }
   return totalM2;
+}
+
+/** m² de una sola OT del wizard (mesada / ambiente). */
+export function computeOrdenTotalM2(
+  orden: OrdenTrabajoWizard | undefined | null,
+  articulos: ArticuloConPrecio[],
+): number {
+  if (!orden) return 0;
+  let totalM2 = 0;
+  for (const line of orden.items ?? []) {
+    const art = articuloCalculoParaLinea(
+      articulos.find((a) => a.id === line.articuloId),
+      line,
+    );
+    const calc = buildLineaCalcInput(art, line);
+    totalM2 += computeLineaPresupuesto(art, calc).m2Linea;
+  }
+  return totalM2;
+}
+
+export type M2Trio = {
+  venta: number;
+  obra: number;
+  dif: number;
+};
+
+export function trioM2(venta: number, obra: number): M2Trio {
+  return { venta, obra, dif: obra - venta };
+}
+
+/** m² cotizado vs obra para una OT (por `orden.key`) o el presupuesto entero si no hay key. */
+export function trioM2DeOrden(opts: {
+  ordenKey: string | null | undefined;
+  ordenesVenta: OrdenTrabajoWizard[];
+  ordenesObra: OrdenTrabajoWizard[];
+  articulos: ArticuloConPrecio[];
+}): M2Trio {
+  const key = opts.ordenKey?.trim() || "";
+  if (key) {
+    return trioM2(
+      computeOrdenTotalM2(
+        opts.ordenesVenta.find((o) => o.key === key),
+        opts.articulos,
+      ),
+      computeOrdenTotalM2(
+        opts.ordenesObra.find((o) => o.key === key),
+        opts.articulos,
+      ),
+    );
+  }
+  return trioM2(
+    computePresupuestoTotalM2(opts.ordenesVenta, opts.articulos),
+    computePresupuestoTotalM2(opts.ordenesObra, opts.articulos),
+  );
+}
+
+export function formatDifMetraje(n: number): string {
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${formatMetraje(n)}`;
+}
+
+/** True si hay al menos una OT y todas están marcadas sin MEC. */
+export function todasOtsExcluyenMec(ordenes: { excluirMec?: boolean }[]): boolean {
+  if (ordenes.length === 0) return false;
+  return ordenes.every((o) => Boolean(o.excluirMec));
+}
+
+/** Importe MEC del presupuesto. El descuento no lo consume. Si todas las OTs lo excluyen, es 0. */
+export function importeMecPresupuesto(opts: {
+  mMedicion: boolean;
+  mEntrega: boolean;
+  mColocacion: boolean;
+  totalMec: string | number;
+  ordenes: { excluirMec?: boolean }[];
+}): number {
+  if (todasOtsExcluyenMec(opts.ordenes)) return 0;
+  if (!(opts.mMedicion || opts.mEntrega || opts.mColocacion)) return 0;
+  const n =
+    typeof opts.totalMec === "number" ? opts.totalMec : parseDecimalInput(opts.totalMec);
+  return Math.max(0, Number.isFinite(n) ? n : 0);
+}
+
+export type ResultadoPresupuestoComercial = {
+  subtotalItems: number;
+  netoItems: number;
+  mec: number;
+  total: number;
+  m2: number;
+};
+
+/**
+ * Recalcula m² y $ con los precios unitarios ya cargados.
+ * El descuento aplica solo a materiales/ítems, no al MEC.
+ */
+export function computePresupuestoComercial(opts: {
+  ordenes: OrdenTrabajoWizard[];
+  articulos: ArticuloConPrecio[];
+  descuentoGlobalPct: string;
+  mMedicionGlobal: boolean;
+  mEntregaGlobal: boolean;
+  mColocacionGlobal: boolean;
+  totalMecGlobal: string;
+}): ResultadoPresupuestoComercial {
+  let subtotalItems = 0;
+  for (const ot of opts.ordenes) {
+    for (const line of ot.items) {
+      const art = articuloCalculoParaLinea(
+        opts.articulos.find((a) => a.id === line.articuloId),
+        line,
+      );
+      const calc = buildLineaCalcInput(art, line);
+      subtotalItems += computeLineaPresupuesto(art, calc).subtotal;
+    }
+  }
+  const dPct = Math.max(0, Math.min(parseDecimalInput(opts.descuentoGlobalPct), 100));
+  const netoItems = subtotalItems * (1 - dPct / 100);
+  const mec = importeMecPresupuesto({
+    mMedicion: opts.mMedicionGlobal,
+    mEntrega: opts.mEntregaGlobal,
+    mColocacion: opts.mColocacionGlobal,
+    totalMec: opts.totalMecGlobal,
+    ordenes: opts.ordenes,
+  });
+  return {
+    subtotalItems,
+    netoItems,
+    mec,
+    total: netoItems + mec,
+    m2: computePresupuestoTotalM2(opts.ordenes, opts.articulos),
+  };
+}
+
+export function etiquetaVersionPresupuesto(
+  nro: number,
+  modo: "vigente" | "historica" = "vigente",
+): string {
+  if (modo === "historica") {
+    return nro <= 1 ? `V${nro} · cotizado original` : `V${nro} · versión anterior`;
+  }
+  if (nro <= 1) return `V${nro}`;
+  return `V${nro} · medidas de obra`;
 }
 
 /** Peso estimado de piedra (ton equiv en presupuesto), según tipo y kg/m² del maestro. */

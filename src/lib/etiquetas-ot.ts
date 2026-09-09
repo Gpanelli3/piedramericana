@@ -1,9 +1,8 @@
 import type { JobStatus } from "@/types/database";
 
 /**
- * Nombres de etapa alineados con las pestañas de Producción:
- * Técnica → Corte → Producción → Logística → Entregada.
- * El valor en DB de logística sigue siendo `despacho`.
+ * Subestados internos: Técnica → Corte → Producción → Logística.
+ * En el menú, Corte no tiene pestaña: vive dentro de Producción.
  */
 export const ETAPA_OT_LABELS = {
   medicion: "Técnica",
@@ -30,6 +29,12 @@ export function etiquetaEtapaOt(etapa: string | null, estadoOt: JobStatus | null
   return "Sin OT";
 }
 
+/** Pestaña donde cae la OT (Corte no tiene tab propia). */
+export function etiquetaTabDestino(etapa: string | null | undefined): string {
+  if (etapa === "corte") return "Producción";
+  return etiquetaEtapaKanban(etapa);
+}
+
 export function etiquetaAvanceEtapa(etapaDestino: string): string {
-  return `A ${etiquetaEtapaKanban(etapaDestino)}`;
+  return `A ${etiquetaTabDestino(etapaDestino)}`;
 }
