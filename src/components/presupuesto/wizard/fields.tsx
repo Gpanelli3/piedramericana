@@ -23,7 +23,11 @@ import type { UnidadArticuloDb } from "@/types/database";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 function labelTipoUnidad(unidad: UnidadArticuloDb): string {
-  return unidad === "UNI" ? "unidad" : labelUnidad(unidad);
+  if (unidad === "UNI") return "unidad";
+  if (unidad === "PIEZA") return "pieza";
+  if (unidad === "KG") return "kilo";
+  if (unidad === "TON") return "tonelada";
+  return labelUnidad(unidad);
 }
 
 export function SectionPresupuesto({

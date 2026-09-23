@@ -24,6 +24,8 @@ type StepClienteProps = {
   setListaPrecioId: (id: string) => void;
   monedaPresupuesto: "ars" | "usd";
   setMonedaPresupuesto: (m: "ars" | "usd") => void;
+  dolarHoy: number;
+  setDolarHoy: (n: number) => void;
   origenVentas: string;
   setOrigenVentas: (v: string) => void;
   contacto: string;
@@ -50,6 +52,8 @@ export function StepCliente({
   setListaPrecioId,
   monedaPresupuesto,
   setMonedaPresupuesto,
+  dolarHoy,
+  setDolarHoy,
   origenVentas,
   setOrigenVentas,
   contacto,
@@ -98,7 +102,7 @@ export function StepCliente({
             onChange={setListaPrecioId}
           />
           <div className="space-y-1">
-            <Label className="text-xs font-medium">Moneda</Label>
+            <Label className="text-xs font-medium">Moneda del producto</Label>
             <Select value={monedaPresupuesto} onValueChange={(v) => setMonedaPresupuesto(v as "ars" | "usd")}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -108,6 +112,24 @@ export function StepCliente({
                 <SelectItem value="ars">Pesos (ARS)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Dólar del día</Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                $
+              </span>
+              <Input
+                className="h-9 pl-6 text-sm tabular-nums"
+                inputMode="decimal"
+                value={Number.isFinite(dolarHoy) && dolarHoy > 0 ? String(dolarHoy) : ""}
+                onChange={(e) => {
+                  const n = Number(e.target.value.replace(",", "."));
+                  setDolarHoy(Number.isFinite(n) && n > 0 ? n : 0);
+                }}
+                placeholder="1250"
+              />
+            </div>
           </div>
           <div className="space-y-1 sm:col-span-2 lg:col-span-1">
             <Label className="text-xs font-medium">

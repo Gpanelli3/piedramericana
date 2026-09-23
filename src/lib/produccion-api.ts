@@ -378,6 +378,21 @@ export async function getOtsDesdePagoId(
   return enrichOts((data as OrdenTrabajoRow[] | null) ?? []);
 }
 
+export async function getOtProduccionById(
+  otId: string,
+): Promise<{ data: OtProduccionItem | null; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .select("*")
+    .eq("id", otId)
+    .maybeSingle();
+  if (error) return { data: null, error: new Error(error.message) };
+  if (!data) return { data: null, error: new Error("No se encontró la OT.") };
+  const enriched = await enrichOts([data as OrdenTrabajoRow]);
+  if (enriched.error) return { data: null, error: enriched.error };
+  return { data: enriched.data[0] ?? null, error: null };
+}
+
 export async function setOtBloqueada(
   otId: string,
   motivo: string,

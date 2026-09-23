@@ -28,6 +28,7 @@ function formatUsd(n: number): string {
 
 type PresupuestoResumenInteriorProps = {
   dolarHoy: number;
+  setDolarHoy?: (n: number) => void;
   cotizacionMixtaActiva: boolean;
   setCotizacionMixtaActiva: (v: boolean) => void;
   lineasResumen: LineaResumenMoneda[];
@@ -48,6 +49,7 @@ type PresupuestoResumenInteriorProps = {
 
 export function PresupuestoResumenInterior({
   dolarHoy,
+  setDolarHoy,
   cotizacionMixtaActiva,
   setCotizacionMixtaActiva,
   lineasResumen,
@@ -69,7 +71,7 @@ export function PresupuestoResumenInterior({
             Cotización multimoneda
           </Label>
           <p className="text-xs text-muted-foreground leading-snug">
-            Activa consejos cortos sobre cómo cargar rubros en distintas monedas.
+            Producto en la moneda de la lista e instalación (MEC) en pesos, unidos con el dólar del día.
           </p>
         </div>
         {readOnly ? (
@@ -155,12 +157,29 @@ export function PresupuestoResumenInterior({
       </div>
 
       {cotizacionMixtaActiva && (
-        <p className="text-xs text-muted-foreground leading-relaxed rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 dark:border-sky-900/50 dark:bg-sky-950/30">
-          Podés tener la <span className="font-semibold text-foreground">piedra / chapa</span> en USD y{" "}
-          <span className="font-semibold text-foreground">mano de obra, perforaciones y fletes</span> en pesos; el
-          total inferior unifica todo con{" "}
-          <span className="font-semibold">Dólar hoy ({formatUsd(dolarHoy)})</span>.
-        </p>
+        <div className="space-y-2 rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 dark:border-sky-900/50 dark:bg-sky-950/30">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            La <span className="font-semibold text-foreground">piedra / producto</span> va en la moneda de la lista
+            y la <span className="font-semibold text-foreground">instalación (MEC)</span> en pesos. El total se
+            unifica con el dólar del día.
+          </p>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs font-medium shrink-0">Dólar del día</Label>
+            {readOnly || !setDolarHoy ? (
+              <span className="text-sm font-semibold tabular-nums">{formatUsd(dolarHoy)}</span>
+            ) : (
+              <Input
+                className="h-8 w-28 text-right text-sm tabular-nums"
+                inputMode="decimal"
+                value={dolarHoy > 0 ? String(dolarHoy) : ""}
+                onChange={(e) => {
+                  const n = Number(e.target.value.replace(",", "."));
+                  setDolarHoy(Number.isFinite(n) && n > 0 ? n : 0);
+                }}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       <Separator />

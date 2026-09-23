@@ -16,6 +16,8 @@ export type ClientePresupuesto = {
   email: string;
   direccion: string;
   notes: string;
+  esAgenteRetencion: boolean;
+  retencionPorcentaje: number | null;
 };
 
 export type ClienteInput = {
@@ -25,9 +27,19 @@ export type ClienteInput = {
   email?: string;
   direccion?: string;
   notes?: string;
+  esAgenteRetencion?: boolean;
+  retencionPorcentaje?: number | null;
 };
 
+function parsePorcentaje(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function clientRowToClientePresupuesto(row: ClientRow): ClientePresupuesto {
+  const esAgente = Boolean(row.es_agente_retencion);
+  const pct = parsePorcentaje(row.retencion_porcentaje);
   return {
     id: row.id,
     nombre: row.name,
@@ -36,6 +48,8 @@ export function clientRowToClientePresupuesto(row: ClientRow): ClientePresupuest
     email: row.email ?? "",
     direccion: row.address ?? "",
     notes: row.notes ?? "",
+    esAgenteRetencion: esAgente,
+    retencionPorcentaje: esAgente ? pct : null,
   };
 }
 
@@ -44,6 +58,12 @@ function toInsertPayload(input: ClienteInput): ClientInsert | { error: string } 
   if (!name) {
     return { error: "El nombre del cliente es obligatorio" };
   }
+  const esAgente = Boolean(input.esAgenteRetencion);
+  const pct = esAgente ? parsePorcentaje(input.retencionPorcentaje) : null;
+  if (esAgente && (pct == null || pct < 0 || pct > 100)) {
+    return { error: "Indicá el porcentaje de retención (entre 0 y 100)" };
+  }
+
   return {
     name,
     contact_name: input.contacto?.trim() || null,
@@ -51,6 +71,8 @@ function toInsertPayload(input: ClienteInput): ClientInsert | { error: string } 
     email: input.email?.trim() || null,
     address: input.direccion?.trim() || null,
     notes: input.notes?.trim() || null,
+    es_agente_retencion: esAgente,
+    retencion_porcentaje: pct,
   };
 }
 
@@ -125,6 +147,8 @@ export async function updateClient(
     email: payload.email,
     address: payload.address,
     notes: payload.notes,
+    es_agente_retencion: payload.es_agente_retencion,
+    retencion_porcentaje: payload.retencion_porcentaje,
   };
 
   const { data, error } = await supabase

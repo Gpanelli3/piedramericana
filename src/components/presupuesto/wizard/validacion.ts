@@ -116,7 +116,7 @@ export function validateOrdenesItems(
         continue;
       }
 
-      if (art.unidad === "ML" || art.unidad === "UNI") {
+      if (art.unidad === "ML" || art.unidad === "UNI" || art.unidad === "PIEZA" || art.unidad === "KG" || art.unidad === "TON") {
         if (qty <= 0) {
           return `Indicá la cantidad en «${art.descripcion}» (OT «${titulo}»).`;
         }

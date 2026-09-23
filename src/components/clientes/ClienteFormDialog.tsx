@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +32,8 @@ export type ClienteDraft = {
   email: string;
   direccion: string;
   notes: string;
+  esAgenteRetencion: boolean;
+  retencionPorcentaje: string;
 };
 
 export function emptyClienteDraft(prefillNombre = ""): ClienteDraft {
@@ -41,6 +44,8 @@ export function emptyClienteDraft(prefillNombre = ""): ClienteDraft {
     email: "",
     direccion: "",
     notes: "",
+    esAgenteRetencion: false,
+    retencionPorcentaje: "",
   };
 }
 
@@ -52,6 +57,11 @@ export function clienteToDraft(c: ClientePresupuesto): ClienteDraft {
     email: c.email,
     direccion: c.direccion,
     notes: c.notes,
+    esAgenteRetencion: c.esAgenteRetencion,
+    retencionPorcentaje:
+      c.esAgenteRetencion && c.retencionPorcentaje != null
+        ? String(c.retencionPorcentaje)
+        : "",
   };
 }
 
@@ -115,6 +125,13 @@ export function ClienteFormDialog({
       return;
     }
 
+    const pctRaw = draft.retencionPorcentaje.trim().replace(",", ".");
+    const pct = pctRaw === "" ? null : Number(pctRaw);
+    if (draft.esAgenteRetencion && (pct == null || !Number.isFinite(pct) || pct < 0 || pct > 100)) {
+      toast.error("Indicá el porcentaje de retención (entre 0 y 100).");
+      return;
+    }
+
     const input: ClienteInput = {
       nombre: draft.nombre,
       contacto: draft.contacto,
@@ -122,6 +139,8 @@ export function ClienteFormDialog({
       email: draft.email,
       direccion: draft.direccion,
       notes: draft.notes,
+      esAgenteRetencion: draft.esAgenteRetencion,
+      retencionPorcentaje: draft.esAgenteRetencion ? pct : null,
     };
 
     setGuardando(true);
@@ -195,6 +214,16 @@ export function ClienteFormDialog({
               <CampoLectura label="Email" value={draft.email} />
             </div>
             <CampoLectura label="Dirección" value={draft.direccion} />
+            <CampoLectura
+              label="Agente de retención"
+              value={
+                draft.esAgenteRetencion
+                  ? draft.retencionPorcentaje.trim()
+                    ? `${draft.retencionPorcentaje.trim()}%`
+                    : "Sí"
+                  : "No"
+              }
+            />
             <CampoLectura label="Notas internas" value={draft.notes} multilinea />
           </div>
         ) : (
@@ -243,6 +272,46 @@ export function ClienteFormDialog({
                 value={draft.direccion}
                 onChange={(e) => setDraft((d) => ({ ...d, direccion: e.target.value }))}
               />
+            </div>
+            <div className="space-y-2 rounded-md border border-border px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="agente-retencion"
+                  checked={draft.esAgenteRetencion}
+                  onCheckedChange={(v) =>
+                    setDraft((d) => ({
+                      ...d,
+                      esAgenteRetencion: v === true,
+                      retencionPorcentaje: v === true ? d.retencionPorcentaje : "",
+                    }))
+                  }
+                />
+                <Label htmlFor="agente-retencion" className="text-xs font-medium">
+                  Agente de retención
+                </Label>
+              </div>
+              {draft.esAgenteRetencion ? (
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="retencion-porcentaje">
+                    Porcentaje
+                  </Label>
+                  <div className="relative max-w-[8rem]">
+                    <Input
+                      id="retencion-porcentaje"
+                      className="h-9 pr-7 text-sm"
+                      inputMode="decimal"
+                      placeholder="5 o 10"
+                      value={draft.retencionPorcentaje}
+                      onChange={(e) =>
+                        setDraft((d) => ({ ...d, retencionPorcentaje: e.target.value }))
+                      }
+                    />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Notas internas</Label>

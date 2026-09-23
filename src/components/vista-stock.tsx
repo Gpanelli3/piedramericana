@@ -15,6 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Download, History, Plus, Truck } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ListasPrecioPanel } from "@/components/articulos/ListasPrecioPanel";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
@@ -53,6 +55,7 @@ export function VistaStock() {
   const [historialOpen, setHistorialOpen] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState<StockProductoUnidad | null>(null);
   const [productoOpen, setProductoOpen] = useState(false);
+  const [stockTab, setStockTab] = useState("inventario");
 
   const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -198,47 +201,79 @@ export function VistaStock() {
               ) : null}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {resumen.planchas} disponibles
-              {resumen.reservadas > 0 ? ` · ${resumen.reservadas} reservadas` : ""}
-              {` · ${resumen.materiales} materiales`}
-              {resumen.productos > 0
-                ? ` · ${resumen.productos} producto${resumen.productos === 1 ? "" : "s"}`
-                : ""}
+              {stockTab === "listas"
+                ? "Precios de mármoles, planchas y bachas por lista."
+                : `${resumen.planchas} disponibles${
+                    resumen.reservadas > 0 ? ` · ${resumen.reservadas} reservadas` : ""
+                  } · ${resumen.materiales} materiales${
+                    resumen.productos > 0
+                      ? ` · ${resumen.productos} producto${resumen.productos === 1 ? "" : "s"}`
+                      : ""
+                  }`}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" className="h-10 gap-1.5" onClick={() => setRemitoOpen(true)}>
-              <Truck className="h-4 w-4" />
-              Ingreso remito
-            </Button>
-            <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={exportCsv}>
-              <Download className="h-4 w-4" />
-              Exportar CSV
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" className="h-10 gap-1.5">
-                  Más
-                  <ChevronDown className="h-4 w-4 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => setHistorialOpen(true)}>
-                  Historial de remitos
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCatalogoOpen(true)}>
-                  Nombres de materiales
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setRecortesOpen(true)}>
-                  Cargar recorte
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {stockTab === "inventario" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" className="h-10 gap-1.5" onClick={() => setRemitoOpen(true)}>
+                <Truck className="h-4 w-4" />
+                Ingreso remito
+              </Button>
+              <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={exportCsv}>
+                <Download className="h-4 w-4" />
+                Exportar CSV
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" className="h-10 gap-1.5">
+                    Más
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onClick={() => setHistorialOpen(true)}>
+                    Historial de remitos
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCatalogoOpen(true)}>
+                    Nombres de materiales
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setRecortesOpen(true)}>
+                    Cargar recorte
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : null}
         </div>
       </header>
 
       <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-6">
+        <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
+          <TabsList>
+            <TabsTrigger value="inventario">Inventario</TabsTrigger>
+            <TabsTrigger value="listas">Listas de precio</TabsTrigger>
+          </TabsList>
+          <TabsContent value="inventario" className="space-y-4">
+        <StockMaterialesAgregadosTab
+          chapas={chapas}
+          materiales={materialesCatalogo}
+          onOpenMaterial={openDisponibilidad}
+        />
+
+        <StockProductosUnidadesTab
+          productos={productosUnidades}
+          loading={productosLoading}
+          error={productosError}
+          onOpenProducto={(p) => {
+            setProductoDetalle(p);
+            setProductoOpen(true);
+          }}
+        />
+          </TabsContent>
+          <TabsContent value="listas">
+            <ListasPrecioPanel />
+          </TabsContent>
+        </Tabs>
+
         <CrearRemitoDialog
           open={remitoOpen}
           onOpenChange={setRemitoOpen}
@@ -266,22 +301,6 @@ export function VistaStock() {
           onOpenChange={(o) => {
             setProductoOpen(o);
             if (!o) setProductoDetalle(null);
-          }}
-        />
-
-        <StockMaterialesAgregadosTab
-          chapas={chapas}
-          materiales={materialesCatalogo}
-          onOpenMaterial={openDisponibilidad}
-        />
-
-        <StockProductosUnidadesTab
-          productos={productosUnidades}
-          loading={productosLoading}
-          error={productosError}
-          onOpenProducto={(p) => {
-            setProductoDetalle(p);
-            setProductoOpen(true);
           }}
         />
       </div>

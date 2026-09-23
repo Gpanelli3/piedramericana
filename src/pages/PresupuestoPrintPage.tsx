@@ -26,6 +26,7 @@ import {
   etiquetaVersionPresupuesto,
   importeMecPresupuesto,
 } from "@/lib/presupuesto-calculos";
+import { descargarElementoComoPdf } from "@/lib/descargar-pdf";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -41,6 +42,8 @@ export function PresupuestoPrintPage() {
     return Number.isFinite(n) && n >= 1 ? n : null;
   })();
   const autoPrintDone = useRef(false);
+  const docPdfRef = useRef<HTMLDivElement>(null);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
 
   const [cargando, setCargando] = useState(true);
   const [fila, setFila] = useState<PresupuestoRow | null>(null);
@@ -114,12 +117,35 @@ export function PresupuestoPrintPage() {
     };
   }, [id, vnPedido]);
 
+  const descargarPdf = useCallback(async () => {
+    const el = docPdfRef.current;
+    if (!el || !fila) {
+      toast.error("El presupuesto todavía no está listo para descargar.");
+      return;
+    }
+    const ver =
+      nroMostrado != null && (esHistorica || nroMostrado > 1)
+        ? `_V${nroMostrado}`
+        : "";
+    setDescargandoPdf(true);
+    try {
+      await descargarElementoComoPdf(el, `Presupuesto_${fila.numero}${ver}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo generar el PDF.");
+    } finally {
+      setDescargandoPdf(false);
+    }
+  }, [esHistorica, fila, nroMostrado]);
+
+  const descargarPdfRef = useRef(descargarPdf);
+  descargarPdfRef.current = descargarPdf;
+
   useEffect(() => {
     if (!autoDescargar || cargando || !fila || autoPrintDone.current) return;
-    autoPrintDone.current = true;
     const t = window.setTimeout(() => {
-      window.print();
-    }, 350);
+      autoPrintDone.current = true;
+      void descargarPdfRef.current();
+    }, 400);
     return () => window.clearTimeout(t);
   }, [autoDescargar, cargando, fila]);
 
@@ -148,9 +174,15 @@ export function PresupuestoPrintPage() {
   return (
     <div className="min-h-dvh bg-neutral-100 text-foreground print:bg-white">
       <div className="print:hidden border-b bg-background flex flex-wrap items-center gap-2 px-6 py-3">
-        <Button type="button" size="sm" className="gap-1.5" onClick={() => window.print()}>
+        <Button
+          type="button"
+          size="sm"
+          className="gap-1.5"
+          disabled={cargando || !fila || !payload || descargandoPdf}
+          onClick={() => void descargarPdf()}
+        >
           <Download className="h-4 w-4" aria-hidden />
-          Descargar PDF
+          {descargandoPdf ? "Generando…" : "Descargar PDF"}
         </Button>
         <Button
           type="button"
@@ -179,35 +211,38 @@ export function PresupuestoPrintPage() {
             El detalle de este presupuesto no permite renderizar esta versión para impresión.
           </p>
         ) : (
-          <PresupuestoDocumento
-            numero={fila.numero}
-            fecha={new Date(fila.created_at).toLocaleDateString("es-AR")}
-            clienteNombre={payload.clienteNombre || fila.cliente}
-            contacto={payload.contacto}
-            tel={payload.tel}
-            email={payload.email}
-            direccion={payload.direccion}
-            observacion={payload.obsCabecera}
-            origenLabel={origenLabel}
-            moneda={payload.monedaPresupuesto}
-            ordenes={payload.ordenes}
-            articulos={articulos}
-            materials={materials}
-            descuentoPct={parseMoneyInput(payload.descuentoGlobalPct)}
-            mMedicion={payload.mMedicionGlobal}
-            mEntrega={payload.mEntregaGlobal}
-            mColocacion={payload.mColocacionGlobal}
-            totalMec={importeMecPresupuesto({
-              mMedicion: payload.mMedicionGlobal,
-              mEntrega: payload.mEntregaGlobal,
-              mColocacion: payload.mColocacionGlobal,
-              totalMec: payload.totalMecGlobal,
-              ordenes: payload.ordenes,
-            })}
-            obsMec={payload.obsServiciosMec}
-            versionLabel={versionLabel}
-            className="shadow-sm border border-neutral-200 bg-white p-4 sm:p-5 print:shadow-none print:border-0 print:p-0"
-          />
+          <div ref={docPdfRef}>
+            <PresupuestoDocumento
+              numero={fila.numero}
+              fecha={new Date(fila.created_at).toLocaleDateString("es-AR")}
+              clienteNombre={payload.clienteNombre || fila.cliente}
+              contacto={payload.contacto}
+              tel={payload.tel}
+              email={payload.email}
+              direccion={payload.direccion}
+              observacion={payload.obsCabecera}
+              origenLabel={origenLabel}
+              moneda={payload.monedaPresupuesto}
+              dolarHoy={payload.dolarHoy}
+              ordenes={payload.ordenes}
+              articulos={articulos}
+              materials={materials}
+              descuentoPct={parseMoneyInput(payload.descuentoGlobalPct)}
+              mMedicion={payload.mMedicionGlobal}
+              mEntrega={payload.mEntregaGlobal}
+              mColocacion={payload.mColocacionGlobal}
+              totalMec={importeMecPresupuesto({
+                mMedicion: payload.mMedicionGlobal,
+                mEntrega: payload.mEntregaGlobal,
+                mColocacion: payload.mColocacionGlobal,
+                totalMec: payload.totalMecGlobal,
+                ordenes: payload.ordenes,
+              })}
+              obsMec={payload.obsServiciosMec}
+              versionLabel={versionLabel}
+              className="shadow-sm border border-neutral-200 bg-white p-4 sm:p-5 print:shadow-none print:border-0 print:p-0"
+            />
+          </div>
         )}
       </div>
     </div>

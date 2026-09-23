@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pencil, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -222,7 +223,17 @@ export function ClientesCatalogo() {
                     className="cursor-pointer"
                     onClick={() => abrirFicha(c)}
                   >
-                    <TableCell className="font-medium">{c.nombre}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate">{c.nombre}</span>
+                        {c.esAgenteRetencion ? (
+                          <Badge variant="outline" className="shrink-0 text-[10px] font-medium">
+                            Ret.
+                            {c.retencionPorcentaje != null ? ` ${c.retencionPorcentaje}%` : ""}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {c.contacto && c.contacto !== c.nombre ? c.contacto : "—"}
                     </TableCell>

@@ -34,12 +34,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   createListaPrecio,
-  fetchArticulosPreciosDeLista,
   fetchListasPrecioTodas,
+  fetchMaterialesPreciosDeLista,
   updateListaPrecio,
-  upsertPrecioListaArticulo,
+  upsertPrecioListaMaterial,
   type ListaPrecioUpsertInput,
-  type PrecioListaArticuloRow,
+  type PrecioListaMaterialRow,
 } from "@/lib/articulos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import type { ListaPrecioRow } from "@/types/articulos";
@@ -58,7 +58,7 @@ function emptyLista(): ListaPrecioUpsertInput {
 export function ListasPrecioPanel() {
   const [listas, setListas] = useState<ListaPrecioRow[]>([]);
   const [listaId, setListaId] = useState<string | null>(null);
-  const [filas, setFilas] = useState<PrecioListaArticuloRow[]>([]);
+  const [filas, setFilas] = useState<PrecioListaMaterialRow[]>([]);
   const [draftPrecios, setDraftPrecios] = useState<Record<string, string>>({});
   const [cargandoListas, setCargandoListas] = useState(true);
   const [cargandoFilas, setCargandoFilas] = useState(false);
@@ -98,7 +98,7 @@ export function ListasPrecioPanel() {
 
   const recargarFilas = useCallback(async (id: string) => {
     setCargandoFilas(true);
-    const { data, error } = await fetchArticulosPreciosDeLista(id);
+    const { data, error } = await fetchMaterialesPreciosDeLista(id);
     if (error) {
       toast.error(error.message);
       setFilas([]);
@@ -108,7 +108,7 @@ export function ListasPrecioPanel() {
       setFilas(rows);
       const map: Record<string, string> = {};
       for (const r of rows) {
-        map[r.articulo_id] = r.precio != null ? String(r.precio) : "";
+        map[r.material_id] = r.precio != null ? String(r.precio) : "";
       }
       setDraftPrecios(map);
     }
@@ -179,9 +179,9 @@ export function ListasPrecioPanel() {
     }
   };
 
-  const guardarPrecioFila = async (articuloId: string) => {
+  const guardarPrecioFila = async (materialId: string) => {
     if (!listaId) return;
-    const raw = (draftPrecios[articuloId] ?? "").trim().replace(",", ".");
+    const raw = (draftPrecios[materialId] ?? "").trim().replace(",", ".");
     let precio: number | null = null;
     if (raw !== "") {
       const n = Number.parseFloat(raw);
@@ -191,10 +191,10 @@ export function ListasPrecioPanel() {
       }
       precio = n;
     }
-    setGuardandoPrecioId(articuloId);
-    const { error } = await upsertPrecioListaArticulo({
+    setGuardandoPrecioId(materialId);
+    const { error } = await upsertPrecioListaMaterial({
       lista_precio_id: listaId,
-      articulo_id: articuloId,
+      material_id: materialId,
       precio,
     });
     setGuardandoPrecioId(null);
@@ -274,7 +274,7 @@ export function ListasPrecioPanel() {
         </div>
       ) : !listaId ? (
         <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-          Creá una lista de precios para empezar a cargar valores.
+          Creá una lista de precios para mármoles, planchas y bachas.
         </div>
       ) : cargandoFilas ? (
         <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground">
@@ -286,7 +286,7 @@ export function ListasPrecioPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead>Código</TableHead>
-                <TableHead>Artículo</TableHead>
+                <TableHead>Material</TableHead>
                 <TableHead className="w-36">Precio ({listaActiva?.moneda.toUpperCase()})</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
@@ -294,12 +294,12 @@ export function ListasPrecioPanel() {
             <TableBody>
               {filas.map((f) => {
                 const dirty =
-                  (draftPrecios[f.articulo_id] ?? "") !==
+                  (draftPrecios[f.material_id] ?? "") !==
                   (f.precio != null ? String(f.precio) : "");
                 return (
-                  <TableRow key={f.articulo_id}>
-                    <TableCell className="font-mono text-xs">{f.codigo}</TableCell>
-                    <TableCell>{f.descripcion}</TableCell>
+                  <TableRow key={f.material_id}>
+                    <TableCell className="font-mono text-xs">{f.codigo ?? "—"}</TableCell>
+                    <TableCell>{f.name}</TableCell>
                     <TableCell>
                       <Input
                         className={cn(
@@ -308,11 +308,11 @@ export function ListasPrecioPanel() {
                         )}
                         inputMode="decimal"
                         placeholder="—"
-                        value={draftPrecios[f.articulo_id] ?? ""}
+                        value={draftPrecios[f.material_id] ?? ""}
                         onChange={(e) =>
                           setDraftPrecios((prev) => ({
                             ...prev,
-                            [f.articulo_id]: e.target.value,
+                            [f.material_id]: e.target.value,
                           }))
                         }
                       />
@@ -323,10 +323,10 @@ export function ListasPrecioPanel() {
                         size="sm"
                         variant={dirty ? "default" : "outline"}
                         className="h-8 text-xs"
-                        disabled={!dirty || guardandoPrecioId === f.articulo_id}
-                        onClick={() => void guardarPrecioFila(f.articulo_id)}
+                        disabled={!dirty || guardandoPrecioId === f.material_id}
+                        onClick={() => void guardarPrecioFila(f.material_id)}
                       >
-                        {guardandoPrecioId === f.articulo_id ? "…" : "Guardar"}
+                        {guardandoPrecioId === f.material_id ? "…" : "Guardar"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -342,7 +342,7 @@ export function ListasPrecioPanel() {
           <DialogHeader>
             <DialogTitle>{editandoId ? "Editar lista" : "Nueva lista de precios"}</DialogTitle>
             <DialogDescription>
-              Las listas activas aparecen al armar presupuestos (ej. General, Contado).
+              Las listas (General, Contado, etc.) definen el precio de mármoles, planchas y bachas.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -399,7 +399,7 @@ export function ListasPrecioPanel() {
               <div>
                 <Label className="text-xs">Activa</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Si está off, no se ofrece en presupuestos nuevos.
+                  Si está off, no se ofrece al armar presupuestos.
                 </p>
               </div>
               <Switch

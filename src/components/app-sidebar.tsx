@@ -70,7 +70,7 @@ const NAV_ITEMS: NavItemDef[] = [
   },
   {
     id: "articulos",
-    label: "Sub-ítems",
+    label: "Trabajos",
     icon: <Tags className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
   },

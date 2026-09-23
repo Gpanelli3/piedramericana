@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Download, Pencil, Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +51,7 @@ import {
   etiquetaVersionPresupuesto,
   importeMecPresupuesto,
 } from "@/lib/presupuesto-calculos";
+import { descargarElementoComoPdf } from "@/lib/descargar-pdf";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -91,6 +92,8 @@ export function VistaVentas() {
   const [viendoNro, setViendoNro] = useState<number | null>(null);
   const [payloadHistorico, setPayloadHistorico] = useState<PresupuestoPayloadV1 | null>(null);
   const [historicoCargando, setHistoricoCargando] = useState(false);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const docPdfRef = useRef<HTMLDivElement>(null);
 
   const refreshLista = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -311,6 +314,23 @@ export function VistaVentas() {
     [navigate],
   );
 
+  const descargarPdfResumen = useCallback(async () => {
+    const el = docPdfRef.current;
+    if (!el || !filaResumen) {
+      toast.error("El presupuesto todavía no está listo para descargar.");
+      return;
+    }
+    const ver = viendoNro != null ? `_V${viendoNro}` : "";
+    setDescargandoPdf(true);
+    try {
+      await descargarElementoComoPdf(el, `Presupuesto_${filaResumen.numero}${ver}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo generar el PDF.");
+    } finally {
+      setDescargandoPdf(false);
+    }
+  }, [filaResumen, viendoNro]);
+
   const origenLabelResumen = useMemo(() => {
     if (!payload) return "";
     return (
@@ -417,10 +437,25 @@ export function VistaVentas() {
         )}
       </main>
 
-      <Dialog open={resumenAbierto} onOpenChange={(o) => !o && cerrarResumen()}>
+      <Dialog
+        open={resumenAbierto}
+        onOpenChange={(o) => {
+          if (!o && descargandoPdf) return;
+          if (!o) cerrarResumen();
+        }}
+      >
         <DialogContent
           className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
           showCloseButton
+          onInteractOutside={(e) => {
+            if (descargandoPdf) e.preventDefault();
+          }}
+          onFocusOutside={(e) => {
+            if (descargandoPdf) e.preventDefault();
+          }}
+          onPointerDownOutside={(e) => {
+            if (descargandoPdf) e.preventDefault();
+          }}
         >
           <DialogHeader className="border-b bg-muted/30 px-5 py-4 shrink-0 space-y-1 print:hidden">
             <DialogTitle className="text-lg font-bold tracking-tight">
@@ -475,41 +510,44 @@ export function VistaVentas() {
                 El detalle guardado no es compatible con esta vista de resumen.
               </div>
             ) : (
-              <PresupuestoDocumento
-                numero={filaResumen.numero}
-                fecha={new Date(filaResumen.created_at).toLocaleDateString("es-AR")}
-                clienteNombre={payload.clienteNombre || filaResumen.cliente}
-                contacto={payload.contacto}
-                tel={payload.tel}
-                email={payload.email}
-                direccion={payload.direccion}
-                observacion={payload.obsCabecera}
-                origenLabel={origenLabelResumen}
-                moneda={payload.monedaPresupuesto}
-                ordenes={payload.ordenes}
-                articulos={docArticulos}
-                materials={docMaterials}
-                descuentoPct={parseMoneyInput(payload.descuentoGlobalPct)}
-                mMedicion={payload.mMedicionGlobal}
-                mEntrega={payload.mEntregaGlobal}
-                mColocacion={payload.mColocacionGlobal}
-                totalMec={importeMecPresupuesto({
-                  mMedicion: payload.mMedicionGlobal,
-                  mEntrega: payload.mEntregaGlobal,
-                  mColocacion: payload.mColocacionGlobal,
-                  totalMec: payload.totalMecGlobal,
-                  ordenes: payload.ordenes,
-                })}
-                obsMec={payload.obsServiciosMec}
-                versionLabel={
-                  viendoNro != null
-                    ? etiquetaVersionPresupuesto(viendoNro, "historica")
-                    : nroVigente > 1
-                      ? etiquetaVersionPresupuesto(nroVigente)
-                      : ""
-                }
-                className="mx-auto max-w-3xl bg-white p-4 sm:p-5 shadow-sm border border-neutral-200 print:shadow-none print:border-0 print:p-0"
-              />
+              <div ref={docPdfRef}>
+                <PresupuestoDocumento
+                  numero={filaResumen.numero}
+                  fecha={new Date(filaResumen.created_at).toLocaleDateString("es-AR")}
+                  clienteNombre={payload.clienteNombre || filaResumen.cliente}
+                  contacto={payload.contacto}
+                  tel={payload.tel}
+                  email={payload.email}
+                  direccion={payload.direccion}
+                  observacion={payload.obsCabecera}
+                  origenLabel={origenLabelResumen}
+                  moneda={payload.monedaPresupuesto}
+                  dolarHoy={payload.dolarHoy}
+                  ordenes={payload.ordenes}
+                  articulos={docArticulos}
+                  materials={docMaterials}
+                  descuentoPct={parseMoneyInput(payload.descuentoGlobalPct)}
+                  mMedicion={payload.mMedicionGlobal}
+                  mEntrega={payload.mEntregaGlobal}
+                  mColocacion={payload.mColocacionGlobal}
+                  totalMec={importeMecPresupuesto({
+                    mMedicion: payload.mMedicionGlobal,
+                    mEntrega: payload.mEntregaGlobal,
+                    mColocacion: payload.mColocacionGlobal,
+                    totalMec: payload.totalMecGlobal,
+                    ordenes: payload.ordenes,
+                  })}
+                  obsMec={payload.obsServiciosMec}
+                  versionLabel={
+                    viendoNro != null
+                      ? etiquetaVersionPresupuesto(viendoNro, "historica")
+                      : nroVigente > 1
+                        ? etiquetaVersionPresupuesto(nroVigente)
+                        : ""
+                  }
+                  className="mx-auto max-w-3xl bg-white p-4 sm:p-5 shadow-sm border border-neutral-200 print:shadow-none print:border-0 print:p-0"
+                />
+              </div>
             )}
           </div>
           <DialogFooter className="border-t bg-background px-4 py-3 sm:px-5 print:hidden sm:justify-between gap-3">
@@ -579,17 +617,11 @@ export function VistaVentas() {
               <Button
                 type="button"
                 className="gap-1.5"
-                disabled={!filaResumen}
-                onClick={() =>
-                  navigate(
-                    viendoNro != null
-                      ? `/presupuestos/${filaResumen!.id}/imprimir?descargar=1&vn=${viendoNro}`
-                      : `/presupuestos/${filaResumen!.id}/imprimir?descargar=1`,
-                  )
-                }
+                disabled={!filaResumen || !payload || descargandoPdf}
+                onClick={() => void descargarPdfResumen()}
               >
                 <Download className="h-4 w-4" />
-                Descargar PDF
+                {descargandoPdf ? "Generando…" : "Descargar PDF"}
               </Button>
             </div>
           </DialogFooter>

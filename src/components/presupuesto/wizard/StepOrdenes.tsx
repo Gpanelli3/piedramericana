@@ -211,9 +211,6 @@ export function StepOrdenes({
                               value={ot.fechaEntrega}
                               onChange={(iso) => patchOrden(ot.key, { fechaEntrega: iso })}
                             />
-                            <p className="text-[10px] text-muted-foreground leading-snug">
-                              Queda en la OT de producción al señar (fecha programada).
-                            </p>
                           </div>
                           <PickChapaParaOt
                             materialNombre={materialRow?.name}
@@ -316,16 +313,13 @@ export function StepOrdenes({
                               }
                               className="mt-0.5"
                             />
-                            <div className="min-w-0 space-y-1">
+                            <div className="min-w-0">
                               <Label
                                 htmlFor={`${ot.key}-excluir-mec`}
                                 className="text-xs font-medium leading-snug"
                               >
                                 Esta OT no incluye MEC
                               </Label>
-                              <p className="text-[10px] text-muted-foreground leading-snug">
-                                El importe MEC del presupuesto no cubre esta orden (p. ej. mesa redonda).
-                              </p>
                             </div>
                           </div>
                           {ot.excluirMec ? (

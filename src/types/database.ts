@@ -23,7 +23,7 @@ export type VentaEstado =
   | "entregado";
 export type EtapaOtKanban = "medicion" | "corte" | "produccion" | "despacho";
 export type OtTipo = "normal" | "reposicion";
-export type UnidadArticuloDb = "M2" | "ML" | "UNI";
+export type UnidadArticuloDb = "M2" | "ML" | "UNI" | "PIEZA" | "KG" | "TON";
 export type RolOperativo =
   | "vendedor"
   | "medidor"
@@ -332,6 +332,8 @@ export interface Database {
           phone: string | null;
           address: string | null;
           notes: string | null;
+          es_agente_retencion: boolean;
+          retencion_porcentaje: number | null;
           created_at: string;
         };
         Insert: {
@@ -342,6 +344,8 @@ export interface Database {
           phone?: string | null;
           address?: string | null;
           notes?: string | null;
+          es_agente_retencion?: boolean;
+          retencion_porcentaje?: number | null;
           created_at?: string;
         };
         Update: {
@@ -352,6 +356,8 @@ export interface Database {
           phone?: string | null;
           address?: string | null;
           notes?: string | null;
+          es_agente_retencion?: boolean;
+          retencion_porcentaje?: number | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1478,6 +1484,8 @@ export interface Database {
           prefer_modo_manual: boolean;
           activo: boolean;
           sort_order: number;
+          precio: number | null;
+          moneda: "ars" | "usd";
           created_at: string;
           updated_at: string;
         };
@@ -1491,6 +1499,8 @@ export interface Database {
           prefer_modo_manual?: boolean;
           activo?: boolean;
           sort_order?: number;
+          precio?: number | null;
+          moneda?: "ars" | "usd";
           created_at?: string;
           updated_at?: string;
         };
@@ -1503,6 +1513,8 @@ export interface Database {
           medida_estandar_m2?: number | null;
           prefer_modo_manual?: boolean;
           activo?: boolean;
+          precio?: number | null;
+          moneda?: "ars" | "usd";
           sort_order?: number;
           created_at?: string;
           updated_at?: string;
@@ -1579,6 +1591,51 @@ export interface Database {
             columns: ["usuario_id"];
             isOneToOne: false;
             referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      listas_precio_materiales: {
+        Row: {
+          id: string;
+          lista_precio_id: string;
+          material_id: string;
+          precio: number;
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          lista_precio_id: string;
+          material_id: string;
+          precio: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          lista_precio_id?: string;
+          material_id?: string;
+          precio?: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "listas_precio_materiales_lista_precio_id_fkey";
+            columns: ["lista_precio_id"];
+            isOneToOne: false;
+            referencedRelation: "listas_precio";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "listas_precio_materiales_material_id_fkey";
+            columns: ["material_id"];
+            isOneToOne: false;
+            referencedRelation: "materials";
             referencedColumns: ["id"];
           },
         ];

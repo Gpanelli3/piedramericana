@@ -23,7 +23,11 @@ type StepConfirmacionProps = {
   clienteNombre: string;
   listaPrecioLabel: string;
   origenLabel: string;
-  monedaPresupuesto: string;
+  monedaPresupuesto: "ars" | "usd";
+  dolarHoy: number;
+  setDolarHoy: (n: number) => void;
+  totalUsdEquivalente: number;
+  totalArsEquivalente: number;
   ordenesCount: number;
   lineItemsCount: number;
   faltaPesoNonMarmol: boolean;
@@ -118,6 +122,10 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
     listaPrecioLabel,
     origenLabel,
     monedaPresupuesto,
+    dolarHoy,
+    setDolarHoy,
+    totalUsdEquivalente,
+    totalArsEquivalente,
     ordenesCount,
     lineItemsCount,
     faltaPesoNonMarmol,
@@ -145,8 +153,10 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
   } = props;
 
   const monedaLabel = monedaPresupuesto === "usd" ? "USD" : "ARS";
+  const prefijoItems = monedaPresupuesto === "usd" ? "US$" : "$";
   const mecActivo =
     !mecExcluidoTodasOts && mecAlgunoActivo(mMedicionGlobal, mEntregaGlobal, mColocacionGlobal);
+  const mixta = monedaPresupuesto === "usd";
 
   return (
     <SectionPresupuesto borderAccentClass="border-t-4 border-t-violet-500">
@@ -186,7 +196,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                       </p>
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                      ${formatMoney(p.subtotal)}
+                      {prefijoItems}{formatMoney(p.subtotal)}
                     </p>
                   </li>
                 ))}
@@ -209,7 +219,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                 <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
                   {mecExcluidoTodasOts
                     ? "Todas las OTs están marcadas sin MEC: el importe pasa a $0."
-                    : "Marcá lo que se cobra. Si hay alguno activo, el importe es obligatorio."}
+                    : "Marcá lo que se cobra. El MEC se carga en pesos, aunque el producto esté en dólares."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
@@ -248,7 +258,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                 </div>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Importe MEC ($)</Label>
+                <Label className="text-xs">Importe MEC (ARS)</Label>
                 <Input
                   className="h-9 text-sm tabular-nums"
                   inputMode="decimal"
@@ -278,7 +288,7 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
               </header>
 
               <div className="space-y-0 px-3 py-2">
-                <TotRow label="Subtotal ítems" value={`$${formatMoney(totalesItemsSubtotal)}`} />
+                <TotRow label={`Subtotal ítems (${monedaLabel})`} value={`${prefijoItems}${formatMoney(totalesItemsSubtotal)}`} />
                 <div className="flex items-end justify-between gap-3 py-1.5">
                   <Label htmlFor="desc-global" className="text-xs text-muted-foreground">
                     Descuento
@@ -296,21 +306,51 @@ export function StepConfirmacion(props: StepConfirmacionProps) {
                   </div>
                 </div>
                 <TotRow
-                  label="Neto ítems"
-                  value={`$${formatMoney(totalesItemsTotalConDesc)}`}
+                  label={`Neto ítems (${monedaLabel})`}
+                  value={`${prefijoItems}${formatMoney(totalesItemsTotalConDesc)}`}
                   muted
                 />
                 <TotRow
-                  label="MEC"
+                  label="MEC (ARS)"
                   value={`$${formatMoney(totalMecImporte)}`}
                   muted
                 />
+                {mixta ? (
+                  <div className="flex items-end justify-between gap-3 py-1.5">
+                    <Label htmlFor="dolar-hoy-conf" className="text-xs text-muted-foreground">
+                      Dólar del día
+                    </Label>
+                    <Input
+                      id="dolar-hoy-conf"
+                      className="h-8 w-24 text-right text-sm tabular-nums"
+                      inputMode="decimal"
+                      value={dolarHoy > 0 ? String(dolarHoy) : ""}
+                      onChange={(e) => {
+                        const n = Number(e.target.value.replace(",", "."));
+                        setDolarHoy(Number.isFinite(n) && n > 0 ? n : 0);
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-1 border-t border-border/70 pt-2">
                   <TotRow
                     label={`Total (${monedaLabel})`}
-                    value={`$${formatMoney(totalPresupuesto)}`}
+                    value={`${prefijoItems}${formatMoney(totalPresupuesto)}`}
                     strong
                   />
+                  {mixta ? (
+                    <TotRow
+                      label="Equivalente ARS"
+                      value={`$${formatMoney(totalArsEquivalente)}`}
+                      muted
+                    />
+                  ) : (
+                    <TotRow
+                      label="Equivalente USD"
+                      value={`US$${formatMoney(totalUsdEquivalente)}`}
+                      muted
+                    />
+                  )}
                 </div>
               </div>
 

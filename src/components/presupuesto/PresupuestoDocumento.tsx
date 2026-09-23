@@ -5,6 +5,7 @@ import {
   articuloConPrecioToMock,
   buildLineaCalcInput,
   computeLineaPresupuesto,
+  equivalentesMonedaMixta,
   formatMetraje,
   labelUnidad,
   parseDecimalInput,
@@ -27,6 +28,8 @@ export type PresupuestoDocumentoProps = {
   origenLabel?: string;
   listaPrecioLabel?: string;
   moneda: "ars" | "usd";
+  /** Tipo de cambio del día. El MEC se imprime siempre en pesos. */
+  dolarHoy?: number;
   ordenes: OrdenTrabajoWizard[];
   articulos: ArticuloConPrecio[];
   materials?: MaterialWizardRow[];
@@ -134,6 +137,7 @@ export function PresupuestoDocumento({
   origenLabel = "",
   listaPrecioLabel = "",
   moneda,
+  dolarHoy = 0,
   ordenes,
   articulos,
   materials = [],
@@ -211,7 +215,14 @@ export function PresupuestoDocumento({
   const dPct = Math.max(0, Math.min(descuentoPct, 100));
   const factor = 1 - dPct / 100;
   const netoItems = subtotalItems * factor;
-  const totalGeneral = netoItems + (mecActivo ? totalMec : 0);
+  const mecArs = mecActivo ? totalMec : 0;
+  const eq = equivalentesMonedaMixta({
+    items: netoItems,
+    monedaItems: moneda,
+    mecArs,
+    dolarHoy,
+  });
+  const totalGeneral = eq.totalEnMonedaItems;
 
   const fechaMostrada =
     fecha?.trim() ||
@@ -378,18 +389,18 @@ export function PresupuestoDocumento({
                   <td className="px-2 py-1.5 text-center">u.</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">1,00</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">
-                    {formatMoney(totalMec, moneda)}
+                    {formatMoney(totalMec, "ars")}
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                    {formatMoney(totalMec, moneda)}
+                    {formatMoney(totalMec, "ars")}
                   </td>
                 </tr>
                 <tr className="bg-neutral-50 border-t border-neutral-400">
                   <td colSpan={4} className="px-2 py-1 text-right font-semibold">
-                    SubTotal {suf}:
+                    SubTotal $:
                   </td>
                   <td className="px-2 py-1 text-right tabular-nums font-semibold">
-                    {formatMoney(totalMec, moneda)}
+                    {formatMoney(totalMec, "ars")}
                   </td>
                 </tr>
               </Fragment>
@@ -402,28 +413,49 @@ export function PresupuestoDocumento({
       <div className="mt-3 flex flex-col items-end gap-1">
         <div className="w-full max-w-xs border border-neutral-800">
           <div className="flex justify-between gap-4 px-3 py-1.5 border-b border-neutral-300">
-            <span className="font-semibold">SubTotal {suf}:</span>
+            <span className="font-semibold">Producto {suf}:</span>
             <span className="tabular-nums font-semibold">
-              {formatMoney(subtotalItems + (mecActivo ? totalMec : 0), moneda)}
+              {formatMoney(dPct > 0 ? netoItems : subtotalItems, moneda)}
             </span>
           </div>
           {dPct > 0 ? (
-            <div className="flex justify-between gap-4 px-3 py-1.5 bg-neutral-100">
-              <span className="font-semibold">
-                SubTotal con Descuento {formatQty(dPct)}%:
-              </span>
-              <span className="tabular-nums font-semibold">
-                {formatMoney(totalGeneral, moneda)}
+            <div className="flex justify-between gap-4 px-3 py-1.5 border-b border-neutral-300 text-neutral-600">
+              <span>Descuento {formatQty(dPct)}%</span>
+              <span className="tabular-nums">
+                {formatMoney(subtotalItems - netoItems, moneda)}
               </span>
             </div>
-          ) : (
-            <div className="flex justify-between gap-4 px-3 py-1.5 bg-neutral-100">
-              <span className="font-semibold">Total {suf}:</span>
+          ) : null}
+          {mecActivo ? (
+            <div className="flex justify-between gap-4 px-3 py-1.5 border-b border-neutral-300">
+              <span className="font-semibold">Instalación / MEC $:</span>
               <span className="tabular-nums font-semibold">
-                {formatMoney(totalGeneral, moneda)}
+                {formatMoney(totalMec, "ars")}
               </span>
             </div>
-          )}
+          ) : null}
+          {dolarHoy > 0 ? (
+            <div className="flex justify-between gap-4 px-3 py-1.5 border-b border-neutral-300 text-neutral-600">
+              <span>Dólar del día</span>
+              <span className="tabular-nums">{formatMoney(dolarHoy, "usd")}</span>
+            </div>
+          ) : null}
+          <div className="flex justify-between gap-4 px-3 py-1.5 bg-neutral-100">
+            <span className="font-semibold">Total {suf}:</span>
+            <span className="tabular-nums font-semibold">
+              {formatMoney(totalGeneral, moneda)}
+            </span>
+          </div>
+          {dolarHoy > 0 ? (
+            <div className="flex justify-between gap-4 px-3 py-1.5 text-neutral-600">
+              <span>Equivalente {moneda === "usd" ? "$" : "u$s"}:</span>
+              <span className="tabular-nums">
+                {moneda === "usd"
+                  ? formatMoney(eq.totalArs, "ars")
+                  : formatMoney(eq.totalUsd, "usd")}
+              </span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -432,7 +464,7 @@ export function PresupuestoDocumento({
         <p>A los precios indicados se les debe adicionar el IVA correspondiente.</p>
         <p>
           Presupuesto sujeto a medición final en obra y a variación del tipo de cambio
-          {moneda === "usd" ? " (dólar)" : ""}.
+          {dolarHoy > 0 ? ` (dólar del día ${formatMoney(dolarHoy, "usd")})` : ""}.
         </p>
         <p>
           No incluye bachas u otros artículos de stock salvo que figuren como ítem en alguna OT.

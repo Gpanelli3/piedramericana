@@ -36,16 +36,20 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useArticulos } from "@/hooks/useArticulos";
+import { fetchPreciosMaterialesPorLista } from "@/lib/articulos-api";
 import {
   articuloConPrecioToMock,
   buildLineaCalcInput,
   computeLineaPresupuesto,
   dimensionesHabilitadas,
+  equivalentesMonedaMixta,
+  esArticuloCobraMaterial,
   formatMetraje,
   formatToneladas,
   importeMecPresupuesto,
   labelUnidad,
   materialPesoEstimadoDesdeOt,
+  precioSugeridoLinea,
   todasOtsExcluyenMec,
 } from "@/lib/presupuesto-calculos";
 import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
@@ -170,7 +174,7 @@ function buildPresupuestoPayloadV1(opts: {
 export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const { onPersisted, presupuestoId = null } = props;
   const { user } = useAuth();
-  const dolarHoy = 1250.5;
+  const [dolarHoy, setDolarHoy] = useState(1250.5);
   const editando = Boolean(presupuestoId);
   /** En la 1ª carga de artículos en edición no pisamos precios guardados. */
   const omitirSyncPreciosRef = useRef(editando);
@@ -225,9 +229,35 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     }
   }, [listaPrecioId, listasPrecios, editCargando]);
 
+  useEffect(() => {
+    if (!listaPrecioId || !isSupabaseConfigured) {
+      setPreciosMaterial({});
+      return;
+    }
+    let cancelled = false;
+    void fetchPreciosMaterialesPorLista(listaPrecioId).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        toast.error(`No se pudieron cargar los precios de materiales: ${error.message}`);
+        setPreciosMaterial({});
+        setPreciosMaterialEpoch((n) => n + 1);
+        return;
+      }
+      setPreciosMaterial(data ?? {});
+      setPreciosMaterialEpoch((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [listaPrecioId]);
+
   const [materials, setMaterials] = useState<MaterialWizardRow[]>([]);
   const [materialesCargando, setMateriaesCargando] =
     useState(isSupabaseConfigured);
+  const [preciosMaterial, setPreciosMaterial] = useState<Record<string, number>>(
+    {},
+  );
+  const [preciosMaterialEpoch, setPreciosMaterialEpoch] = useState(0);
   const catalogoCargando = materialesCargando || articulosCargando;
 
   const [ordenes, setOrdenes] = useState<OrdenTrabajoWizard[]>(() => [
@@ -241,8 +271,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     observacion: "",
   }));
 
-  const [cotizacionMixtaActiva] = useState(false);
-  const [monedaFinal] = useState("pesos");
+  const [cotizacionMixtaActiva, setCotizacionMixtaActiva] = useState(true);
+  const [monedaFinal, setMonedaFinal] = useState("pesos");
   const [lineasResumen, setLineasResumen] = useState<LineaResumenMoneda[]>([
     {
       id: "piedra",
@@ -355,9 +385,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           if (!linea.articuloId) return linea;
 
           const articulo = articulosBd.find((item) => item.id === linea.articuloId);
-          if (!articulo) return linea;
+          if (!articulo || esArticuloCobraMaterial(articulo.codigo)) return linea;
 
-          const precioUnitario = articulo.precio != null ? String(articulo.precio) : "";
+          const precioUnitario = precioSugeridoLinea({
+            codigoArticulo: articulo.codigo,
+            precioTrabajo: articulo.precio,
+            precioMaterial: null,
+          });
           if (linea.precioUnitario === precioUnitario) return linea;
 
           changed = true;
@@ -368,6 +402,31 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       return changed ? next : prev;
     });
   }, [articulosBd]);
+
+  useEffect(() => {
+    if (preciosMaterialEpoch <= 1) return;
+    if (omitirSyncPreciosRef.current || articulosBd.length === 0) return;
+
+    setOrdenes((prevOrdenes) => {
+      let changed = false;
+      const next = prevOrdenes.map((orden) => ({
+        ...orden,
+        items: orden.items.map((linea) => {
+          const articulo = articulosBd.find((item) => item.id === linea.articuloId);
+          if (!articulo || !esArticuloCobraMaterial(articulo.codigo)) return linea;
+          const precioUnitario = precioSugeridoLinea({
+            codigoArticulo: articulo.codigo,
+            precioTrabajo: articulo.precio,
+            precioMaterial: preciosMaterial[orden.materialId] ?? null,
+          });
+          if (linea.precioUnitario === precioUnitario) return linea;
+          changed = true;
+          return { ...linea, precioUnitario };
+        }),
+      }));
+      return changed ? next : prevOrdenes;
+    });
+  }, [preciosMaterialEpoch, preciosMaterial, articulosBd]);
 
   useEffect(() => {
     if (!presupuestoId) {
@@ -416,6 +475,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       setObsCabecera(payload.obsCabecera ?? "");
       setListaPrecioId(payload.listaPrecioId ?? "");
       setMonedaPresupuesto(payload.monedaPresupuesto === "ars" ? "ars" : "usd");
+      if (payload.dolarHoy > 0) setDolarHoy(payload.dolarHoy);
+      if (typeof payload.cotizacionMixtaActiva === "boolean") {
+        setCotizacionMixtaActiva(payload.cotizacionMixtaActiva);
+      }
+      if (payload.monedaFinal === "pesos" || payload.monedaFinal === "dolares") {
+        setMonedaFinal(payload.monedaFinal);
+      }
       setOrdenes(
         payload.ordenes.length > 0 ? payload.ordenes : [newOrdenTrabajo("")],
       );
@@ -476,7 +542,26 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
   const patchOrden = (key: string, patch: Partial<OrdenTrabajoWizard>) => {
     setOrdenes((rows) =>
-      rows.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+      rows.map((r) => {
+        if (r.key !== key) return r;
+        const next = { ...r, ...patch };
+        if (patch.materialId == null || patch.materialId === r.materialId) {
+          return next;
+        }
+        next.items = next.items.map((linea) => {
+          const articulo = articulosBd.find((a) => a.id === linea.articuloId);
+          if (!articulo || !esArticuloCobraMaterial(articulo.codigo)) return linea;
+          return {
+            ...linea,
+            precioUnitario: precioSugeridoLinea({
+              codigoArticulo: articulo.codigo,
+              precioTrabajo: articulo.precio,
+              precioMaterial: preciosMaterial[patch.materialId] ?? null,
+            }),
+          };
+        });
+        return next;
+      }),
     );
   };
 
@@ -549,10 +634,15 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     const artBd = articulosBd.find((a) => a.id === articuloId);
     if (!artBd) return;
     const art = articuloConPrecioToMock(artBd);
+    const ot = ordenes.find((o) => o.key === otKey);
     patchItem(otKey, lineKey, {
       articuloId,
       modoIngreso: art.preferModoManualM2 ? "manual" : "dimensiones",
-      precioUnitario: artBd.precio != null ? String(artBd.precio) : "",
+      precioUnitario: precioSugeridoLinea({
+        codigoArticulo: artBd.codigo,
+        precioTrabajo: artBd.precio,
+        precioMaterial: ot ? (preciosMaterial[ot.materialId] ?? null) : null,
+      }),
       cantidad: "1",
       altoM: "0",
       anchoM: "0",
@@ -658,28 +748,19 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     });
   }, [mMedicionGlobal, mEntregaGlobal, mColocacionGlobal, totalMecGlobal, ordenes]);
 
-  const totalPresupuesto = totalesItems.totalConDesc + totalMecImporte;
-
-  const { totalUsdEquivalente, totalArsEquivalente } = useMemo(() => {
-    const items = totalesItems.totalConDesc;
-    let sumUsd = 0;
-    let sumArs = 0;
-    if (monedaPresupuesto === "usd") {
-      sumUsd += items;
-    } else {
-      sumArs += items;
-    }
-    for (const ln of lineasResumen) {
-      if (ln.id === "piedra") continue;
-      const v = parseMoneyInput(ln.monto);
-      if (ln.moneda === "usd") sumUsd += v;
-      else sumArs += v;
-    }
+  const { totalUsdEquivalente, totalArsEquivalente, totalPresupuesto } = useMemo(() => {
+    const eq = equivalentesMonedaMixta({
+      items: totalesItems.totalConDesc,
+      monedaItems: monedaPresupuesto,
+      mecArs: totalMecImporte,
+      dolarHoy,
+    });
     return {
-      totalUsdEquivalente: sumUsd + sumArs / dolarHoy,
-      totalArsEquivalente: sumArs + sumUsd * dolarHoy,
+      totalUsdEquivalente: eq.totalUsd,
+      totalArsEquivalente: eq.totalArs,
+      totalPresupuesto: eq.totalEnMonedaItems,
     };
-  }, [lineasResumen, dolarHoy, totalesItems.totalConDesc, monedaPresupuesto]);
+  }, [totalesItems.totalConDesc, monedaPresupuesto, totalMecImporte, dolarHoy]);
 
   const validarAntesGrabar = useCallback((): string | null => {
     return validarPresupuestoCompleto(
@@ -711,6 +792,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     const err = validarAntesGrabar();
     if (err) {
       setGrabarError(err);
+      return;
+    }
+    if (monedaPresupuesto === "usd" && !(dolarHoy > 0)) {
+      setGrabarError("Cargá el dólar del día para unir el producto en dólares y el MEC en pesos.");
       return;
     }
     if (!isSupabaseConfigured) {
@@ -848,8 +933,21 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [listaPrecioId, listasPrecios],
   );
 
+  const wizardTopRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const el = wizardTopRef.current;
+    if (!el) return;
+    let parent: HTMLElement | null = el.parentElement;
+    while (parent) {
+      const overflowY = getComputedStyle(parent).overflowY;
+      if (overflowY === "auto" || overflowY === "scroll") {
+        parent.scrollTo({ top: 0, behavior: "auto" });
+        return;
+      }
+      parent = parent.parentElement;
+    }
+    window.scrollTo({ top: 0, behavior: "auto" });
   }, [wizardStep]);
 
   const handleWizardSiguiente = () => {
@@ -1093,7 +1191,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   }
 
   return (
-    <div className="w-full max-w-none pb-44">
+    <div ref={wizardTopRef} className="w-full max-w-none pb-44">
       <div className="mx-auto max-w-6xl space-y-6 px-3 sm:px-4 lg:px-0 pb-8">
         {editando && editNumero ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950">
@@ -1117,6 +1215,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               setListaPrecioId={setListaPrecioId}
               monedaPresupuesto={monedaPresupuesto}
               setMonedaPresupuesto={setMonedaPresupuesto}
+              dolarHoy={dolarHoy}
+              setDolarHoy={setDolarHoy}
               origenVentas={origenVentas}
               setOrigenVentas={setOrigenVentas}
               contacto={contacto}
@@ -1153,6 +1253,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               listaPrecioLabel={listaPrecioLabel}
               origenLabel={origenLabelDisplay}
               monedaPresupuesto={monedaPresupuesto}
+              dolarHoy={dolarHoy}
+              setDolarHoy={setDolarHoy}
+              totalUsdEquivalente={totalUsdEquivalente}
+              totalArsEquivalente={totalArsEquivalente}
               ordenesCount={ordenes.length}
               lineItemsCount={totalLineasOt}
               faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
@@ -1234,6 +1338,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               origenLabel={origenLabelDisplay}
               listaPrecioLabel={listaPrecioLabel}
               moneda={monedaPresupuesto}
+              dolarHoy={dolarHoy}
               ordenes={ordenes}
               articulos={articulosBd}
               materials={materials}
@@ -1275,7 +1380,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                 <span>
                   MEC{" "}
                   <strong className="text-foreground">
-                    {formatMontoFooter(totalMecImporte, monedaPresupuesto)}
+                    {formatMontoFooter(totalMecImporte, "ars")}
                   </strong>
                 </span>
                 <span className="text-border">|</span>
@@ -1312,6 +1417,22 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
                 {formatMontoFooter(totalPresupuesto, monedaPresupuesto)}
               </strong>
             </span>
+            {monedaPresupuesto === "usd" && dolarHoy > 0 ? (
+              <>
+                <span className="text-border">|</span>
+                <span>
+                  TC{" "}
+                  <strong className="text-foreground">{formatUsd(dolarHoy)}</strong>
+                </span>
+                <span className="text-border">|</span>
+                <span>
+                  ≈{" "}
+                  <strong className="text-foreground">
+                    {formatMontoFooter(totalArsEquivalente, "ars")}
+                  </strong>
+                </span>
+              </>
+            ) : null}
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
             {wizardStep > 0 ? (

@@ -42,9 +42,6 @@ export function ListaPrecioSelector({
           ))}
         </SelectContent>
       </Select>
-      <p className="text-[11px] text-muted-foreground">
-        La lista elegida define los precios unitarios de todos los artículos del presupuesto.
-      </p>
     </div>
   );
 }

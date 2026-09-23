@@ -38,7 +38,13 @@ export function MainWorkspace() {
   return (
     <StockProvider>
       <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background">
-        <Toaster richColors position="top-center" />
+        <Toaster
+          richColors
+          position="top-center"
+          duration={2500}
+          closeButton
+          visibleToasts={3}
+        />
         {!isSupabaseConfigured && <ConfigWarning />}
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <AppSidebar />

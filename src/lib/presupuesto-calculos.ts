@@ -109,8 +109,33 @@ function resultadoLinea(
   return { m2Linea, mlLinea, subtotal };
 }
 
+export function esUnidadPorCantidad(u: UnidadArticuloDb): boolean {
+  return u === "UNI" || u === "PIEZA" || u === "KG" || u === "TON";
+}
+
+/** Sub-ítem "Pieza": cobra la piedra (m² × lista del material), no el precio fijo de Trabajos. */
+export function esArticuloCobraMaterial(codigo: string): boolean {
+  return codigo.trim().toUpperCase() === "PIEZA";
+}
+
+/** Precio inicial de una línea: Pieza usa lista del material; el resto, precio fijo del trabajo. */
+export function precioSugeridoLinea(opts: {
+  codigoArticulo: string;
+  precioTrabajo: number | null | undefined;
+  precioMaterial: number | null | undefined;
+}): string {
+  if (esArticuloCobraMaterial(opts.codigoArticulo)) {
+    return opts.precioMaterial != null && Number.isFinite(opts.precioMaterial)
+      ? String(opts.precioMaterial)
+      : "";
+  }
+  return opts.precioTrabajo != null && Number.isFinite(opts.precioTrabajo)
+    ? String(opts.precioTrabajo)
+    : "";
+}
+
 /**
- * m² y ml se acumulan por separado. UNI no suma ni m² ni ml.
+ * m² y ml se acumulan por separado. UNI / pieza / kg / t no suman m² ni ml.
  */
 export function computeLineaPresupuesto(
   art: ArticuloCalculo,
@@ -122,7 +147,7 @@ export function computeLineaPresupuesto(
   const ancho = parseDecimalInput(line.anchoM);
   const f = factorDesperdicio(line.desperdicioPct);
 
-  if (art.unidad === "UNI" || !art.calculaMaterial) {
+  if (esUnidadPorCantidad(art.unidad) || !art.calculaMaterial) {
     return resultadoLinea(0, qty * pu);
   }
 
@@ -189,9 +214,34 @@ export function labelUnidad(u: UnidadArticuloDb): string {
       return "ml";
     case "UNI":
       return "u.";
+    case "PIEZA":
+      return "pieza";
+    case "KG":
+      return "kg";
+    case "TON":
+      return "t";
     default:
       return u;
   }
+}
+
+/** Producto en moneda de lista + MEC siempre en ARS, unidos con el dólar del día. */
+export function equivalentesMonedaMixta(opts: {
+  items: number;
+  monedaItems: "ars" | "usd";
+  mecArs: number;
+  dolarHoy: number;
+}): { totalUsd: number; totalArs: number; totalEnMonedaItems: number } {
+  const dolar = opts.dolarHoy > 0 ? opts.dolarHoy : 1;
+  const itemsUsd = opts.monedaItems === "usd" ? opts.items : opts.items / dolar;
+  const itemsArs = opts.monedaItems === "ars" ? opts.items : opts.items * dolar;
+  const totalUsd = itemsUsd + opts.mecArs / dolar;
+  const totalArs = itemsArs + opts.mecArs;
+  return {
+    totalUsd,
+    totalArs,
+    totalEnMonedaItems: opts.monedaItems === "usd" ? totalUsd : totalArs,
+  };
 }
 
 /**

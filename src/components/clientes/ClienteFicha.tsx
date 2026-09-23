@@ -158,7 +158,15 @@ export function ClienteFicha({
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold">{cliente.nombre}</h2>
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-lg font-semibold">{cliente.nombre}</h2>
+            {cliente.esAgenteRetencion ? (
+              <Badge variant="outline" className="shrink-0 text-[10px] font-medium">
+                Retención
+                {cliente.retencionPorcentaje != null ? ` ${cliente.retencionPorcentaje}%` : ""}
+              </Badge>
+            ) : null}
+          </div>
         </div>
         <Button variant="outline" size="sm" className="gap-1.5" onClick={onEdit}>
           <User className="h-3.5 w-3.5" />

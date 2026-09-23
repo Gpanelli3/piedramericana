@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { ArrowUpRight } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,6 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -18,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
 import {
   esChapaRetazo,
   fetchOtTitulosByIds,
@@ -25,6 +29,7 @@ import {
   fetchSlabsByMaterialLabel,
   type StockScrapRow,
 } from "@/lib/stock-api";
+import { getOtProduccionById, type OtProduccionItem } from "@/lib/produccion-api";
 import type { ChapaRow } from "@/contexts/StockContext";
 
 function m2(largoCm: number, anchoCm: number): number {
@@ -66,6 +71,37 @@ export function DisponibilidadMaterialSheet({
   const [scraps, setScraps] = useState<StockScrapRow[]>([]);
   const [otTitulos, setOtTitulos] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
+  const [otDetalle, setOtDetalle] = useState<OtProduccionItem | null>(null);
+  const [otDetalleOpen, setOtDetalleOpen] = useState(false);
+  const [abriendoOtId, setAbriendoOtId] = useState<string | null>(null);
+
+  const recargarChapas = useCallback(async () => {
+    if (!materialLabel) return;
+    try {
+      const s = await fetchSlabsByMaterialLabel(materialLabel);
+      const remote = s.length > 0 ? s : chapasLocales.filter((c) => c.material === materialLabel);
+      const titulos = await fetchOtTitulosByIds(
+        remote.map((c) => c.otReservaId).filter((id): id is string => Boolean(id)),
+      );
+      setSlabs(remote);
+      setOtTitulos(titulos);
+    } catch {
+      setSlabs(chapasLocales.filter((c) => c.material === materialLabel));
+    }
+  }, [materialLabel, chapasLocales]);
+
+  const abrirOt = async (otId: string) => {
+    if (abriendoOtId) return;
+    setAbriendoOtId(otId);
+    const { data, error } = await getOtProduccionById(otId);
+    setAbriendoOtId(null);
+    if (error || !data) {
+      toast.error(error?.message ?? "No se pudo abrir la OT.");
+      return;
+    }
+    setOtDetalle(data);
+    setOtDetalleOpen(true);
+  };
 
   useEffect(() => {
     if (!open || !materialLabel) return;
@@ -108,6 +144,7 @@ export function DisponibilidadMaterialSheet({
   const retazos = slabs.filter((c) => c.estado === "Disponible" && esChapaRetazo(c));
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 sm:max-w-lg">
         <SheetHeader className="text-left">
@@ -192,10 +229,28 @@ export function DisponibilidadMaterialSheet({
                                 {c.estado}
                               </Badge>
                             </TableCell>
-                            <TableCell className="max-w-[9rem] truncate text-xs text-muted-foreground">
-                              {c.estado === "Reservada" || c.estado === "Usada" || c.estado === "Baja"
-                                ? otLabel || "—"
-                                : "—"}
+                            <TableCell className="max-w-[11rem] text-xs text-muted-foreground">
+                              {c.otReservaId &&
+                              (c.estado === "Reservada" ||
+                                c.estado === "Usada" ||
+                                c.estado === "Baja") ? (
+                                <div className="flex min-w-0 items-center gap-1">
+                                  <span className="truncate">{otLabel || "OT"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 shrink-0 text-foreground"
+                                    aria-label={`Ir a ${otLabel || "la OT"}`}
+                                    disabled={abriendoOtId === c.otReservaId}
+                                    onClick={() => void abrirOt(c.otReservaId!)}
+                                  >
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                "—"
+                              )}
                             </TableCell>
                           </TableRow>
                         );
@@ -240,5 +295,15 @@ export function DisponibilidadMaterialSheet({
         )}
       </SheetContent>
     </Sheet>
+    <OtDetalleDialog
+      item={otDetalle}
+      open={otDetalleOpen}
+      onOpenChange={(o) => {
+        setOtDetalleOpen(o);
+        if (!o) setOtDetalle(null);
+      }}
+      onChanged={() => void recargarChapas()}
+    />
+    </>
   );
 }

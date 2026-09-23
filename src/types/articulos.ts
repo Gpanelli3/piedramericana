@@ -1,8 +1,8 @@
 import type { UnidadArticuloDb } from "./database";
 
 /**
- * Artículo tal como lo devuelve la RPC get_articulos_con_precios.
- * Precio puede ser null si el artículo no tiene entrada en la lista solicitada.
+ * Tipo de trabajo (artículo) con precio fijo en ARS o USD.
+ * El precio no depende de listas: las listas valen para stock (materiales).
  */
 export interface ArticuloConPrecio {
   id: string;
@@ -13,8 +13,9 @@ export interface ArticuloConPrecio {
   medida_estandar_m2: number | null;
   prefer_modo_manual: boolean;
   sort_order: number;
-  /** Precio en la moneda de la lista. null si no tiene precio en esa lista. */
+  /** Precio fijo del tipo de trabajo. En Pieza no se usa: cobra la lista del material. */
   precio: number | null;
+  moneda: "ars" | "usd";
 }
 
 /**

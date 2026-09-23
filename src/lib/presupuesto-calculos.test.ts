@@ -5,8 +5,11 @@ import {
   computeLineaPresupuesto,
   computePresupuestoComercial,
   computePresupuestoTotalM2,
+  equivalentesMonedaMixta,
+  esArticuloCobraMaterial,
   formatMetraje,
   importeMecPresupuesto,
+  precioSugeridoLinea,
   trioM2DeOrden,
 } from "@/lib/presupuesto-calculos";
 import {
@@ -23,6 +26,7 @@ function art(partial: Partial<ArticuloConPrecio> & Pick<ArticuloConPrecio, "id" 
     prefer_modo_manual: false,
     sort_order: 0,
     precio: 100,
+    moneda: "usd",
     ...partial,
   };
 }
@@ -134,6 +138,115 @@ describe("computeLineaPresupuesto (OtFlex)", () => {
     const { m2Linea, subtotal } = computeLineaPresupuesto(prueba, line);
     expect(m2Linea).toBe(0);
     expect(subtotal).toBe(100);
+  });
+
+  it("sub-ítem Pieza (m²) cobra m² × precio del material, no el fijo de Trabajos", () => {
+    const pieza = articuloConPrecioToMock(
+      art({
+        id: "pieza",
+        codigo: "PIEZA",
+        descripcion: "Pieza",
+        unidad: "M2",
+        precio: 100,
+      }),
+    );
+    const precioMaterial = 85;
+    expect(esArticuloCobraMaterial(pieza.codigo)).toBe(true);
+    expect(
+      precioSugeridoLinea({
+        codigoArticulo: pieza.codigo,
+        precioTrabajo: 100,
+        precioMaterial,
+      }),
+    ).toBe("85");
+
+    const line = buildLineaCalcInput(pieza, {
+      articuloId: "pieza",
+      modoIngreso: "dimensiones",
+      cantidad: "1",
+      precioUnitario: precioSugeridoLinea({
+        codigoArticulo: pieza.codigo,
+        precioTrabajo: 100,
+        precioMaterial,
+      }),
+      altoM: "2",
+      anchoM: "2",
+      desperdicioPct: "0",
+    });
+    const { m2Linea, subtotal } = computeLineaPresupuesto(pieza, line);
+    expect(m2Linea).toBeCloseTo(4, 5);
+    expect(subtotal).toBeCloseTo(4 * 85, 5);
+  });
+
+  it("Revestimiento usa el precio fijo del trabajo, no el del material", () => {
+    const rev = articuloConPrecioToMock(
+      art({
+        id: "rev",
+        codigo: "REV",
+        descripcion: "Revestimiento",
+        unidad: "M2",
+        precio: 40,
+      }),
+    );
+    expect(esArticuloCobraMaterial(rev.codigo)).toBe(false);
+    expect(
+      precioSugeridoLinea({
+        codigoArticulo: rev.codigo,
+        precioTrabajo: 40,
+        precioMaterial: 85,
+      }),
+    ).toBe("40");
+
+    const line = buildLineaCalcInput(rev, {
+      articuloId: "rev",
+      modoIngreso: "dimensiones",
+      cantidad: "1",
+      precioUnitario: precioSugeridoLinea({
+        codigoArticulo: rev.codigo,
+        precioTrabajo: 40,
+        precioMaterial: 85,
+      }),
+      altoM: "2",
+      anchoM: "1",
+      desperdicioPct: "0",
+    });
+    const { m2Linea, subtotal } = computeLineaPresupuesto(rev, line);
+    expect(m2Linea).toBeCloseTo(2, 5);
+    expect(subtotal).toBeCloseTo(80, 5);
+  });
+
+  it("PIEZA, KG y TON se cobran por cantidad y no suman m²", () => {
+    for (const unidad of ["PIEZA", "KG", "TON"] as const) {
+      const item = articuloConPrecioToMock(
+        art({ id: unidad, codigo: unidad, descripcion: unidad, unidad }),
+      );
+      const line = buildLineaCalcInput(item, {
+        articuloId: unidad,
+        modoIngreso: "dimensiones",
+        cantidad: "3",
+        precioUnitario: "20",
+        altoM: "",
+        anchoM: "",
+        desperdicioPct: "",
+      });
+      const { m2Linea, subtotal } = computeLineaPresupuesto(item, line);
+      expect(m2Linea).toBe(0);
+      expect(subtotal).toBe(60);
+    }
+  });
+});
+
+describe("equivalentesMonedaMixta", () => {
+  it("producto USD + MEC ARS con dólar del día", () => {
+    const r = equivalentesMonedaMixta({
+      items: 100,
+      monedaItems: "usd",
+      mecArs: 1250,
+      dolarHoy: 1250,
+    });
+    expect(r.totalUsd).toBeCloseTo(101, 4);
+    expect(r.totalArs).toBeCloseTo(126250, 2);
+    expect(r.totalEnMonedaItems).toBeCloseTo(101, 4);
   });
 });
 

@@ -57,7 +57,7 @@ export function PickChapaParaOt({ materialNombre, valueId, onChange }: Props) {
   }, [materialNombre]);
 
   return (
-    <div className="space-y-1.5 min-w-0 sm:col-span-2">
+    <div className="space-y-1.5 min-w-0">
       <Label className="text-xs font-medium">Chapa señalada (opcional)</Label>
       <PickChapaSugerida
         chapas={chapas}
@@ -76,9 +76,6 @@ export function PickChapaParaOt({ materialNombre, valueId, onChange }: Props) {
           });
         }}
       />
-      <p className="text-[10px] text-muted-foreground leading-snug">
-        No bloquea el stock. Al señar se reserva para esta OT; si ya no está, vas a poder elegir otra.
-      </p>
     </div>
   );
 }

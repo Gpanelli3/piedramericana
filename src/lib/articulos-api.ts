@@ -293,7 +293,7 @@ export async function fetchArticulos(): Promise<{
     const { data, error } = await supabase
       .from("articulos")
       .select(
-        "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order",
+        "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order, precio, moneda",
       )
       .eq("activo", true)
       .order("sort_order");
@@ -304,7 +304,8 @@ export async function fetchArticulos(): Promise<{
 
     const mapped = (data ?? []).map((articulo) => ({
       ...articulo,
-      precio: null,
+      precio: articulo.precio != null ? Number(articulo.precio) : null,
+      moneda: articulo.moneda === "ars" ? "ars" : "usd",
     })) as ArticuloConPrecio[];
 
     return { data: mapped, error: null };
@@ -334,7 +335,14 @@ export async function fetchArticulosConPrecios(
       return { data: null, error: new Error(error.message) };
     }
 
-    return { data: (data ?? []) as ArticuloConPrecio[], error: null };
+    return {
+      data: ((data ?? []) as ArticuloConPrecio[]).map((a) => ({
+        ...a,
+        precio: a.precio != null ? Number(a.precio) : null,
+        moneda: a.moneda === "ars" ? "ars" : "usd",
+      })),
+      error: null,
+    };
   } catch (error) {
     return {
       data: null,
@@ -342,6 +350,100 @@ export async function fetchArticulosConPrecios(
         error instanceof Error
           ? error
           : new Error("No se pudieron cargar los artículos con precios."),
+    };
+  }
+}
+
+export type PrecioListaMaterialRow = {
+  material_id: string;
+  codigo: string | null;
+  name: string;
+  precio: number | null;
+};
+
+export async function fetchMaterialesPreciosDeLista(listaId: string): Promise<{
+  data: PrecioListaMaterialRow[] | null;
+  error: Error | null;
+}> {
+  try {
+    const [matsRes, itemsRes] = await Promise.all([
+      supabase.from("materials").select("id, name, codigo").order("name"),
+      supabase
+        .from("listas_precio_materiales")
+        .select("material_id, precio, activo")
+        .eq("lista_precio_id", listaId)
+        .eq("activo", true),
+    ]);
+    if (matsRes.error) return { data: null, error: new Error(matsRes.error.message) };
+    if (itemsRes.error) return { data: null, error: new Error(itemsRes.error.message) };
+    const byId = new Map((itemsRes.data ?? []).map((i) => [i.material_id, i] as const));
+    return {
+      data: (matsRes.data ?? []).map((m) => {
+        const item = byId.get(m.id);
+        return {
+          material_id: m.id,
+          codigo: m.codigo,
+          name: m.name,
+          precio: item != null ? Number(item.precio) : null,
+        };
+      }),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? error
+          : new Error("No se pudieron cargar los precios de materiales."),
+    };
+  }
+}
+
+export async function fetchPreciosMaterialesPorLista(listaId: string): Promise<{
+  data: Record<string, number> | null;
+  error: Error | null;
+}> {
+  const { data, error } = await fetchMaterialesPreciosDeLista(listaId);
+  if (error || !data) return { data: null, error };
+  const map: Record<string, number> = {};
+  for (const row of data) {
+    if (row.precio != null && Number.isFinite(row.precio)) {
+      map[row.material_id] = row.precio;
+    }
+  }
+  return { data: map, error: null };
+}
+
+export async function upsertPrecioListaMaterial(input: {
+  lista_precio_id: string;
+  material_id: string;
+  precio: number | null;
+}): Promise<{ error: Error | null }> {
+  try {
+    if (input.precio == null || !Number.isFinite(input.precio)) {
+      const { error } = await supabase
+        .from("listas_precio_materiales")
+        .update({ activo: false })
+        .eq("lista_precio_id", input.lista_precio_id)
+        .eq("material_id", input.material_id);
+      if (error) return { error: new Error(error.message) };
+      return { error: null };
+    }
+    const { error } = await supabase.from("listas_precio_materiales").upsert(
+      {
+        lista_precio_id: input.lista_precio_id,
+        material_id: input.material_id,
+        precio: input.precio,
+        activo: true,
+      },
+      { onConflict: "lista_precio_id,material_id" },
+    );
+    if (error) return { error: new Error(error.message) };
+    return { error: null };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error : new Error("No se pudo guardar el precio."),
     };
   }
 }
@@ -354,6 +456,8 @@ export type ArticuloUpsertInput = {
   medida_estandar_m2: number | null;
   prefer_modo_manual: boolean;
   sort_order?: number;
+  precio?: number | null;
+  moneda?: "ars" | "usd";
 };
 
 export async function createArticulo(input: ArticuloUpsertInput): Promise<{
@@ -371,14 +475,24 @@ export async function createArticulo(input: ArticuloUpsertInput): Promise<{
         medida_estandar_m2: input.medida_estandar_m2,
         prefer_modo_manual: input.prefer_modo_manual,
         sort_order: input.sort_order ?? 0,
+        precio: input.precio ?? null,
+        moneda: input.moneda ?? "usd",
       })
       .select(
-        "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order",
+        "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order, precio, moneda",
       )
       .single();
 
     if (error) return { data: null, error: new Error(error.message) };
-    return { data: { ...(data as ArticuloConPrecio), precio: null }, error: null };
+    const row = data as ArticuloConPrecio;
+    return {
+      data: {
+        ...row,
+        precio: row.precio != null ? Number(row.precio) : null,
+        moneda: row.moneda === "ars" ? "ars" : "usd",
+      },
+      error: null,
+    };
   } catch (error) {
     return {
       data: null,
@@ -402,6 +516,8 @@ export async function updateArticulo(
         medida_estandar_m2: input.medida_estandar_m2,
         prefer_modo_manual: input.prefer_modo_manual,
         sort_order: input.sort_order ?? 0,
+        precio: input.precio ?? null,
+        moneda: input.moneda ?? "usd",
       })
       .eq("id", id);
 

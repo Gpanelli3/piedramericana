@@ -32,20 +32,21 @@ import {
 import {
   createArticulo,
   fetchArticulos,
-  fetchListasPrecio,
-  fetchPreciosDeArticulo,
-  syncPreciosArticulo,
   updateArticulo,
   type ArticuloUpsertInput,
 } from "@/lib/articulos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { ArticuloConPrecio, ListaPrecioRow } from "@/types/articulos";
+import type { ArticuloConPrecio } from "@/types/articulos";
 import type { UnidadArticuloDb } from "@/types/database";
+import { esArticuloCobraMaterial, esUnidadPorCantidad } from "@/lib/presupuesto-calculos";
 
 const UNIDADES: { value: UnidadArticuloDb; label: string }[] = [
   { value: "M2", label: "m²" },
   { value: "ML", label: "metro lineal" },
   { value: "UNI", label: "unidad" },
+  { value: "PIEZA", label: "pieza" },
+  { value: "KG", label: "kilo" },
+  { value: "TON", label: "tonelada" },
 ];
 
 /** UI simplificada; se mapea a calcula_material / prefer_modo_manual / medida_estandar_m2. */
@@ -92,7 +93,18 @@ function emptyDraft(): ArticuloUpsertInput {
     medida_estandar_m2: null,
     prefer_modo_manual: false,
     sort_order: 0,
+    precio: null,
+    moneda: "usd",
   };
+}
+
+function formatPrecioTrabajo(precio: number | null, moneda: "ars" | "usd"): string {
+  if (precio == null) return "—";
+  const n = precio.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return moneda === "ars" ? `$ ${n}` : `USD ${n}`;
 }
 
 function labelUnidad(u: UnidadArticuloDb): string {
@@ -129,7 +141,7 @@ function applyTipo(
         calcula_material: true,
         medida_estandar_m2: null,
         prefer_modo_manual: false,
-        unidad: d.unidad === "UNI" ? "M2" : d.unidad,
+        unidad: d.unidad === "M2" || d.unidad === "ML" ? d.unidad : "M2",
       };
     case "m2_manual":
       return {
@@ -157,14 +169,12 @@ function tiposDisponibles(unidad: UnidadArticuloDb) {
 
 export function ArticulosCatalogo() {
   const [articulos, setArticulos] = useState<ArticuloConPrecio[]>([]);
-  const [listas, setListas] = useState<ListaPrecioRow[]>([]);
   const [cargando, setCargando] = useState(true);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [draft, setDraft] = useState<ArticuloUpsertInput>(emptyDraft);
-  /** Precio por lista_precio_id (string del input). */
-  const [preciosDraft, setPreciosDraft] = useState<Record<string, string>>({});
+  const [precioInput, setPrecioInput] = useState("");
 
   const tipoActual = useMemo(() => draftToTipo(draft), [draft]);
   const tiposOk = useMemo(() => tiposDisponibles(draft.unidad), [draft.unidad]);
@@ -176,26 +186,16 @@ export function ArticulosCatalogo() {
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setArticulos([]);
-      setListas([]);
       setCargando(false);
       return;
     }
     setCargando(true);
-    const [artsRes, listasRes] = await Promise.all([
-      fetchArticulos(),
-      fetchListasPrecio(),
-    ]);
+    const artsRes = await fetchArticulos();
     if (artsRes.error) {
       toast.error(artsRes.error.message);
       setArticulos([]);
     } else {
       setArticulos(artsRes.data ?? []);
-    }
-    if (listasRes.error) {
-      toast.error(listasRes.error.message);
-      setListas([]);
-    } else {
-      setListas(listasRes.data ?? []);
     }
     setCargando(false);
   }, []);
@@ -204,20 +204,14 @@ export function ArticulosCatalogo() {
     void recargar();
   }, [recargar]);
 
-  const initPreciosVacios = useCallback((listasActivas: ListaPrecioRow[]) => {
-    const map: Record<string, string> = {};
-    for (const l of listasActivas) map[l.id] = "";
-    return map;
-  }, []);
-
   const abrirNuevo = () => {
     setEditandoId(null);
     setDraft(emptyDraft());
-    setPreciosDraft(initPreciosVacios(listas));
+    setPrecioInput("");
     setDialogAbierto(true);
   };
 
-  const abrirEditar = async (art: ArticuloConPrecio) => {
+  const abrirEditar = (art: ArticuloConPrecio) => {
     setEditandoId(art.id);
     let next: ArticuloUpsertInput = {
       codigo: art.codigo,
@@ -227,26 +221,18 @@ export function ArticulosCatalogo() {
       medida_estandar_m2: art.medida_estandar_m2,
       prefer_modo_manual: art.prefer_modo_manual,
       sort_order: art.sort_order,
+      precio: art.precio,
+      moneda: art.moneda === "ars" ? "ars" : "usd",
     };
     const tipo = draftToTipo(next);
     if (!tiposDisponibles(next.unidad).some((t) => t.value === tipo)) {
       next = applyTipo(
         next,
-        next.unidad === "UNI" ? "sin_material" : "dimensiones",
+        esUnidadPorCantidad(next.unidad) ? "sin_material" : "dimensiones",
       );
     }
     setDraft(next);
-    const base = initPreciosVacios(listas);
-    const { data, error } = await fetchPreciosDeArticulo(art.id);
-    if (error) {
-      toast.error(error.message);
-      setPreciosDraft(base);
-    } else {
-      for (const p of data ?? []) {
-        base[p.lista_precio_id] = String(p.precio);
-      }
-      setPreciosDraft(base);
-    }
+    setPrecioInput(art.precio != null ? String(art.precio) : "");
     setDialogAbierto(true);
   };
 
@@ -254,7 +240,7 @@ export function ArticulosCatalogo() {
     setDialogAbierto(false);
     setEditandoId(null);
     setDraft(emptyDraft());
-    setPreciosDraft({});
+    setPrecioInput("");
   };
 
   const setUnidad = (unidad: UnidadArticuloDb) => {
@@ -266,7 +252,7 @@ export function ArticulosCatalogo() {
         // Unidad incompatible con el tipo actual → default sensato
         next = applyTipo(
           next,
-          unidad === "UNI" ? "sin_material" : "dimensiones",
+          esUnidadPorCantidad(unidad) ? "sin_material" : "dimensiones",
         );
       }
       if (tipo === "m2_manual" && unidad !== "M2") {
@@ -297,14 +283,29 @@ export function ArticulosCatalogo() {
       return;
     }
 
+    const cobraMaterial = esArticuloCobraMaterial(draft.codigo);
+    let precio: number | null = null;
+    if (!cobraMaterial) {
+      const rawPrecio = precioInput.trim().replace(",", ".");
+      if (rawPrecio !== "") {
+        const n = Number.parseFloat(rawPrecio);
+        if (!Number.isFinite(n) || n < 0) {
+          toast.error("Precio inválido.");
+          return;
+        }
+        precio = n;
+      }
+    }
+
     const payload: ArticuloUpsertInput = applyTipo(draft, tipoSelect);
+    payload.precio = precio;
+    payload.moneda = draft.moneda === "ars" ? "ars" : "usd";
     if (tipoSelect !== "medida_fija") {
       payload.medida_estandar_m2 = null;
     }
 
     setGuardando(true);
     try {
-      let articuloId = editandoId;
       if (editandoId) {
         const { error } = await updateArticulo(editandoId, payload);
         if (error) {
@@ -314,24 +315,12 @@ export function ArticulosCatalogo() {
       } else {
         const { data, error } = await createArticulo(payload);
         if (error || !data) {
-          toast.error(error?.message ?? "No se pudo crear el artículo.");
-          return;
-        }
-        articuloId = data.id;
-      }
-
-      if (articuloId && Object.keys(preciosDraft).length > 0) {
-        const { error: errPrecios } = await syncPreciosArticulo(
-          articuloId,
-          preciosDraft,
-        );
-        if (errPrecios) {
-          toast.error(errPrecios.message);
+          toast.error(error?.message ?? "No se pudo crear el trabajo.");
           return;
         }
       }
 
-      toast.success(editandoId ? "Artículo actualizado." : "Artículo creado.");
+      toast.success(editandoId ? "Trabajo actualizado." : "Trabajo creado.");
       cerrarDialog();
       await recargar();
     } finally {
@@ -344,16 +333,16 @@ export function ArticulosCatalogo() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <h2 className="sr-only">Catálogo de artículos</h2>
+        <h2 className="sr-only">Catálogo de trabajos</h2>
         <Button type="button" size="sm" className="gap-1.5" onClick={abrirNuevo}>
           <Plus className="h-4 w-4" />
-          Nuevo artículo
+          Nuevo trabajo
         </Button>
       </div>
 
       {cargando ? (
         <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground">
-          Cargando artículos…
+          Cargando trabajos…
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -364,6 +353,7 @@ export function ArticulosCatalogo() {
                 <TableHead>Descripción</TableHead>
                 <TableHead>Unidad</TableHead>
                 <TableHead>Cálculo</TableHead>
+                <TableHead className="text-right">Precio</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
@@ -380,6 +370,11 @@ export function ArticulosCatalogo() {
                     art.medida_estandar_m2 > 0
                       ? ` (${art.medida_estandar_m2} m²)`
                       : ""}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">
+                    {esArticuloCobraMaterial(art.codigo)
+                      ? "Lista material"
+                      : formatPrecioTrabajo(art.precio, art.moneda === "ars" ? "ars" : "usd")}
                   </TableCell>
                   <TableCell>
                     <Button
@@ -403,9 +398,9 @@ export function ArticulosCatalogo() {
       <Dialog open={dialogAbierto} onOpenChange={(o) => !o && cerrarDialog()}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" showCloseButton>
           <DialogHeader>
-            <DialogTitle>{editandoId ? "Editar artículo" : "Nuevo artículo"}</DialogTitle>
+            <DialogTitle>{editandoId ? "Editar trabajo" : "Nuevo trabajo"}</DialogTitle>
             <DialogDescription>
-              Definí el cálculo y los precios por lista (los usa el presupuesto).
+              Tipo de trabajo sobre la piedra, con un precio fijo en pesos o dólares.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-2">
@@ -486,42 +481,41 @@ export function ArticulosCatalogo() {
               </div>
             ) : null}
 
-            <div className="space-y-2 rounded-md border border-border/70 px-3 py-3">
-              <div>
-                <Label className="text-xs">Precios por lista</Label>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Vacío = sin precio en esa lista. Se usa al armar el presupuesto.
-                </p>
+            {esArticuloCobraMaterial(draft.codigo) ? (
+              <p className="text-[11px] text-muted-foreground leading-relaxed rounded-md border border-border/70 px-3 py-2">
+                Pieza cobra el m² del material según la lista de precio (Stock). No tiene precio fijo acá.
+              </p>
+            ) : (
+            <div className="grid grid-cols-[7rem_1fr] gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Moneda</Label>
+                <Select
+                  value={draft.moneda === "ars" ? "ars" : "usd"}
+                  onValueChange={(v) =>
+                    setDraft((d) => ({ ...d, moneda: v as "ars" | "usd" }))
+                  }
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="usd">USD</SelectItem>
+                    <SelectItem value="ars">ARS</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              {listas.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No hay listas activas. Creá una en la pestaña Listas de precio.
-                </p>
-              ) : (
-                <div className="grid gap-2">
-                  {listas.map((l) => (
-                    <div key={l.id} className="grid grid-cols-[1fr_7rem] items-center gap-2">
-                      <Label className="text-xs font-normal text-muted-foreground">
-                        {l.label}{" "}
-                        <span className="tabular-nums">({l.moneda.toUpperCase()})</span>
-                      </Label>
-                      <Input
-                        className="h-8 text-sm tabular-nums"
-                        inputMode="decimal"
-                        placeholder="—"
-                        value={preciosDraft[l.id] ?? ""}
-                        onChange={(e) =>
-                          setPreciosDraft((prev) => ({
-                            ...prev,
-                            [l.id]: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Precio</Label>
+                <Input
+                  className="h-9 text-sm tabular-nums"
+                  inputMode="decimal"
+                  placeholder="—"
+                  value={precioInput}
+                  onChange={(e) => setPrecioInput(e.target.value)}
+                />
+              </div>
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={cerrarDialog}>
