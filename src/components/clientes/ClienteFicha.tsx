@@ -128,12 +128,17 @@ export function ClienteFicha({
     );
   };
 
-  const irOt = (tab: ProduccionOtFiltro) => {
+  const irOt = (ot: { tabProduccion: ProduccionOtFiltro; enMedicion: boolean }) => {
     setSearchParams(
       (prev) => {
         const n = new URLSearchParams(prev);
-        n.set("ws", "produccion");
-        n.set("ot", tab);
+        if (ot.enMedicion) {
+          n.set("ws", "medicion");
+          n.delete("ot");
+        } else {
+          n.set("ws", "produccion");
+          n.set("ot", ot.tabProduccion);
+        }
         n.delete("cid");
         n.delete("pv");
         n.delete("ft");
@@ -360,7 +365,7 @@ export function ClienteFicha({
                     <TableRow
                       key={ot.id}
                       className="cursor-pointer"
-                      onClick={() => irOt(ot.tabProduccion)}
+                      onClick={() => irOt(ot)}
                     >
                       <TableCell className="font-medium">{ot.titulo}</TableCell>
                       <TableCell className="text-muted-foreground">{ot.presupuestoNumero}</TableCell>

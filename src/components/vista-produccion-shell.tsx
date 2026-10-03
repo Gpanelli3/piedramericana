@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { VistaProduccion } from "@/components/vista-produccion";
 import { VistaVentaRetenida } from "@/components/produccion/VistaVentaRetenida";
-import { VistaTecnica } from "@/components/produccion/VistaTecnica";
 import { VistaProduccionTab } from "@/components/produccion/VistaProduccionTab";
 import { VistaLogistica } from "@/components/produccion/VistaLogistica";
 import { VistaEntregadas } from "@/components/produccion/VistaEntregadas";
@@ -20,8 +19,6 @@ export function VistaProduccionShell() {
   switch (ot) {
     case "venta_retenida":
       return <VistaVentaRetenida />;
-    case "tecnica":
-      return <VistaTecnica />;
     case "produccion":
       return <VistaProduccionTab />;
     case "logistica":

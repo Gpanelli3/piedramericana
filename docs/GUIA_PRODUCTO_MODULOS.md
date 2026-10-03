@@ -229,11 +229,12 @@ Entregada + cobros hasta saldo 0
 
 ### M05.F2 — Estados de venta `HECHO` / `PARCIAL`
 - **Estados:** `senado` → `en_medicion` → `en_produccion` → `finalizado` → `entregado`.
+- **Hoy:** la seña deja la venta en `en_medicion`. Pasa a `en_produccion` cuando el vendedor envía a producción (OT sale de medición a corte).
 - **A completar:** mapear «venta retenida» cuando hay bloqueo aunque exista seña.
 
 ### M05.F3 — Cobros / seña / saldo `HECHO`
 - **Qué:** registrar pagos (`ventas_pagos`), ver cobrado %, saldo.
-- **Aceptación:** seña crea/activa flujo; saldo completo puede desbloquear producción (regla actual).
+- **Aceptación:** seña crea venta y OTs; **no** manda a producción. Producción exige seña + medición resuelta + envío del vendedor.
 
 ### M05.F4 — KPIs de caja comercial `HECHO` / `PARCIAL`
 - **Qué:** ventas aprobadas, por cobrar, sin seña.
@@ -261,12 +262,12 @@ Etapas objetivo:
 | Etapa | Significado |
 |-------|-------------|
 | `venta_retenida` | Frenada por regla (plata/bacha/dato) |
-| `tecnica` | Medición / planos / m² técnicos |
+| `medicion` | Visita / medidas (módulo Medición, no pestaña de Producción) |
 | `produccion` | Fabricación (corte/armado) |
 | `logistica` | Despacho / colocación |
 | `entregada` | Cerrada |
 
-Hoy: kanban `medicion → corte → produccion → despacho` — evolucionar semántica sin tirar UI.
+Hoy: kanban de Producción `corte → produccion → despacho`. La medición es un módulo aparte.
 
 ### M06.F3 — Subestados de OT `PARCIAL`
 - `activa` | `bloqueada` | `vencida` | `pausada` (rotura/reproceso) | `done` | `cancelled`.
@@ -324,9 +325,10 @@ Hoy: kanban `medicion → corte → produccion → despacho` — evolucionar sem
 
 **Para qué existe:** guardar la verdad técnica de la obra antes/durante fabricar.
 
-### M08.F1 — Confirmar medición `HECHO` / `PARCIAL`
-- **Qué:** venta/OT pasan por confirmación de medidas.
-- **Aceptación:** sin confirmar, no sigue a producción (según regla).
+### M08.F1 — Confirmar medición `HECHO`
+- **Qué:** módulo Medición ligado al presupuesto (`presupuesto_mediciones`).
+- **Flujo:** vendedor marca listo para medir (o salta con motivo) → medidor confirma medidas → vendedor envía a producción.
+- **Aceptación:** sin medición resuelta + seña + presupuesto aprobado, no se puede pasar a corte. Se puede pedir medición con el presupuesto pendiente.
 
 ### M08.F2 — Repositorio de planos por OT/obra `PENDIENTE`
 - **Qué:** subir/ver planos, croquis, PDFs, fotos de medida.

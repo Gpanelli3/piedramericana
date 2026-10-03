@@ -4,6 +4,7 @@ export const WORKSPACE_TABS = [
   "clientes",
   "articulos",
   "administracion",
+  "medicion",
   "produccion",
   "cantera",
   "stock",
@@ -21,7 +22,6 @@ export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 export const PRODUCCION_OT_FILTROS = [
   "general",
   "venta_retenida",
-  "tecnica",
   "produccion",
   "logistica",
   "entregadas",
@@ -32,7 +32,6 @@ export type ProduccionOtFiltro = (typeof PRODUCCION_OT_FILTROS)[number];
 export const PRODUCCION_OT_LABELS: Record<ProduccionOtFiltro, string> = {
   general: "General",
   venta_retenida: "Venta retenida",
-  tecnica: "Técnica",
   produccion: "Producción",
   logistica: "Logística",
   entregadas: "Entregadas",

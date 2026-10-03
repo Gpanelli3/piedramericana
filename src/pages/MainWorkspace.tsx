@@ -17,6 +17,7 @@ import { VistaProveedores } from "@/components/vista-proveedores";
 import { VistaEquipo } from "@/components/vista-equipo";
 import { VistaReportes } from "@/components/vista-reportes";
 import { VistaComercioExterior } from "@/components/vista-comercio-exterior";
+import { VistaMedicion } from "@/components/vista-medicion";
 import { StockProvider } from "@/contexts/StockContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { WORKSPACE_TABS, type WorkspaceTab } from "@/types/workspace";
@@ -59,6 +60,7 @@ export function MainWorkspace() {
             {activeTab === "proveedores" && <VistaProveedores />}
             {activeTab === "comercio_exterior" && <VistaComercioExterior />}
             {activeTab === "administracion" && <VistaAdministracion />}
+            {activeTab === "medicion" && <VistaMedicion />}
             {activeTab === "finanzas" && <VistaFinanzas />}
             {activeTab === "equipo" && <VistaEquipo />}
             {activeTab === "reportes" && <VistaReportes />}

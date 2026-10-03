@@ -10,10 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import {
   approxM2Linea,
   fetchMedidasOt,
+  fetchMedidasPresupuesto,
   guardarMedidasOt,
   m2CambioSignificativo,
   type MedidaItemEditable,
 } from "@/lib/ot-medidas-api";
+import { confirmarMedicion } from "@/lib/medicion-api";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   etiquetaVersionPresupuesto,
   formatDifMetraje,
@@ -43,13 +46,23 @@ function medidasItemTexto(it: MedidaItemEditable): string {
 }
 
 type Props = {
-  otId: string;
+  otId?: string;
+  presupuestoId?: string;
   /** Mostrar panel expandido (etapa medición o aún sin confirmar). */
-  destacado: boolean;
+  destacado?: boolean;
+  /** Si true, confirmar también marca el presupuesto como medido. */
+  confirmarPipeline?: boolean;
   onSaved?: () => void;
 };
 
-export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
+export function OtMedidasPanel({
+  otId,
+  presupuestoId,
+  destacado = false,
+  confirmarPipeline = false,
+  onSaved,
+}: Props) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmadas, setConfirmadas] = useState(false);
@@ -65,7 +78,11 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
 
   const cargar = useCallback(async () => {
     setLoading(true);
-    const res = await fetchMedidasOt(otId);
+    const res = otId
+      ? await fetchMedidasOt(otId)
+      : presupuestoId
+        ? await fetchMedidasPresupuesto(presupuestoId)
+        : { data: null, error: new Error("Falta OT o presupuesto.") };
     setLoading(false);
     if (res.error) {
       toast.error(res.error.message);
@@ -82,7 +99,7 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
     setM2Venta(res.data.m2Venta);
     setM2Obra(res.data.m2Obra);
     setEditando(!res.data.medidasConfirmadas && destacado);
-  }, [otId, destacado]);
+  }, [otId, presupuestoId, destacado]);
 
   useEffect(() => {
     void cargar();
@@ -100,17 +117,31 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
 
   const onConfirmar = async () => {
     setSaving(true);
-    const res = await guardarMedidasOt({
-      otId,
-      items: items.map((it) => ({
-        itemKey: it.itemKey,
-        ordenKey: it.ordenKey,
-        altoM: it.altoM,
-        anchoM: it.anchoM,
-        cantidad: it.cantidad,
-      })),
-      notas,
-    });
+    const patches = items.map((it) => ({
+      itemKey: it.itemKey,
+      ordenKey: it.ordenKey,
+      altoM: it.altoM,
+      anchoM: it.anchoM,
+      cantidad: it.cantidad,
+    }));
+    const res =
+      confirmarPipeline && presupuestoId
+        ? await confirmarMedicion({
+            presupuestoId,
+            items: patches,
+            notas,
+            usuarioId: user?.id ?? null,
+          })
+        : otId
+          ? await guardarMedidasOt({ otId, items: patches, notas })
+          : {
+              error: new Error("Falta OT o presupuesto."),
+              totalNuevo: 0,
+              totalAnterior: 0,
+              nroVersion: 1,
+              m2Anterior: 0,
+              m2Nuevo: 0,
+            };
     setSaving(false);
     if (res.error) {
       toast.error(res.error.message);
@@ -169,7 +200,7 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
               {etiquetaVersionPresupuesto(nroVersion)}
             </span>
           ) : null}
-          {!confirmadas ? (
+          {!confirmadas && !confirmarPipeline ? (
             <Badge variant="outline" className="text-[10px]">
               Opcional
             </Badge>
@@ -187,7 +218,9 @@ export function OtMedidasPanel({ otId, destacado, onSaved }: Props) {
 
       {destacado && !confirmadas ? (
         <p className="text-xs text-muted-foreground leading-snug">
-          Revisá las medidas anotadas. Podés confirmarlas, ajustarlas o seguir a Corte sin confirmar.
+          {confirmarPipeline
+            ? "Revisá las medidas de obra y confirmá. Eso deja el presupuesto listo para que el vendedor lo mande a producción."
+            : "Revisá las medidas anotadas. Podés ajustarlas y confirmarlas."}
         </p>
       ) : null}
 

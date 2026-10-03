@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { PresupuestoEstado } from "@/types/database";
 import type { PresupuestoRowLista } from "@/lib/presupuestos-api";
+import type { MedicionEstado } from "@/lib/medicion-reglas";
+import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { cn } from "@/lib/utils";
 import type { NavigateFunction } from "react-router-dom";
 
@@ -112,6 +114,9 @@ type Props = {
   statusBusyId: string | null;
   onAprobar: (id: string) => Promise<void>;
   onRechazar: (id: string) => Promise<void>;
+  medicionPorId?: Record<string, MedicionEstado>;
+  onListoParaMedir?: (row: PresupuestoRowLista) => void;
+  onSaltarMedicion?: (row: PresupuestoRowLista) => void;
 };
 
 export function PresupuestosLista({
@@ -125,6 +130,9 @@ export function PresupuestosLista({
   statusBusyId,
   onAprobar,
   onRechazar,
+  medicionPorId,
+  onListoParaMedir,
+  onSaltarMedicion,
 }: Props) {
   const [q, setQ] = useState("");
   const estadoFiltro = estadoDesdeTab(tab);
@@ -194,6 +202,10 @@ export function PresupuestosLista({
               {visibles.map((r) => {
                 const busy = statusBusyId === r.id;
                 const pendiente = r.status === "pendiente";
+                const medEstado = medicionPorId?.[r.id] ?? "sin_solicitar";
+                const puedePedirMedicion =
+                  (r.status === "pendiente" || r.status === "aprobado") &&
+                  medEstado === "sin_solicitar";
                 return (
                   <TableRow key={r.id} className="hover:bg-muted/30">
                     <TableCell className="pl-4 font-medium tabular-nums">
@@ -207,15 +219,22 @@ export function PresupuestosLista({
                       {formatoTotal(r)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "font-medium text-[11px] sm:text-xs",
-                          badgeTone(r.status),
-                        )}
-                      >
-                        {statusLabel(r.status)}
-                      </Badge>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-medium text-[11px] sm:text-xs",
+                            badgeTone(r.status),
+                          )}
+                        >
+                          {statusLabel(r.status)}
+                        </Badge>
+                        {medicionPorId && medEstado !== "sin_solicitar" ? (
+                          <Badge variant="outline" className="text-[10px] font-medium">
+                            {etiquetaMedicionEstado(medEstado)}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="pr-4">
                       <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
@@ -285,6 +304,16 @@ export function PresupuestosLista({
                               <Download className="h-4 w-4" />
                               Descargar PDF
                             </DropdownMenuItem>
+                            {puedePedirMedicion && onListoParaMedir ? (
+                              <DropdownMenuItem onClick={() => onListoParaMedir(r)}>
+                                Listo para medir
+                              </DropdownMenuItem>
+                            ) : null}
+                            {puedePedirMedicion && onSaltarMedicion ? (
+                              <DropdownMenuItem onClick={() => onSaltarMedicion(r)}>
+                                Saltar medición
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

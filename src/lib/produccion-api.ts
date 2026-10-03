@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import {
+  ensureOtsParaPresupuesto,
   persistJobOtProduccion,
   textoDesdeOtPayloadClienteMaterial,
   type OtKanbanFuentePayload,
@@ -7,6 +8,8 @@ import {
 import { fetchM2TriosPorPresupuestos, m2CambioSignificativo } from "@/lib/ot-medidas-api";
 import { formatMetraje, type M2Trio } from "@/lib/presupuesto-calculos";
 import { bajaChapaPorRotura, reservarChapasAOt } from "@/lib/stock-ot-api";
+import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
+import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
 import type {
   Database,
   EtapaOtKanban,
@@ -331,8 +334,6 @@ export async function getOtsPorFiltro(
 
   if (filtro === "venta_retenida") {
     q = q.or("bloqueada.eq.true,pausada.eq.true");
-  } else if (filtro === "tecnica") {
-    q = q.eq("etapa", "medicion").eq("bloqueada", false);
   } else if (filtro === "produccion") {
     q = q.in("etapa", ["corte", "produccion"]);
   } else if (filtro === "logistica") {
@@ -462,6 +463,85 @@ export async function setOtFechaProgramada(
   return { error: error ? new Error(error.message) : null };
 }
 
+async function presupuestoIdDesdeOt(ot: OrdenTrabajoRow): Promise<{
+  presupuestoId: string | null;
+  error: Error | null;
+}> {
+  if (!ot.venta_id) return { presupuestoId: null, error: new Error("La OT no tiene venta asociada.") };
+  const venta = await supabase
+    .from("ventas")
+    .select("presupuesto_id")
+    .eq("id", ot.venta_id)
+    .maybeSingle();
+  if (venta.error) return { presupuestoId: null, error: new Error(venta.error.message) };
+  return { presupuestoId: venta.data?.presupuesto_id ?? null, error: null };
+}
+
+/** Compuerta única: no se sale de medición a corte sin aprobado + seña + medición resuelta. */
+async function assertPuedeSalirDeMedicion(
+  ot: OrdenTrabajoRow,
+  nextEtapa: EtapaOtId,
+): Promise<Error | null> {
+  const actual = coalesceEtapaOt(ot.etapa);
+  if (actual !== "medicion") return null;
+  if (nextEtapa === "medicion") return null;
+  const pres = await presupuestoIdDesdeOt(ot);
+  if (pres.error) return pres.error;
+  if (!pres.presupuestoId) return new Error("La OT no tiene presupuesto asociado.");
+  const evalRes = await evaluarEnvioAProduccion(pres.presupuestoId);
+  if (evalRes.error) return evalRes.error;
+  if (!evalRes.data) return new Error("No se pudo evaluar el envío a producción.");
+  const motivo = motivoBloqueoEnvio(evalRes.data);
+  if (motivo) return new Error(motivo);
+  return null;
+}
+
+export async function enviarPresupuestoAProduccion(presupuestoId: string): Promise<{
+  error: Error | null;
+  otIds: string[];
+}> {
+  const evalRes = await evaluarEnvioAProduccion(presupuestoId);
+  if (evalRes.error) return { error: evalRes.error, otIds: [] };
+  if (!evalRes.data) return { error: new Error("No se pudo evaluar el envío a producción."), otIds: [] };
+  if (!evalRes.data.ok) {
+    return {
+      error: new Error(motivoBloqueoEnvio(evalRes.data) ?? "No se puede enviar a producción."),
+      otIds: [],
+    };
+  }
+
+  const ensure = await ensureOtsParaPresupuesto(presupuestoId);
+  if (ensure.error) return { error: ensure.error, otIds: [] };
+
+  const venta = await supabase
+    .from("ventas")
+    .select("id")
+    .eq("presupuesto_id", presupuestoId)
+    .maybeSingle();
+  if (venta.error) return { error: new Error(venta.error.message), otIds: [] };
+  if (!venta.data?.id) return { error: new Error("No hay venta (falta la seña)."), otIds: [] };
+
+  const ots = await supabase
+    .from("ordenes_trabajo")
+    .select("id,etapa,estado,bloqueada,pausada")
+    .eq("venta_id", venta.data.id)
+    .neq("estado", "cancelled");
+  if (ots.error) return { error: new Error(ots.error.message), otIds: [] };
+
+  const avanzadas: string[] = [];
+  for (const ot of ots.data ?? []) {
+    if (ot.estado === "done") continue;
+    if (coalesceEtapaOt(ot.etapa) !== "medicion") continue;
+    const res = await avanzarEtapaOt(ot.id);
+    if (res.error) return { error: res.error, otIds: avanzadas };
+    avanzadas.push(ot.id);
+  }
+  if (avanzadas.length === 0 && (ots.data ?? []).length === 0) {
+    return { error: new Error("No hay órdenes de trabajo para enviar."), otIds: [] };
+  }
+  return { error: null, otIds: avanzadas };
+}
+
 export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | null }> {
   const prev = await supabase.from("ordenes_trabajo").select("*").eq("id", otId).maybeSingle();
   if (prev.error) return { error: new Error(prev.error.message) };
@@ -476,6 +556,9 @@ export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | nul
   const etapa = coalesceEtapaOt(ot.etapa);
   const next = siguienteEtapaOt(etapa);
   if (!next) return { error: new Error("Ya está en la última etapa. Usá «Marcar entregada».") };
+
+  const gate = await assertPuedeSalirDeMedicion(ot, next);
+  if (gate) return { error: gate };
 
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
@@ -497,12 +580,16 @@ export async function setEtapaOt(
   if (ot.bloqueada) return { error: new Error("La OT está bloqueada.") };
   if (ot.pausada) return { error: new Error("La OT está pausada.") };
 
+  const next = etapaOtValida(etapa);
+  const gate = await assertPuedeSalirDeMedicion(ot, next);
+  if (gate) return { error: gate };
+
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
 
   return persistJobOtProduccion({
     ordenTrabajoId: otId,
-    patch: { etapa: etapaOtValida(etapa), status },
+    patch: { etapa: next, status },
   });
 }
 

@@ -109,7 +109,7 @@ export function EstadoOtBadges({ item }: { item: OtProduccionItem }) {
       ) : null}
       {!orden.medidas_confirmadas && coalesceEtapaOt(orden.etapa) === "medicion" ? (
         <Badge variant="outline" className="text-[10px]">
-          Sin medidas
+          En medición
         </Badge>
       ) : null}
     </div>

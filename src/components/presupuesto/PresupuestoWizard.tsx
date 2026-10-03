@@ -545,7 +545,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       rows.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
-        if (patch.materialId == null || patch.materialId === r.materialId) {
+        const materialId = patch.materialId;
+        if (materialId == null || materialId === r.materialId) {
           return next;
         }
         next.items = next.items.map((linea) => {
@@ -556,7 +557,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             precioUnitario: precioSugeridoLinea({
               codigoArticulo: articulo.codigo,
               precioTrabajo: articulo.precio,
-              precioMaterial: preciosMaterial[patch.materialId] ?? null,
+              precioMaterial: preciosMaterial[materialId] ?? null,
             }),
           };
         });

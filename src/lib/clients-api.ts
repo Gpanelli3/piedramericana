@@ -227,6 +227,7 @@ export type ClienteFichaOt = {
   presupuestoNumero: string;
   ventaId: string | null;
   tabProduccion: ProduccionOtFiltro;
+  enMedicion: boolean;
 };
 
 export type ClienteFichaData = {
@@ -248,7 +249,6 @@ export function tabProduccionDesdeOt(ot: {
 }): ProduccionOtFiltro {
   if (ot.estado === "done") return "entregadas";
   if (ot.bloqueada || ot.pausada) return "venta_retenida";
-  if (ot.etapa === "medicion") return "tecnica";
   if (ot.etapa === "corte" || ot.etapa === "produccion") return "produccion";
   if (ot.etapa === "despacho") return "logistica";
   return "general";
@@ -385,6 +385,7 @@ export async function fetchClienteFicha(
           bloqueada: Boolean(ot.bloqueada),
           pausada: Boolean(ot.pausada),
         }),
+        enMedicion: etapa === "medicion" && ot.estado !== "done",
       };
     })
     .sort((a, b) => (b.fecha_programada ?? "").localeCompare(a.fecha_programada ?? ""));

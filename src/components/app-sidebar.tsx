@@ -19,6 +19,7 @@ import {
   UserCog,
   Wallet,
   Wrench,
+  Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -79,6 +80,12 @@ const NAV_ITEMS: NavItemDef[] = [
     label: "Ventas",
     icon: <Wallet className="h-[18px] w-[18px]" />,
     roles: ["vendedor", "admin", "administracion"],
+  },
+  {
+    id: "medicion",
+    label: "Medición",
+    icon: <Ruler className="h-[18px] w-[18px]" />,
+    roles: ["vendedor", "medidor", "admin", "administracion"],
   },
   {
     id: "produccion",

@@ -1,11 +1,11 @@
 import type { JobStatus } from "@/types/database";
 
 /**
- * Subestados internos: Técnica → Corte → Producción → Logística.
- * En el menú, Corte no tiene pestaña: vive dentro de Producción.
+ * Subestados internos de OT: Medición → Corte → Producción → Logística.
+ * La medición vive en el módulo Medición; Corte no tiene pestaña (cae en Producción).
  */
 export const ETAPA_OT_LABELS = {
-  medicion: "Técnica",
+  medicion: "Medición",
   corte: "Corte",
   produccion: "Producción",
   despacho: "Logística",

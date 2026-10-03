@@ -26,7 +26,7 @@ export type ReportesConversion = {
 };
 
 export type ReportesVelocidadEtapa = {
-  key: "venta_retenida" | "tecnica" | "produccion" | "logistica";
+  key: "venta_retenida" | "medicion" | "produccion" | "logistica";
   label: string;
   diasPromedio: number;
   cantidad: number;
@@ -231,7 +231,7 @@ function emptyDashboard(): ReportesDashboard {
     conversion: { pct: 0, aprobados: 0, total: 0 },
     velocidadEtapas: [
       { key: "venta_retenida", label: "Vta. Retenida", diasPromedio: 0, cantidad: 0 },
-      { key: "tecnica", label: "Técnica", diasPromedio: 0, cantidad: 0 },
+      { key: "medicion", label: "Medición", diasPromedio: 0, cantidad: 0 },
       { key: "produccion", label: "Producción", diasPromedio: 0, cantidad: 0 },
       { key: "logistica", label: "Logística", diasPromedio: 0, cantidad: 0 },
     ],
@@ -430,7 +430,7 @@ export async function fetchReportesDashboard(
     number[]
   > = {
     venta_retenida: [],
-    tecnica: [],
+    medicion: [],
     produccion: [],
     logistica: [],
   };
@@ -441,7 +441,7 @@ export async function fetchReportesDashboard(
       buckets.venta_retenida.push(dwell);
       continue;
     }
-    if (ot.etapa === "medicion") buckets.tecnica.push(dwell);
+    if (ot.etapa === "medicion") buckets.medicion.push(dwell);
     else if (ot.etapa === "corte" || ot.etapa === "produccion") buckets.produccion.push(dwell);
     else if (ot.etapa === "despacho") buckets.logistica.push(dwell);
   }
@@ -453,10 +453,10 @@ export async function fetchReportesDashboard(
       cantidad: buckets.venta_retenida.length,
     },
     {
-      key: "tecnica",
-      label: "Técnica",
-      diasPromedio: avg(buckets.tecnica),
-      cantidad: buckets.tecnica.length,
+      key: "medicion",
+      label: "Medición",
+      diasPromedio: avg(buckets.medicion),
+      cantidad: buckets.medicion.length,
     },
     {
       key: "produccion",

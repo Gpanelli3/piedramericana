@@ -408,4 +408,19 @@ Una vez validado el flujo básico de Fase 1:
 
 ---
 
-**Última actualización:** 19/05/2026 - 13:54 hs
+**Última actualización:** 02/10/2026 — medición como módulo de venta
+
+---
+
+## Medición y paso a producción (oct 2026)
+
+Tabla `presupuesto_mediciones` (una fila por presupuesto). La seña ya **no** manda a producción.
+
+### Recorrido manual
+
+1. **Flujo normal:** aprobar presupuesto → cargar seña → en Presupuestos, «Listo para medir» (fecha opcional) → en Medición, confirmar medidas → «Enviar a producción». La OT aparece en Producción (corte), no antes.
+2. **Medición con presupuesto pendiente:** desde Presupuestos pendientes, «Listo para medir» sin seña. Valentino confirma medidas. «Enviar a producción» debe decir **Falta la seña** (y/o que no está aprobado).
+3. **Saltar medición:** «Saltar medición» con motivo (cliente ya trajo la medida). Con seña y aprobado, el vendedor envía a producción.
+4. **Bloqueo:** intentar avanzar una OT de medición a corte sin seña o sin medir: el sistema bloquea con el motivo.
+5. **Editar medidas con OT ya creada:** desde el detalle de OT, editar medidas versiona el presupuesto (V2+) y actualiza el total.
+6. **Datos migrados:** OTs que ya estaban en corte/producción siguen en Producción. Las que estaban en Técnica aparecen en Medición como listo para medir (o medido si ya tenían medidas confirmadas).

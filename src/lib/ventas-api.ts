@@ -5,6 +5,7 @@ import {
   sugerirCuentaPorMetodo,
 } from "@/lib/finanzas-api";
 import { reservarChapasAOt } from "@/lib/stock-ot-api";
+import { getOrCreateMedicion } from "@/lib/medicion-api";
 import type {
   Database,
   EtapaOtKanban,
@@ -255,6 +256,7 @@ async function crearJobOtSiAusente(opts: {
   presupuestoNumero: string;
   clienteNombre: string;
   payload: Json;
+  presupuestoId?: string | null;
 }): Promise<{
   otId: string | null;
   otIds: string[];
@@ -287,6 +289,11 @@ async function crearJobOtSiAusente(opts: {
   const parsed = parsePayload(opts.payload);
   const ordenes = parsed?.ordenes ?? [];
   const now = new Date().toISOString();
+  let medidasConfirmadas = false;
+  if (opts.presupuestoId) {
+    const med = await getOrCreateMedicion(opts.presupuestoId);
+    medidasConfirmadas = med.data?.estado === "medido";
+  }
   const fechaFallbackRaw =
     parsed?.logistica?.fechaEntrega?.trim() ||
     ordenes.map((o) => o.fechaEntrega?.trim()).find((f) => f && f.length >= 10) ||
@@ -314,6 +321,8 @@ async function crearJobOtSiAusente(opts: {
             pausada: false,
             bloqueada: false,
             requiere_reserva_stock: true,
+            medidas_confirmadas: medidasConfirmadas,
+            fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: orden.key,
             tipo: "normal" as const,
           };
@@ -332,6 +341,8 @@ async function crearJobOtSiAusente(opts: {
             pausada: false,
             bloqueada: false,
             requiere_reserva_stock: true,
+            medidas_confirmadas: medidasConfirmadas,
+            fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: null as string | null,
             tipo: "normal" as const,
           },
@@ -346,6 +357,37 @@ async function crearJobOtSiAusente(opts: {
   }
   const otIds = created.map((r) => r.id);
   return { otId: otIds[0] ?? null, otIds, otByOrdenKey, error: null };
+}
+
+/** Crea las OT de la venta si todavía no existen (p. ej. seña ya cargada). */
+export async function ensureOtsParaPresupuesto(presupuestoId: string): Promise<{
+  otIds: string[];
+  error: Error | null;
+}> {
+  const pres = await supabase
+    .from("presupuestos")
+    .select("id,numero,cliente,payload")
+    .eq("id", presupuestoId)
+    .maybeSingle();
+  if (pres.error) return { otIds: [], error: new Error(pres.error.message) };
+  if (!pres.data) return { otIds: [], error: new Error("Presupuesto no encontrado.") };
+
+  const venta = await supabase
+    .from("ventas")
+    .select("id")
+    .eq("presupuesto_id", presupuestoId)
+    .maybeSingle();
+  if (venta.error) return { otIds: [], error: new Error(venta.error.message) };
+  if (!venta.data?.id) return { otIds: [], error: new Error("No hay venta (falta la seña).") };
+
+  const r = await crearJobOtSiAusente({
+    ventaId: venta.data.id,
+    presupuestoNumero: pres.data.numero,
+    clienteNombre: pres.data.cliente,
+    payload: pres.data.payload as Json,
+    presupuestoId,
+  });
+  return { otIds: r.otIds, error: r.error };
 }
 
 /**
@@ -498,6 +540,7 @@ async function repairOrdenesTrabajoFaltantes(): Promise<{ error: Error | null }>
       presupuestoNumero: row.numero,
       clienteNombre: row.cliente,
       payload: row.payload as Json,
+      presupuestoId: venta.presupuesto_id,
     });
     if (r.error) return { error: r.error };
   }
@@ -566,12 +609,12 @@ export async function registrarPagoSena(opts: {
     if (mov.error) return { error: mov.error };
   }
 
-  /** Con seña el taller puede trabajar: la venta pasa a producción (cobros parciales OK). */
+  /** Con seña nace la venta comercial; producción espera medición + envío explícito. */
   const estadoActual = (venta.estado as VentaEstado | null) ?? null;
   const nextEstado: VentaEstado =
-    estadoActual === "finalizado" || estadoActual === "entregado"
+    estadoActual === "finalizado" || estadoActual === "entregado" || estadoActual === "en_produccion"
       ? estadoActual
-      : "en_produccion";
+      : "en_medicion";
 
   const now = new Date().toISOString();
   if (nextEstado !== venta.estado) {
@@ -587,6 +630,7 @@ export async function registrarPagoSena(opts: {
     presupuestoNumero: presCast.numero,
     clienteNombre: presCast.cliente,
     payload: presCast.payload as Json,
+    presupuestoId: opts.presupuestoId,
   });
   if (otRes.error) return { error: otRes.error, otId: otRes.otId };
 
@@ -673,9 +717,10 @@ export async function persistJobOtProduccion(opts: {
     }
   } else if (
     (vEst === "senado" || vEst === "en_medicion") &&
-    nextStatus !== "cancelled"
+    nextStatus !== "cancelled" &&
+    etapaActual === "medicion" &&
+    (nextEtapa === "corte" || nextEtapa === "produccion" || nextEtapa === "despacho")
   ) {
-    /** Seña ya habilitó taller: alinear estado comercial con producción. */
     ventaPatch = "en_produccion";
   }
 

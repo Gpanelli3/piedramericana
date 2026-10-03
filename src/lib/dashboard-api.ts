@@ -35,18 +35,23 @@ export async function fetchDashboardResumen(): Promise<{
   data: DashboardResumen | null;
   error: Error | null;
 }> {
-  const [presRes, otRes, pendientesRes] = await Promise.all([
+  const [presRes, otRes, pendientesRes, medicionRes] = await Promise.all([
     listPresupuestosResumen(),
     loadOtKanbanView(),
     supabase
       .from("presupuestos")
       .select("*", { count: "exact", head: true })
       .eq("status", "pendiente"),
+    supabase
+      .from("presupuesto_mediciones")
+      .select("id", { count: "exact", head: true })
+      .eq("estado", "listo_para_medir"),
   ]);
 
   if (presRes.error) return { data: null, error: presRes.error };
   if (otRes.error) return { data: null, error: otRes.error };
   if (pendientesRes.error) return { data: null, error: new Error(pendientesRes.error.message) };
+  if (medicionRes.error) return { data: null, error: new Error(medicionRes.error.message) };
 
   const presupuestos = presRes.data ?? [];
   const aprobados = presupuestos.filter((p) => p.status === "aprobado");
@@ -58,8 +63,8 @@ export async function fetchDashboardResumen(): Promise<{
 
   const ots = otRes.data ?? [];
   const otsActivas = ots.length;
-  const otsEnMedicion = ots.filter((t) => t.orden.etapa === "medicion").length;
-  const otsEnProduccion = ots.filter((t) => t.orden.etapa === "produccion").length;
+  const otsEnMedicion = medicionRes.count ?? 0;
+  const otsEnProduccion = ots.filter((t) => t.orden.etapa === "corte" || t.orden.etapa === "produccion").length;
 
   const hoy = hoyIso();
   const limite = enDias(7);

@@ -89,6 +89,46 @@ function articuloIdsDePayload(payload: PresupuestoPayloadV1): string[] {
   return payload.ordenes.flatMap((ot) => ot.items.map((line) => line.articuloId));
 }
 
+function itemsDesdePayload(
+  payload: PresupuestoPayloadV1,
+  articulos: ArticuloConPrecio[],
+  ordenKey: string | null,
+): MedidaItemEditable[] {
+  const byId = new Map(articulos.map((a) => [a.id, a]));
+  const ordenesFuente =
+    ordenKey ? (payload.ordenes ?? []).filter((o) => o.key === ordenKey) : (payload.ordenes ?? []);
+  const items: MedidaItemEditable[] = [];
+  for (const orden of ordenesFuente) {
+    for (const line of orden.items ?? []) {
+      const art = byId.get(line.articuloId);
+      const artCalc = articuloCalculoParaLinea(art, line);
+      const calc = buildLineaCalcInput(artCalc, line);
+      const m2 = computeLineaPresupuesto(artCalc, calc).m2Linea;
+      const unidad = art?.unidad ?? "M2";
+      const modo = line.modoIngreso === "manual" ? "manual" : "dimensiones";
+      const muestraAlto = unidad === "ML" || (unidad === "M2" && modo === "dimensiones");
+      const muestraAncho = unidad === "M2" && modo === "dimensiones";
+      items.push({
+        itemKey: line.key,
+        ordenKey: orden.key,
+        ordenTitulo: (orden.titulo ?? "").trim() || "OT",
+        articuloId: line.articuloId,
+        articuloLabel: art?.descripcion?.trim() || art?.codigo || "Artículo",
+        unidad,
+        modoIngreso: modo,
+        altoM: line.altoM ?? "",
+        anchoM: line.anchoM ?? "",
+        cantidad: line.cantidad ?? "",
+        desperdicioPct: line.desperdicioPct ?? "",
+        m2Approx: m2,
+        muestraAlto,
+        muestraAncho,
+      });
+    }
+  }
+  return items;
+}
+
 async function fetchPayloadVentaPorPresupuestoIds(
   presupuestoIds: string[],
 ): Promise<{ data: Map<string, { payload: PresupuestoPayloadV1; total: number }>; error: Error | null }> {
@@ -209,43 +249,11 @@ export async function fetchMedidasOt(
     const arts = await fetchArticulosPorIds(articuloIdsDePayload(payload));
     if (arts.error) return { data: null, error: arts.error };
     const articulos = arts.data;
-    const byId = new Map(articulos.map((a) => [a.id, a]));
 
     const ordenKey = (otRes.data.orden_key ?? "").trim() || null;
+    const items = itemsDesdePayload(payload, articulos, ordenKey);
     const ordenesFuente =
       ordenKey ? (payload.ordenes ?? []).filter((o) => o.key === ordenKey) : (payload.ordenes ?? []);
-    const items: MedidaItemEditable[] = [];
-    for (const orden of ordenesFuente) {
-      for (const line of orden.items ?? []) {
-        const art = byId.get(line.articuloId);
-        const artCalc = articuloCalculoParaLinea(art, line);
-        const calc = buildLineaCalcInput(artCalc, line);
-        const m2 = computeLineaPresupuesto(artCalc, calc).m2Linea;
-        const unidad = art?.unidad ?? "M2";
-        const modo = line.modoIngreso === "manual" ? "manual" : "dimensiones";
-        const muestraAlto =
-          unidad === "ML" || (unidad === "M2" && modo === "dimensiones");
-        const muestraAncho = unidad === "M2" && modo === "dimensiones";
-
-        items.push({
-          itemKey: line.key,
-          ordenKey: orden.key,
-          ordenTitulo: (orden.titulo ?? "").trim() || "OT",
-          articuloId: line.articuloId,
-          articuloLabel: art?.descripcion?.trim() || art?.codigo || "Artículo",
-          unidad,
-          modoIngreso: modo,
-          altoM: line.altoM ?? "",
-          anchoM: line.anchoM ?? "",
-          cantidad: line.cantidad ?? "",
-          desperdicioPct: line.desperdicioPct ?? "",
-          m2Approx: m2,
-          muestraAlto,
-          muestraAncho,
-        });
-      }
-    }
-
     const m2Calc = computePresupuestoTotalM2(ordenesFuente, articulos);
     const v1Res = await fetchPayloadVentaPorPresupuestoIds([ventaRes.data.presupuesto_id]);
     if (v1Res.error) return { data: null, error: v1Res.error };
@@ -285,6 +293,82 @@ export async function fetchMedidasOt(
   }
 }
 
+export async function fetchMedidasPresupuesto(
+  presupuestoId: string,
+): Promise<{ data: MedidasOtData | null; error: Error | null }> {
+  try {
+    const presRes = await supabase
+      .from("presupuestos")
+      .select("id,payload,total,moneda,nro_version")
+      .eq("id", presupuestoId)
+      .maybeSingle();
+    if (presRes.error) return { data: null, error: new Error(presRes.error.message) };
+    if (!presRes.data) return { data: null, error: new Error("Presupuesto no encontrado.") };
+
+    const payload = parsePayload(presRes.data.payload);
+    if (!payload) {
+      return { data: null, error: new Error("Payload de presupuesto inválido.") };
+    }
+
+    const arts = await fetchArticulosPorIds(articuloIdsDePayload(payload));
+    if (arts.error) return { data: null, error: arts.error };
+    const articulos = arts.data;
+    const items = itemsDesdePayload(payload, articulos, null);
+
+    const ventaRes = await supabase
+      .from("ventas")
+      .select("id,notas_medicion")
+      .eq("presupuesto_id", presupuestoId)
+      .maybeSingle();
+    if (ventaRes.error) return { data: null, error: new Error(ventaRes.error.message) };
+
+    const medicionRes = await supabase
+      .from("presupuesto_mediciones")
+      .select("estado,notas")
+      .eq("presupuesto_id", presupuestoId)
+      .maybeSingle();
+    if (medicionRes.error) return { data: null, error: new Error(medicionRes.error.message) };
+
+    const m2Calc = computePresupuestoTotalM2(payload.ordenes, articulos);
+    const v1Res = await fetchPayloadVentaPorPresupuestoIds([presupuestoId]);
+    if (v1Res.error) return { data: null, error: v1Res.error };
+    const payloadVenta = v1Res.data.get(presupuestoId)?.payload ?? payload;
+    const totalVenta = v1Res.data.get(presupuestoId)?.total ?? (Number(presRes.data.total) || 0);
+    const trio = trioM2(
+      computePresupuestoTotalM2(payloadVenta.ordenes, articulos),
+      m2Calc,
+    );
+
+    const notasVenta = (ventaRes.data?.notas_medicion ?? "").trim();
+    const notasMedicion = (medicionRes.data?.notas ?? "").trim();
+
+    return {
+      data: {
+        items,
+        medidasConfirmadas: medicionRes.data?.estado === "medido",
+        notasMedicion: notasMedicion || notasVenta,
+        presupuestoId,
+        ventaId: ventaRes.data?.id ?? "",
+        materialM2: m2Calc,
+        m2Venta: trio.venta,
+        m2Obra: trio.obra,
+        m2Dif: trio.dif,
+        total: Number(presRes.data.total) || 0,
+        totalVenta,
+        moneda: presRes.data.moneda === "usd" ? "usd" : "ars",
+        nroVersion: presRes.data.nro_version ?? 1,
+        ordenKey: null,
+      },
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error : new Error("No se pudieron cargar las medidas."),
+    };
+  }
+}
+
 export type MedidaItemPatch = {
   itemKey: string;
   ordenKey: string;
@@ -301,71 +385,55 @@ export type GuardarMedidasOtResult = {
   totalNuevo: number;
   nroVersion: number;
   moneda: "ars" | "usd";
+  ventaId: string | null;
+};
+
+const EMPTY_GUARDAR: GuardarMedidasOtResult = {
+  error: null,
+  m2Anterior: 0,
+  m2Nuevo: 0,
+  totalAnterior: 0,
+  totalNuevo: 0,
+  nroVersion: 1,
+  moneda: "ars",
+  ventaId: null,
 };
 
 /**
- * Persiste medidas editadas, versiona el presupuesto (V1 si no había snapshot)
- * y recalcula el total vigente con los mismos precios unitarios + descuento + MEC.
+ * Aplica medidas, versiona el presupuesto y recalcula el total.
+ * `ordenKey` limita el parche a una OT; si es null, aplica a todo el presupuesto.
  */
-export async function guardarMedidasOt(opts: {
-  otId: string;
+export async function aplicarMedidasAPresupuesto(opts: {
+  presupuestoId: string;
   items: MedidaItemPatch[];
+  ordenKey?: string | null;
   notas?: string;
 }): Promise<GuardarMedidasOtResult> {
-  const empty: GuardarMedidasOtResult = {
-    error: null,
-    m2Anterior: 0,
-    m2Nuevo: 0,
-    totalAnterior: 0,
-    totalNuevo: 0,
-    nroVersion: 1,
-    moneda: "ars",
-  };
   try {
-    const otRes = await supabase
-      .from("ordenes_trabajo")
-      .select("id,venta_id,orden_key")
-      .eq("id", opts.otId)
-      .maybeSingle();
-    if (otRes.error) return { ...empty, error: new Error(otRes.error.message) };
-    if (!otRes.data?.venta_id) {
-      return { ...empty, error: new Error("La OT no tiene venta asociada.") };
-    }
-
-    const ventaRes = await supabase
-      .from("ventas")
-      .select("id,presupuesto_id")
-      .eq("id", otRes.data.venta_id)
-      .maybeSingle();
-    if (ventaRes.error) return { ...empty, error: new Error(ventaRes.error.message) };
-    if (!ventaRes.data?.presupuesto_id) {
-      return { ...empty, error: new Error("Venta sin presupuesto.") };
-    }
-
-    const presupuestoId = ventaRes.data.presupuesto_id;
+    const presupuestoId = opts.presupuestoId;
     const presRes = await supabase
       .from("presupuestos")
       .select("id,payload,total,moneda,nro_version")
       .eq("id", presupuestoId)
       .maybeSingle();
-    if (presRes.error) return { ...empty, error: new Error(presRes.error.message) };
-    if (!presRes.data) return { ...empty, error: new Error("Presupuesto no encontrado.") };
+    if (presRes.error) return { ...EMPTY_GUARDAR, error: new Error(presRes.error.message) };
+    if (!presRes.data) return { ...EMPTY_GUARDAR, error: new Error("Presupuesto no encontrado.") };
 
     const payload = parsePayload(presRes.data.payload);
-    if (!payload) return { ...empty, error: new Error("Payload de presupuesto inválido.") };
+    if (!payload) return { ...EMPTY_GUARDAR, error: new Error("Payload de presupuesto inválido.") };
 
     const arts = await fetchArticulosPorIds(articuloIdsDePayload(payload));
-    if (arts.error) return { ...empty, error: arts.error };
+    if (arts.error) return { ...EMPTY_GUARDAR, error: arts.error };
     const articulos = arts.data.map((a) => ({ ...a, precio: a.precio ?? 0 }));
 
     const moneda: "ars" | "usd" = presRes.data.moneda === "usd" ? "usd" : "ars";
     const nroActual = presRes.data.nro_version ?? 1;
     const totalAnterior = Number(presRes.data.total) || 0;
     const m2PresupuestoAnterior = computePresupuestoTotalM2(payload.ordenes, articulos);
-    const ordenKey = (otRes.data.orden_key ?? "").trim() || null;
+    const ordenKey = (opts.ordenKey ?? "").trim() || null;
 
     const v1Res = await fetchPayloadVentaPorPresupuestoIds([presupuestoId]);
-    if (v1Res.error) return { ...empty, error: v1Res.error };
+    if (v1Res.error) return { ...EMPTY_GUARDAR, error: v1Res.error };
     const payloadVenta = v1Res.data.get(presupuestoId)?.payload ?? payload;
 
     const snapExistente = await supabase
@@ -375,7 +443,7 @@ export async function guardarMedidasOt(opts: {
       .eq("nro", nroActual)
       .maybeSingle();
     if (snapExistente.error) {
-      return { ...empty, error: new Error(snapExistente.error.message) };
+      return { ...EMPTY_GUARDAR, error: new Error(snapExistente.error.message) };
     }
     if (!snapExistente.data) {
       const snap = await supabase.from("presupuesto_versiones").insert({
@@ -386,7 +454,7 @@ export async function guardarMedidasOt(opts: {
         payload: payload as unknown as Json,
       });
       if (snap.error && snap.error.code !== "23505") {
-        return { ...empty, error: new Error(snap.error.message) };
+        return { ...EMPTY_GUARDAR, error: new Error(snap.error.message) };
       }
     }
 
@@ -449,28 +517,27 @@ export async function guardarMedidasOt(opts: {
         updated_at: now,
       })
       .eq("id", presupuestoId);
-    if (upPres.error) return { ...empty, error: new Error(upPres.error.message) };
+    if (upPres.error) return { ...EMPTY_GUARDAR, error: new Error(upPres.error.message) };
 
-    const upOt = await supabase
-      .from("ordenes_trabajo")
-      .update({
-        medidas_confirmadas: true,
-        fecha_medidas_confirmadas: now,
-        actualizado_en: now,
-      })
-      .eq("id", opts.otId);
-    if (upOt.error) return { ...empty, error: new Error(upOt.error.message) };
+    const ventaRes = await supabase
+      .from("ventas")
+      .select("id")
+      .eq("presupuesto_id", presupuestoId)
+      .maybeSingle();
+    if (ventaRes.error) return { ...EMPTY_GUARDAR, error: new Error(ventaRes.error.message) };
 
     const notas = opts.notas?.trim() ?? "";
-    const upVenta = await supabase
-      .from("ventas")
-      .update({
-        notas_medicion: notas || null,
-        fecha_confirmacion_medidas: now,
-        updated_at: now,
-      })
-      .eq("id", ventaRes.data.id);
-    if (upVenta.error) return { ...empty, error: new Error(upVenta.error.message) };
+    if (ventaRes.data?.id) {
+      const upVenta = await supabase
+        .from("ventas")
+        .update({
+          notas_medicion: notas || null,
+          fecha_confirmacion_medidas: now,
+          updated_at: now,
+        })
+        .eq("id", ventaRes.data.id);
+      if (upVenta.error) return { ...EMPTY_GUARDAR, error: new Error(upVenta.error.message) };
+    }
 
     return {
       error: null,
@@ -480,13 +547,76 @@ export async function guardarMedidasOt(opts: {
       totalNuevo: comercial.total,
       nroVersion: nroNuevo,
       moneda,
+      ventaId: ventaRes.data?.id ?? null,
     };
   } catch (error) {
     return {
-      ...empty,
+      ...EMPTY_GUARDAR,
       error: error instanceof Error ? error : new Error("No se pudieron guardar las medidas."),
     };
   }
+}
+
+export async function guardarMedidasPresupuesto(opts: {
+  presupuestoId: string;
+  items: MedidaItemPatch[];
+  notas?: string;
+}): Promise<GuardarMedidasOtResult> {
+  return aplicarMedidasAPresupuesto({
+    presupuestoId: opts.presupuestoId,
+    items: opts.items,
+    ordenKey: null,
+    notas: opts.notas,
+  });
+}
+
+/**
+ * Persiste medidas editadas de una OT, versiona el presupuesto y marca la OT como confirmada.
+ */
+export async function guardarMedidasOt(opts: {
+  otId: string;
+  items: MedidaItemPatch[];
+  notas?: string;
+}): Promise<GuardarMedidasOtResult> {
+  const otRes = await supabase
+    .from("ordenes_trabajo")
+    .select("id,venta_id,orden_key")
+    .eq("id", opts.otId)
+    .maybeSingle();
+  if (otRes.error) return { ...EMPTY_GUARDAR, error: new Error(otRes.error.message) };
+  if (!otRes.data?.venta_id) {
+    return { ...EMPTY_GUARDAR, error: new Error("La OT no tiene venta asociada.") };
+  }
+
+  const ventaRes = await supabase
+    .from("ventas")
+    .select("id,presupuesto_id")
+    .eq("id", otRes.data.venta_id)
+    .maybeSingle();
+  if (ventaRes.error) return { ...EMPTY_GUARDAR, error: new Error(ventaRes.error.message) };
+  if (!ventaRes.data?.presupuesto_id) {
+    return { ...EMPTY_GUARDAR, error: new Error("Venta sin presupuesto.") };
+  }
+
+  const res = await aplicarMedidasAPresupuesto({
+    presupuestoId: ventaRes.data.presupuesto_id,
+    items: opts.items,
+    ordenKey: (otRes.data.orden_key ?? "").trim() || null,
+    notas: opts.notas,
+  });
+  if (res.error) return res;
+
+  const now = new Date().toISOString();
+  const upOt = await supabase
+    .from("ordenes_trabajo")
+    .update({
+      medidas_confirmadas: true,
+      fecha_medidas_confirmadas: now,
+      actualizado_en: now,
+    })
+    .eq("id", opts.otId);
+  if (upOt.error) return { ...res, error: new Error(upOt.error.message) };
+  return res;
 }
 
 /** Diferencia relativa de m² para avisar revisión comercial. */

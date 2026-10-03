@@ -36,6 +36,10 @@ import {
 } from "@/lib/presupuestos-api";
 import { listMaterials } from "@/lib/materials-api";
 import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
+import { listarMedicionesPorPresupuestos } from "@/lib/medicion-api";
+import type { MedicionEstado } from "@/lib/medicion-reglas";
+import { SolicitarMedicionDialog } from "@/components/medicion/SolicitarMedicionDialog";
+import { SaltarMedicionDialog } from "@/components/medicion/SaltarMedicionDialog";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   hydratePresupuestoPayloadV1,
@@ -73,6 +77,10 @@ export function VistaVentas() {
 
   const [rows, setRows] = useState<PresupuestoRowLista[]>([]);
   const [listaCargando, setListaCargando] = useState(true);
+  const [medicionPorId, setMedicionPorId] = useState<Record<string, MedicionEstado>>({});
+  const [medicionTarget, setMedicionTarget] = useState<PresupuestoRowLista | null>(null);
+  const [solicitarOpen, setSolicitarOpen] = useState(false);
+  const [saltarOpen, setSaltarOpen] = useState(false);
 
   const [resumenAbierto, setResumenAbierto] = useState(false);
   const [resumenCargando, setResumenCargando] = useState(false);
@@ -108,6 +116,13 @@ export function VistaVentas() {
       setRows([]);
     } else {
       setRows(data ?? []);
+      const ids = (data ?? []).map((r) => r.id);
+      const med = await listarMedicionesPorPresupuestos(ids);
+      if (!med.error) {
+        const map: Record<string, MedicionEstado> = {};
+        for (const [id, row] of med.data) map[id] = row.estado;
+        setMedicionPorId(map);
+      }
     }
     setListaCargando(false);
   }, []);
@@ -433,6 +448,15 @@ export function VistaVentas() {
             onDescargarPdf={descargarPdf}
             onAprobar={async (id) => iniciarAprobacion(id)}
             onRechazar={onRechazar}
+            medicionPorId={medicionPorId}
+            onListoParaMedir={(row) => {
+              setMedicionTarget(row);
+              setSolicitarOpen(true);
+            }}
+            onSaltarMedicion={(row) => {
+              setMedicionTarget(row);
+              setSaltarOpen(true);
+            }}
           />
         )}
       </main>
@@ -628,6 +652,22 @@ export function VistaVentas() {
         </DialogContent>
       </Dialog>
 
+      <SolicitarMedicionDialog
+        open={solicitarOpen}
+        onOpenChange={setSolicitarOpen}
+        presupuestoId={medicionTarget?.id ?? null}
+        cliente={medicionTarget?.cliente}
+        numero={medicionTarget?.numero}
+        onDone={() => void refreshLista()}
+      />
+      <SaltarMedicionDialog
+        open={saltarOpen}
+        onOpenChange={setSaltarOpen}
+        presupuestoId={medicionTarget?.id ?? null}
+        cliente={medicionTarget?.cliente}
+        numero={medicionTarget?.numero}
+        onDone={() => void refreshLista()}
+      />
       <AprobarPresupuestoDialog
         open={aprobDialogAbierto}
         onOpenChange={(o) => {

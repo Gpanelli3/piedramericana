@@ -15,6 +15,11 @@ export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 export type BachaClienteEstado = "pendiente" | "en_taller" | "usada";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
+export type MedicionEstado =
+  | "sin_solicitar"
+  | "listo_para_medir"
+  | "medido"
+  | "no_requiere";
 export type VentaEstado =
   | "senado"
   | "en_medicion"
@@ -1245,6 +1250,59 @@ export interface Database {
           },
         ];
       };
+      presupuesto_mediciones: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+          estado: MedicionEstado;
+          solicitado_por: string | null;
+          solicitado_en: string | null;
+          fecha_programada: string | null;
+          medido_por: string | null;
+          medido_en: string | null;
+          motivo_salto: string | null;
+          notas: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+          estado?: MedicionEstado;
+          solicitado_por?: string | null;
+          solicitado_en?: string | null;
+          fecha_programada?: string | null;
+          medido_por?: string | null;
+          medido_en?: string | null;
+          motivo_salto?: string | null;
+          notas?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+          estado?: MedicionEstado;
+          solicitado_por?: string | null;
+          solicitado_en?: string | null;
+          fecha_programada?: string | null;
+          medido_por?: string | null;
+          medido_en?: string | null;
+          motivo_salto?: string | null;
+          notas?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "presupuesto_mediciones_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: true;
+            referencedRelation: "presupuestos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       presupuesto_versiones: {
         Row: {
           id: string;
@@ -2098,6 +2156,7 @@ export interface Database {
       material_kind: MaterialKindDb;
       bacha_cliente_estado: BachaClienteEstado;
       presupuesto_estado: PresupuestoEstado;
+      medicion_estado: MedicionEstado;
       venta_estado: VentaEstado;
       unidad_articulo: UnidadArticuloDb;
       rol_operativo: RolOperativo;

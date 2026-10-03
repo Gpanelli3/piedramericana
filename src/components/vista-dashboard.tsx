@@ -185,7 +185,7 @@ export function VistaDashboard() {
                   value={cargando ? "…" : String(data?.otsActivas ?? 0)}
                   hint={
                     !cargando && data
-                      ? `${data.otsEnMedicion} en técnica · ${data.otsEnProduccion} en producción`
+                      ? `${data.otsEnMedicion} para medir · ${data.otsEnProduccion} en producción`
                       : undefined
                   }
                   icon={<Wrench className="h-5 w-5" aria-hidden />}
