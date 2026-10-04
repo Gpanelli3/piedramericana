@@ -378,6 +378,7 @@ export async function listarColaMedicion(): Promise<{
   for (const medicion of mediciones) {
     const pres = presById.get(medicion.presupuesto_id);
     if (!pres) continue;
+    if (pres.status === "rechazado") continue;
     const venta = ventaByPres.get(pres.id) ?? null;
     const tieneSena = venta ? (pagosCount.get(venta.id) ?? 0) > 0 : false;
     const ots = venta ? (otsByVenta.get(venta.id) ?? []) : [];

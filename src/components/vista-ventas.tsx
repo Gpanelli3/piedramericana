@@ -26,7 +26,7 @@ import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocume
 import {
   listPresupuestosLista,
   getPresupuestoById,
-  patchPresupuestoStatus,
+  eliminarPresupuestoPendiente,
   listArticulosConPrecios,
   listArticulos,
   listPresupuestoVersiones,
@@ -60,7 +60,7 @@ import { descargarElementoComoPdf } from "@/lib/descargar-pdf";
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
 function parseTab(v: string | null): PresupuestoFiltroTab {
-  if (v === "aprobados" || v === "rechazados" || v === "todos" || v === "pendientes") {
+  if (v === "aprobados" || v === "todos" || v === "pendientes") {
     return v;
   }
   return "pendientes";
@@ -408,17 +408,26 @@ export function VistaVentas() {
 
   const onRechazar = useCallback(
     async (id: string) => {
+      const row = rows.find((r) => r.id === id);
+      const etiqueta = row ? `${row.numero} · ${row.cliente}` : "este presupuesto";
+      if (
+        !window.confirm(
+          `¿Borrar ${etiqueta}?\nSale de medición y no queda historial.`,
+        )
+      ) {
+        return;
+      }
       setStatusBusyId(id);
-      const res = await patchPresupuestoStatus(id, "rechazado");
+      const res = await eliminarPresupuestoPendiente(id);
       setStatusBusyId(null);
       if (res.error) {
         toast.error(res.error.message);
         return;
       }
-      toast.success("Presupuesto rechazado.");
+      toast.success("Presupuesto eliminado.");
       await refreshLista();
     },
-    [refreshLista],
+    [refreshLista, rows],
   );
 
   return (

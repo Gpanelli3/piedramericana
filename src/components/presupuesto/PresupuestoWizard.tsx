@@ -344,9 +344,9 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           if (mats.length > 0) {
             setOrdenes((prev) =>
               prev.map((o) =>
-                mats.some((m) => m.id === o.materialId)
+                !o.materialId.trim() || mats.some((m) => m.id === o.materialId)
                   ? o
-                  : { ...o, materialId: mats[0]!.id },
+                  : { ...o, materialId: "" },
               ),
             );
           }
@@ -567,8 +567,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   };
 
   const addOrdenTrabajo = () => {
-    const mid = materials[0]?.id ?? "";
-    setOrdenes((rows) => [...rows, newOrdenTrabajo(mid)]);
+    setOrdenes((rows) => [...rows, newOrdenTrabajo("")]);
   };
 
   const removeOrdenTrabajo = (key: string) => {

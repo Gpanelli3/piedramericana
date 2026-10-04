@@ -10,6 +10,7 @@ import {
   type VentaResumenMerged,
 } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
+import { removePlano } from "@/lib/presupuesto-planos-storage";
 
 export type PresupuestoRowLista = {
   id: string;
@@ -223,6 +224,69 @@ export async function updatePresupuestoRow(
 export async function patchPresupuestoStatus(id: string, status: PresupuestoEstado) {
   const now = new Date().toISOString();
   return supabase.from("presupuestos").update({ status, updated_at: now }).eq("id", id);
+}
+
+function storagePathsDePayload(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object") return [];
+  const ordenes = (payload as { ordenes?: unknown }).ordenes;
+  if (!Array.isArray(ordenes)) return [];
+  const out: string[] = [];
+  for (const ot of ordenes) {
+    if (!ot || typeof ot !== "object") continue;
+    const path = (ot as { planoAdjunto?: { storagePath?: unknown } }).planoAdjunto
+      ?.storagePath;
+    if (typeof path === "string" && path.trim()) out.push(path);
+  }
+  return out;
+}
+
+/**
+ * Rechazar = borrar. No se guarda historial.
+ * Solo presupuestos pendientes, sin venta.
+ */
+export async function eliminarPresupuestoPendiente(id: string): Promise<{
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("presupuestos")
+    .select("id, status, payload")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { error: new Error(error.message) };
+  if (!data) return { error: new Error("El presupuesto no existe.") };
+  if (data.status !== "pendiente") {
+    return { error: new Error("Solo se puede eliminar un presupuesto pendiente.") };
+  }
+
+  const venta = await supabase
+    .from("ventas")
+    .select("id")
+    .eq("presupuesto_id", id)
+    .maybeSingle();
+  if (venta.error) return { error: new Error(venta.error.message) };
+  if (venta.data) {
+    return { error: new Error("Este presupuesto ya tiene venta. No se puede eliminar.") };
+  }
+
+  const [seg, com] = await Promise.all([
+    supabase.from("seguimiento_presupuestos").delete().eq("presupuesto_id", id),
+    supabase.from("comisiones").delete().eq("presupuesto_id", id),
+  ]);
+  if (seg.error) return { error: new Error(seg.error.message) };
+  if (com.error) return { error: new Error(com.error.message) };
+
+  const paths = storagePathsDePayload(data.payload);
+  if (paths.length > 0) {
+    await Promise.all(paths.map((p) => removePlano(p)));
+  }
+
+  const del = await supabase
+    .from("presupuestos")
+    .delete()
+    .eq("id", id)
+    .eq("status", "pendiente");
+  if (del.error) return { error: new Error(del.error.message) };
+  return { error: null };
 }
 
 // ─── Artículos y Listas de Precio ────────────────────────────

@@ -12,6 +12,7 @@ import {
 } from "@/lib/medicion-api";
 import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { enviarPresupuestoAProduccion } from "@/lib/produccion-api";
+import { eliminarPresupuestoPendiente } from "@/lib/presupuestos-api";
 import { formatFechaCorta } from "@/components/produccion/ot-ui";
 import { SaltarMedicionDialog } from "@/components/medicion/SaltarMedicionDialog";
 import { ConfirmarMedidasDialog } from "@/components/medicion/ConfirmarMedidasDialog";
@@ -76,9 +77,11 @@ function agruparParaMedir(items: MedicionColaItem[]): GrupoSemana[] {
 }
 
 export function VistaMedicion() {
-  const { tieneAlgunRol, esAdmin } = useRol();
-  const puedeVendedor = esAdmin || tieneAlgunRol("vendedor", "administracion");
-  const puedeMedidor = esAdmin || tieneAlgunRol("medidor", "vendedor", "administracion");
+  const { tieneAlgunRol, esAdmin, roles } = useRol();
+  /** Igual que el sidebar: sin roles cargados se muestran todas las acciones. */
+  const sinRoles = roles.length === 0;
+  const puedeVendedor = esAdmin || sinRoles || tieneAlgunRol("vendedor", "administracion");
+  const puedeMedidor = esAdmin || sinRoles || tieneAlgunRol("medidor", "vendedor", "administracion");
 
   const [items, setItems] = useState<MedicionColaItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -126,6 +129,26 @@ export function VistaMedicion() {
       ),
     [items],
   );
+
+  const onRechazar = async (item: MedicionColaItem) => {
+    if (item.presupuestoStatus !== "pendiente") return;
+    if (
+      !window.confirm(
+        `¿Borrar ${item.numero} · ${item.cliente}?\nSale de medición y no queda historial.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(item.presupuestoId);
+    const res = await eliminarPresupuestoPendiente(item.presupuestoId);
+    setBusyId(null);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Presupuesto eliminado.");
+    await refresh();
+  };
 
   const onEnviar = async (item: MedicionColaItem) => {
     setBusyId(item.presupuestoId);
@@ -186,16 +209,30 @@ export function VistaMedicion() {
                             }
                             extra={
                               puedeVendedor ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 text-xs"
-                                  onClick={() => setSaltar(item)}
-                                >
-                                  <SkipForward className="mr-1 h-3.5 w-3.5" />
-                                  Saltar
-                                </Button>
+                                <>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 text-xs"
+                                    onClick={() => setSaltar(item)}
+                                  >
+                                    <SkipForward className="mr-1 h-3.5 w-3.5" />
+                                    Saltar
+                                  </Button>
+                                  {item.presupuestoStatus === "pendiente" ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-8 text-xs text-destructive hover:text-destructive"
+                                      disabled={busyId === item.presupuestoId}
+                                      onClick={() => void onRechazar(item)}
+                                    >
+                                      Rechazar
+                                    </Button>
+                                  ) : null}
+                                </>
                               ) : null
                             }
                           />
@@ -222,6 +259,20 @@ export function VistaMedicion() {
                       key={item.presupuestoId}
                       item={item}
                       busy={busyId === item.presupuestoId}
+                      extra={
+                        puedeVendedor && item.presupuestoStatus === "pendiente" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-xs text-destructive hover:text-destructive"
+                            disabled={busyId === item.presupuestoId}
+                            onClick={() => void onRechazar(item)}
+                          >
+                            Rechazar
+                          </Button>
+                        ) : null
+                      }
                       accionPrincipal={
                         puedeVendedor
                           ? {
@@ -247,6 +298,20 @@ export function VistaMedicion() {
                       key={item.presupuestoId}
                       item={item}
                       busy={busyId === item.presupuestoId}
+                      extra={
+                        puedeVendedor && item.presupuestoStatus === "pendiente" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-xs text-destructive hover:text-destructive"
+                            disabled={busyId === item.presupuestoId}
+                            onClick={() => void onRechazar(item)}
+                          >
+                            Rechazar
+                          </Button>
+                        ) : null
+                      }
                       accionPrincipal={
                         puedeVendedor
                           ? {

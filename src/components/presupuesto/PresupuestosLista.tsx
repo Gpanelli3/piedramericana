@@ -32,7 +32,7 @@ import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { cn } from "@/lib/utils";
 import type { NavigateFunction } from "react-router-dom";
 
-export type PresupuestoFiltroTab = "pendientes" | "aprobados" | "rechazados" | "todos";
+export type PresupuestoFiltroTab = "pendientes" | "aprobados" | "todos";
 
 function tituloFiltro(tab: PresupuestoFiltroTab): string {
   switch (tab) {
@@ -40,8 +40,6 @@ function tituloFiltro(tab: PresupuestoFiltroTab): string {
       return "Pendientes";
     case "aprobados":
       return "Aprobados";
-    case "rechazados":
-      return "Rechazados";
     case "todos":
       return "Todos";
     default:
@@ -93,7 +91,6 @@ function statusLabel(s: PresupuestoEstado): string {
 function estadoDesdeTab(tab: PresupuestoFiltroTab): PresupuestoEstado | undefined {
   if (tab === "pendientes") return "pendiente";
   if (tab === "aprobados") return "aprobado";
-  if (tab === "rechazados") return "rechazado";
   return undefined;
 }
 
@@ -153,7 +150,6 @@ export function PresupuestosLista({
     if (q.trim()) return "Ningún presupuesto coincide con la búsqueda.";
     if (tab === "pendientes") return "No hay presupuestos pendientes de revisión.";
     if (tab === "aprobados") return "Todavía no hay presupuestos aprobados.";
-    if (tab === "rechazados") return "No hay presupuestos rechazados.";
     return "No hay presupuestos cargados.";
   };
 

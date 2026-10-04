@@ -307,7 +307,6 @@ export function AppSidebar() {
       filt:
         | "pendientes"
         | "aprobados"
-        | "rechazados"
         | "todos" = "pendientes",
     ) => {
       setSearchParams(
@@ -490,13 +489,6 @@ export function AppSidebar() {
                   className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes")}
                 >
                   Pendientes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => gotoVentasQuery("lista", "rechazados")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "rechazados")}
-                >
-                  Rechazados
                 </button>
               </ExpandableNavItem>
             );

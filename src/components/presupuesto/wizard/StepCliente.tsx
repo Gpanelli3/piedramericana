@@ -102,7 +102,7 @@ export function StepCliente({
             onChange={setListaPrecioId}
           />
           <div className="space-y-1">
-            <Label className="text-xs font-medium">Moneda del producto</Label>
+            <Label className="text-xs font-medium">Moneda del presupuesto</Label>
             <Select value={monedaPresupuesto} onValueChange={(v) => setMonedaPresupuesto(v as "ars" | "usd")}>
               <SelectTrigger className="w-full">
                 <SelectValue />
