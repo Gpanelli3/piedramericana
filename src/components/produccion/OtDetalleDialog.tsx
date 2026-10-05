@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ import {
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
+import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -325,6 +326,19 @@ export function OtDetalleDialog({
     toast.success("Estado guardado.");
     refresh();
   };
+
+  const piezasOt = useMemo(
+    () =>
+      medidaItems
+        .filter((it) => it.muestraAlto || it.muestraAncho)
+        .map((it) => ({
+          label: it.articuloLabel || "Pieza",
+          largoCm: parseDecimalInput(it.altoM) * 100,
+          anchoCm: parseDecimalInput(it.anchoM) * 100,
+        }))
+        .filter((p) => p.largoCm > 0 && p.anchoCm > 0),
+    [medidaItems],
+  );
 
   if (!item) return null;
 
@@ -627,6 +641,7 @@ export function OtDetalleDialog({
                 <OtStockPanel
                   otId={item.orden.id}
                   materialHint={item.materialLabel}
+                  piezas={piezasOt}
                   requiereReservaStock={Boolean(item.orden.requiere_reserva_stock)}
                   otTitulo={item.orden.titulo}
                   clienteNombre={item.cliente}

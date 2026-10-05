@@ -1,4 +1,4 @@
-import type { Database } from "@/types/database";
+import type { Database, InventorySlabEstado } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { esBloqueoPorBacha, etapaExigeBachaAsignada, MOTIVO_BLOQUEO_BACHA } from "@/lib/bacha-reglas";
 
@@ -18,7 +18,7 @@ export type ChapaRow = {
   largoCm: number;
   anchoCm: number;
   espesorCm?: number | null;
-  estado: "Disponible" | "Reservada" | "Usada" | "Baja";
+  estado: InventorySlabEstado;
   loteCodigo?: string | null;
   otReservaId?: string | null;
   motivoEstado?: string | null;

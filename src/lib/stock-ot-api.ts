@@ -1,5 +1,7 @@
 import type { Database, InventorySlabEstado } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { esChapaRetazo } from "@/lib/stock-api";
+import { materialCoincide, piezaCabeEnRetazo } from "@/lib/rotura-reglas";
 
 export type ChapaInventarioRow = Database["public"]["Tables"]["chapas_inventario"]["Row"];
 
@@ -68,6 +70,20 @@ export async function listChapasPorOt(
   let q = supabase.from("chapas_inventario").select("*").eq("ot_reserva_id", otId).order("bulto");
   if (estados?.length) q = q.in("estado", estados);
   const { data, error } = await q;
+  if (error) return { data: [], error: new Error(error.message) };
+  return { data: (data ?? []) as ChapaInventarioRow[], error: null };
+}
+
+export async function listChapasRoturaPorOt(
+  otId: string,
+): Promise<{ data: ChapaInventarioRow[]; error: Error | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("chapas_inventario")
+    .select("*")
+    .eq("ot_rotura_id", otId)
+    .eq("estado", "Bloqueada")
+    .order("updated_at", { ascending: false });
   if (error) return { data: [], error: new Error(error.message) };
   return { data: (data ?? []) as ChapaInventarioRow[], error: null };
 }
@@ -289,14 +305,14 @@ export async function consumirChapasConRetazos(opts: {
   return { error: null };
 }
 
-/** Baja por rotura: estado Baja + pausa OT (la pausa la hace el caller). */
+/** Baja: saca del stock (segundo paso, después de bloquear o recortar). */
 export async function bajaChapaPorRotura(opts: {
   chapaId: string;
   otId: string;
   motivo: string;
   observacion?: string;
   created_by?: string | null;
-}): Promise<{ error: Error | null; bulto?: string }> {
+}): Promise<{ error: Error | null; bulto?: string; materialId?: string | null; materialLabel?: string }> {
   if (!isSupabaseConfigured) return { error: new Error("Supabase no configurado.") };
 
   const { data: chapa, error: selErr } = await supabase
@@ -307,8 +323,13 @@ export async function bajaChapaPorRotura(opts: {
   if (selErr) return { error: new Error(selErr.message) };
   const c = chapa as ChapaInventarioRow | null;
   if (!c) return { error: new Error("Chapa no encontrada.") };
-  if (c.estado !== "Disponible" && c.estado !== "Reservada" && c.estado !== "Usada") {
-    return { error: new Error("Solo se puede dar de baja una chapa Disponible, Reservada o Usada.") };
+  if (
+    c.estado !== "Disponible" &&
+    c.estado !== "Reservada" &&
+    c.estado !== "Usada" &&
+    c.estado !== "Bloqueada"
+  ) {
+    return { error: new Error("Esta placa ya no se puede dar de baja.") };
   }
 
   const detalle = [opts.motivo, opts.observacion?.trim()].filter(Boolean).join(" · ");
@@ -332,7 +353,315 @@ export async function bajaChapaPorRotura(opts: {
     created_by: opts.created_by,
   });
 
-  return { error: null, bulto: c.bulto };
+  return { error: null, bulto: c.bulto, materialId: c.material_id, materialLabel: c.material_label };
+}
+
+export type RoturaCampos = {
+  tipo: "chapa" | "pieza";
+  momento: "corte" | "instalacion" | "viaje" | "otro";
+  motivo: string;
+};
+
+function motivoRoturaTexto(campos: RoturaCampos): string {
+  const momento =
+    campos.momento === "corte"
+      ? "corte"
+      : campos.momento === "instalacion"
+        ? "instalación"
+        : campos.momento === "viaje"
+          ? "viaje"
+          : "otro";
+  const tipo = campos.tipo === "pieza" ? "pieza" : "chapa";
+  return `Rotura de ${tipo} · ${momento} · ${campos.motivo}`.slice(0, 200);
+}
+
+/** Primer paso de rotura: la placa queda Bloqueada, ligada a la OT, fuera de lo vendible. */
+export async function bloquearChapaPorRotura(opts: {
+  chapaId: string;
+  otId: string;
+  clienteNombre?: string | null;
+  campos: RoturaCampos;
+  created_by?: string | null;
+}): Promise<{ error: Error | null; bulto?: string; materialId?: string | null; materialLabel?: string }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no configurado.") };
+  const motivo = opts.campos.motivo.trim();
+  if (!motivo) return { error: new Error("Indicá el motivo de la rotura.") };
+
+  const { data: chapa, error: selErr } = await supabase
+    .from("chapas_inventario")
+    .select("*")
+    .eq("id", opts.chapaId)
+    .maybeSingle();
+  if (selErr) return { error: new Error(selErr.message) };
+  const c = chapa as ChapaInventarioRow | null;
+  if (!c) return { error: new Error("Chapa no encontrada.") };
+  if (c.estado !== "Reservada" && c.estado !== "Usada" && c.estado !== "Disponible") {
+    return { error: new Error("Solo se puede bloquear una chapa Disponible, Reservada o Usada.") };
+  }
+
+  const detalle = motivoRoturaTexto({ ...opts.campos, motivo });
+  const ts = nowIso();
+  const { error: upErr } = await supabase
+    .from("chapas_inventario")
+    .update({
+      estado: "Bloqueada" as InventorySlabEstado,
+      ot_reserva_id: null,
+      ot_rotura_id: opts.otId,
+      rotura_tipo: opts.campos.tipo,
+      rotura_momento: opts.campos.momento,
+      cliente_rotura: opts.clienteNombre?.trim() || null,
+      motivo_estado: detalle,
+      updated_at: ts,
+    })
+    .eq("id", c.id);
+  if (upErr) return { error: new Error(upErr.message) };
+
+  await logMovimiento({
+    chapaId: c.id,
+    otId: opts.otId,
+    tipo: "bloqueo",
+    detalle,
+    created_by: opts.created_by,
+  });
+
+  return { error: null, bulto: c.bulto, materialId: c.material_id, materialLabel: c.material_label };
+}
+
+/** Rotura de pieza: alta un pedazo Bloqueado con las medidas de la pieza. La placa Usada no se toca. */
+export async function crearPedazoBloqueadoDePieza(opts: {
+  otId: string;
+  clienteNombre?: string | null;
+  materialId?: string | null;
+  materialLabel: string;
+  largoCm: number;
+  anchoCm: number;
+  campos: RoturaCampos;
+  created_by?: string | null;
+}): Promise<{ error: Error | null; chapaId?: string; materialId?: string | null; materialLabel?: string }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no configurado.") };
+  const motivo = opts.campos.motivo.trim();
+  if (!motivo) return { error: new Error("Indicá el motivo de la rotura.") };
+  if (!(opts.largoCm > 0) || !(opts.anchoCm > 0)) {
+    return { error: new Error("Indicá largo y ancho de la pieza (cm).") };
+  }
+  const label = opts.materialLabel.trim();
+  if (!label) return { error: new Error("Falta el material de la pieza.") };
+
+  const seq = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(2, 12);
+  const bulto = await nextRetazoBulto(`ROT-${seq}`, 1);
+  const detalle = motivoRoturaTexto({ ...opts.campos, tipo: "pieza", motivo });
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("chapas_inventario")
+    .insert({
+      bulto,
+      material_id: opts.materialId ?? null,
+      material_label: label,
+      largo_cm: opts.largoCm,
+      ancho_cm: opts.anchoCm,
+      estado: "Bloqueada" as InventorySlabEstado,
+      origen_placa: "otro",
+      ot_reserva_id: null,
+      ot_rotura_id: opts.otId,
+      rotura_tipo: "pieza",
+      rotura_momento: opts.campos.momento,
+      cliente_rotura: opts.clienteNombre?.trim() || null,
+      motivo_estado: detalle,
+    })
+    .select("id")
+    .single();
+  if (insErr) return { error: new Error(insErr.message) };
+
+  await logMovimiento({
+    chapaId: inserted.id,
+    otId: opts.otId,
+    tipo: "bloqueo",
+    detalle: `${detalle} · ${bulto} ${opts.largoCm}×${opts.anchoCm} cm`,
+    created_by: opts.created_by,
+  });
+
+  return {
+    error: null,
+    chapaId: inserted.id,
+    materialId: opts.materialId ?? null,
+    materialLabel: label,
+  };
+}
+
+/**
+ * Recorta un pedazo bloqueado: alta un retazo Disponible y el bloqueado pasa a Baja.
+ */
+export async function recortarPedazoBloqueado(opts: {
+  chapaId: string;
+  largoCm: number;
+  anchoCm: number;
+  created_by?: string | null;
+}): Promise<{ error: Error | null; retazoBulto?: string; materialId?: string | null; materialLabel?: string }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no configurado.") };
+  if (!(opts.largoCm > 0) || !(opts.anchoCm > 0)) {
+    return { error: new Error("Indicá largo y ancho del recorte (cm).") };
+  }
+
+  const { data: chapa, error: selErr } = await supabase
+    .from("chapas_inventario")
+    .select("*")
+    .eq("id", opts.chapaId)
+    .maybeSingle();
+  if (selErr) return { error: new Error(selErr.message) };
+  const c = chapa as ChapaInventarioRow | null;
+  if (!c) return { error: new Error("Pedazo no encontrado.") };
+  if (c.estado !== "Bloqueada") {
+    return { error: new Error("Solo se pueden recortar pedazos bloqueados.") };
+  }
+
+  if (!piezaCabeEnRetazo(opts.largoCm, opts.anchoCm, Number(c.largo_cm), Number(c.ancho_cm))) {
+    return { error: new Error("Ese recorte no entra en las medidas del pedazo bloqueado.") };
+  }
+
+  const bulto = await nextRetazoBulto(c.bulto, 1);
+  const { data: inserted, error: insErr } = await supabase
+    .from("chapas_inventario")
+    .insert({
+      bulto,
+      material_id: c.material_id,
+      material_label: c.material_label,
+      largo_cm: opts.largoCm,
+      ancho_cm: opts.anchoCm,
+      estado: "Disponible" as InventorySlabEstado,
+      lote_codigo: c.lote_codigo,
+      remito_line_id: c.remito_line_id,
+      chapa_origen_id: c.id,
+      origen_placa: c.origen_placa,
+      motivo_estado: `Retazo recortado de ${c.bulto}`,
+    })
+    .select("id")
+    .single();
+  if (insErr) return { error: new Error(insErr.message) };
+
+  await logMovimiento({
+    chapaId: inserted.id,
+    otId: c.ot_rotura_id ?? c.ot_reserva_id,
+    tipo: "retazo_alta",
+    detalle: `Retazo ${bulto} ${opts.largoCm}×${opts.anchoCm} cm (de ${c.bulto})`,
+    created_by: opts.created_by,
+  });
+
+  const ts = nowIso();
+  const { error: upErr } = await supabase
+    .from("chapas_inventario")
+    .update({
+      estado: "Baja" as InventorySlabEstado,
+      motivo_estado: `Recortado → ${bulto}`,
+      updated_at: ts,
+    })
+    .eq("id", c.id);
+  if (upErr) return { error: new Error(upErr.message) };
+
+  await logMovimiento({
+    chapaId: c.id,
+    otId: c.ot_rotura_id ?? c.ot_reserva_id,
+    tipo: "baja",
+    detalle: `Recortado ${c.bulto} → ${bulto}`,
+    created_by: opts.created_by,
+  });
+
+  await supabase.from("stock_scraps").insert({
+    accion: "Reingresar",
+    ingreso_tipo: "Recorte de rotura",
+    material_id: c.material_id,
+    material_label: c.material_label,
+    cantidad: 1,
+    n_chapa: bulto,
+    observacion: `${opts.largoCm}×${opts.anchoCm} cm · de ${c.bulto}`,
+    created_by: opts.created_by ?? null,
+  });
+
+  return {
+    error: null,
+    retazoBulto: bulto,
+    materialId: c.material_id,
+    materialLabel: c.material_label,
+  };
+}
+
+export type PedazoBloqueadoRow = ChapaInventarioRow & {
+  ot_titulo: string | null;
+};
+
+export async function listChapasBloqueadas(): Promise<{
+  data: PedazoBloqueadoRow[];
+  error: Error | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("chapas_inventario")
+    .select("*, ordenes_trabajo!chapas_inventario_ot_rotura_id_fkey ( titulo )")
+    .eq("estado", "Bloqueada")
+    .order("updated_at", { ascending: false });
+  if (error) return { data: [], error: new Error(error.message) };
+
+  const rows: PedazoBloqueadoRow[] = (data ?? []).map((raw) => {
+    const rel = (
+      raw as unknown as {
+        ordenes_trabajo: { titulo: string } | { titulo: string }[] | null;
+      }
+    ).ordenes_trabajo;
+    const ot = Array.isArray(rel) ? rel[0] : rel;
+    const { ordenes_trabajo: _omit, ...rest } = raw as ChapaInventarioRow & {
+      ordenes_trabajo?: unknown;
+    };
+    void _omit;
+    return {
+      ...(rest as ChapaInventarioRow),
+      ot_titulo: ot?.titulo?.trim() || null,
+    };
+  });
+  return { data: rows, error: null };
+}
+
+export async function listRetazosDisponibles(opts?: {
+  materialId?: string | null;
+  materialLabel?: string | null;
+}): Promise<{ data: ChapaInventarioRow[]; error: Error | null }> {
+  const res = await listChapasDisponibles(
+    opts?.materialLabel ? { materialNeedle: opts.materialLabel } : undefined,
+  );
+  if (res.error) return res;
+  const rows = res.data.filter((c) => {
+    if (
+      !esChapaRetazo({
+        chapaOrigenId: c.chapa_origen_id,
+        motivoEstado: c.motivo_estado,
+      })
+    ) {
+      return false;
+    }
+    if (!opts?.materialId && !opts?.materialLabel) return true;
+    return materialCoincide(opts.materialId, opts.materialLabel, c.material_id, c.material_label);
+  });
+  return { data: rows, error: null };
+}
+
+export async function materialSinChapasDisponibles(opts: {
+  materialId?: string | null;
+  materialLabel?: string | null;
+}): Promise<{ agotado: boolean; label: string }> {
+  const label = (opts.materialLabel ?? "").trim() || "este material";
+  if (!isSupabaseConfigured) return { agotado: false, label };
+  let q = supabase
+    .from("chapas_inventario")
+    .select("id", { count: "exact", head: true })
+    .eq("estado", "Disponible");
+  if (opts.materialId?.trim()) {
+    q = q.eq("material_id", opts.materialId.trim());
+  } else if (opts.materialLabel?.trim()) {
+    q = q.ilike("material_label", `%${opts.materialLabel.trim()}%`);
+  } else {
+    return { agotado: false, label };
+  }
+  const { count, error } = await q;
+  if (error) return { agotado: false, label };
+  return { agotado: (count ?? 0) === 0, label };
 }
 
 export type SugerenciaReserva = {
@@ -484,7 +813,7 @@ export async function listTrazabilidadStockPorCliente(
     .from("chapas_inventario")
     .select("id, bulto, material_label, lote_codigo, origen_placa, estado, motivo_estado, ot_reserva_id")
     .in("ot_reserva_id", otIds)
-    .in("estado", ["Reservada", "Usada", "Baja"]);
+    .in("estado", ["Reservada", "Usada", "Baja", "Bloqueada"]);
   if (cErr) return { data: [], error: new Error(cErr.message) };
 
   const presById = new Map(presupuestos.map((p) => [p.id, p]));
@@ -518,5 +847,5 @@ export async function listTrazabilidadStockPorCliente(
 export async function listChapasUsadasPorOt(
   otId: string,
 ): Promise<{ data: ChapaInventarioRow[]; error: Error | null }> {
-  return listChapasPorOt(otId, ["Reservada", "Usada", "Baja"]);
+  return listChapasPorOt(otId, ["Reservada", "Usada", "Baja", "Bloqueada"]);
 }

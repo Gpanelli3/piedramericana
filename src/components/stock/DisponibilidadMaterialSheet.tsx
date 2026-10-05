@@ -50,6 +50,9 @@ function estadoBadgeClass(estado: ChapaRow["estado"]): string {
   if (estado === "Usada") {
     return "border border-slate-200 bg-slate-100 text-[10px] text-slate-700";
   }
+  if (estado === "Bloqueada") {
+    return "border border-amber-200 bg-amber-50 text-[10px] text-amber-900";
+  }
   return "border border-red-200 bg-red-50 text-[10px] text-red-800";
 }
 
@@ -233,7 +236,8 @@ export function DisponibilidadMaterialSheet({
                               {c.otReservaId &&
                               (c.estado === "Reservada" ||
                                 c.estado === "Usada" ||
-                                c.estado === "Baja") ? (
+                                c.estado === "Baja" ||
+                                c.estado === "Bloqueada") ? (
                                 <div className="flex min-w-0 items-center gap-1">
                                   <span className="truncate">{otLabel || "OT"}</span>
                                   <Button

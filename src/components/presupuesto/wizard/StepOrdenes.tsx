@@ -26,6 +26,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { PickMaterial, SectionPresupuesto } from "./fields";
 import { PickChapaParaOt } from "./PickChapaParaOt";
+import { AvisoRetazoPiezas } from "@/components/stock/AvisoRetazoPiezas";
+import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
 import {
   MODELOS_BACHA,
@@ -236,6 +238,19 @@ export function StepOrdenes({
                               })
                             }
                           />
+                          <div className="sm:col-span-2">
+                            <AvisoRetazoPiezas
+                              materialId={ot.materialId || null}
+                              materialLabel={materialRow?.name ?? null}
+                              piezas={ot.items
+                                .map((line) => ({
+                                  label: line.articuloId || "Pieza",
+                                  largoCm: parseDecimalInput(line.altoM) * 100,
+                                  anchoCm: parseDecimalInput(line.anchoM) * 100,
+                                }))
+                                .filter((p) => p.largoCm > 0 && p.anchoCm > 0)}
+                            />
+                          </div>
                         </div>
 
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80 sm:p-4">

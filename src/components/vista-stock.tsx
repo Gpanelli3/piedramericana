@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
 import { HistorialRemitosTab } from "@/components/stock/HistorialRemitosTab";
 import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTab";
+import { PedazosBloqueadosTab } from "@/components/stock/PedazosBloqueadosTab";
 import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab";
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { StockProductosUnidadesTab } from "@/components/stock/StockProductosUnidadesTab";
@@ -204,6 +205,8 @@ export function VistaStock() {
             <p className="mt-1 text-sm text-muted-foreground">
               {stockTab === "listas"
                 ? "Precios de mármoles, planchas y bachas por lista."
+                : stockTab === "bloqueados"
+                  ? "Pedazos rotos, fuera de venta, para recortar o reponer."
                 : stockTab === "bachas"
                   ? "Bachas propias y del cliente."
                 : `${resumen.planchas} disponibles${
@@ -253,6 +256,7 @@ export function VistaStock() {
         <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
           <TabsList>
             <TabsTrigger value="inventario">Inventario</TabsTrigger>
+            <TabsTrigger value="bloqueados">Pedazos bloqueados</TabsTrigger>
             <TabsTrigger value="bachas">Bachas</TabsTrigger>
             <TabsTrigger value="listas">Listas de precio</TabsTrigger>
           </TabsList>
@@ -272,6 +276,9 @@ export function VistaStock() {
             setProductoOpen(true);
           }}
         />
+          </TabsContent>
+          <TabsContent value="bloqueados">
+            <PedazosBloqueadosTab />
           </TabsContent>
           <TabsContent value="bachas">
             <BachasInventarioTab />

@@ -10,7 +10,9 @@ export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired"
 export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
-export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja";
+export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja" | "Bloqueada";
+export type RoturaTipoDb = "chapa" | "pieza";
+export type RoturaMomentoDb = "corte" | "instalacion" | "viaje" | "otro";
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
 export type BachaOrigen = "propia" | "cliente";
@@ -1075,6 +1077,10 @@ export interface Database {
           motivo_estado: string | null;
           chapa_origen_id: string | null;
           origen_placa: OrigenPlaca;
+          rotura_tipo: RoturaTipoDb | null;
+          rotura_momento: RoturaMomentoDb | null;
+          ot_rotura_id: string | null;
+          cliente_rotura: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1093,6 +1099,10 @@ export interface Database {
           motivo_estado?: string | null;
           chapa_origen_id?: string | null;
           origen_placa?: OrigenPlaca;
+          rotura_tipo?: RoturaTipoDb | null;
+          rotura_momento?: RoturaMomentoDb | null;
+          ot_rotura_id?: string | null;
+          cliente_rotura?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1111,6 +1121,10 @@ export interface Database {
           motivo_estado?: string | null;
           chapa_origen_id?: string | null;
           origen_placa?: OrigenPlaca;
+          rotura_tipo?: RoturaTipoDb | null;
+          rotura_momento?: RoturaMomentoDb | null;
+          ot_rotura_id?: string | null;
+          cliente_rotura?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1136,6 +1150,13 @@ export interface Database {
             referencedRelation: "ordenes_trabajo";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "chapas_inventario_ot_rotura_id_fkey";
+            columns: ["ot_rotura_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
         ];
       };
       stock_movimientos: {
@@ -1143,7 +1164,7 @@ export interface Database {
           id: string;
           chapa_id: string | null;
           ot_id: string | null;
-          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta" | "bloqueo";
           detalle: string | null;
           created_by: string | null;
           created_at: string;
@@ -1152,7 +1173,7 @@ export interface Database {
           id?: string;
           chapa_id?: string | null;
           ot_id?: string | null;
-          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          tipo: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta" | "bloqueo";
           detalle?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -1161,7 +1182,7 @@ export interface Database {
           id?: string;
           chapa_id?: string | null;
           ot_id?: string | null;
-          tipo?: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta";
+          tipo?: "reserva" | "liberacion" | "consumo" | "baja" | "retazo_alta" | "bloqueo";
           detalle?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -2227,6 +2248,8 @@ export interface Database {
       invoice_status: InvoiceStatus;
       profile_role: ProfileRole;
       inventory_slab_estado: InventorySlabEstado;
+      rotura_tipo: RoturaTipoDb;
+      rotura_momento: RoturaMomentoDb;
       origen_placa: OrigenPlaca;
       material_kind: MaterialKindDb;
       bacha_origen: BachaOrigen;

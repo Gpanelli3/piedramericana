@@ -7,7 +7,7 @@ import {
 } from "@/lib/ventas-api";
 import { fetchM2TriosPorPresupuestos, m2CambioSignificativo } from "@/lib/ot-medidas-api";
 import { formatMetraje, type M2Trio } from "@/lib/presupuesto-calculos";
-import { bajaChapaPorRotura, reservarChapasAOt } from "@/lib/stock-ot-api";
+import { bloquearChapaPorRotura, crearPedazoBloqueadoDePieza, bajaChapaPorRotura, listChapasPorOt, reservarChapasAOt } from "@/lib/stock-ot-api";
 import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
 import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
 import { bachaResuelta, MOTIVO_BLOQUEO_BACHA, motivoBloqueoBacha } from "@/lib/bacha-reglas";
@@ -647,33 +647,97 @@ export async function marcarOtEntregada(otId: string): Promise<{ error: Error | 
   });
 }
 
-export async function registrarRoturaYReposicion(opts: {
+export async function registrarRoturaBloqueo(opts: {
   otOrigenId: string;
-  chapaId: string;
+  tipo: "chapa" | "pieza";
+  momento: "corte" | "instalacion" | "viaje" | "otro";
   motivo: string;
-  crearReposicion?: boolean;
-  chapaNuevaId?: string | null;
+  chapaId?: string | null;
+  pieza?: {
+    largoCm: number;
+    anchoCm: number;
+    materialId?: string | null;
+    materialLabel: string;
+  };
+  clienteNombre?: string | null;
   created_by?: string | null;
-}): Promise<{ otReposicionId: string | null; error: Error | null }> {
+}): Promise<{ chapaBloqueadaId: string | null; error: Error | null; materialId?: string | null; materialLabel?: string }> {
   const motivo = opts.motivo.trim();
-  if (!motivo) return { otReposicionId: null, error: new Error("Indicá el motivo de la rotura.") };
+  if (!motivo) return { chapaBloqueadaId: null, error: new Error("Indicá el motivo de la rotura.") };
 
   const prev = await supabase
     .from("ordenes_trabajo")
     .select("*")
     .eq("id", opts.otOrigenId)
     .maybeSingle();
-  if (prev.error) return { otReposicionId: null, error: new Error(prev.error.message) };
+  if (prev.error) return { chapaBloqueadaId: null, error: new Error(prev.error.message) };
   const origen = prev.data as OrdenTrabajoRow | null;
-  if (!origen) return { otReposicionId: null, error: new Error("OT de origen no encontrada.") };
+  if (!origen) return { chapaBloqueadaId: null, error: new Error("OT de origen no encontrada.") };
 
-  const baja = await bajaChapaPorRotura({
-    chapaId: opts.chapaId,
-    otId: opts.otOrigenId,
-    motivo,
-    created_by: opts.created_by ?? null,
-  });
-  if (baja.error) return { otReposicionId: null, error: baja.error };
+  const campos = { tipo: opts.tipo, momento: opts.momento, motivo };
+  let chapaBloqueadaId: string | null = null;
+  let materialId: string | null | undefined;
+  let materialLabel: string | undefined;
+
+  const reservadasOt = await listChapasPorOt(opts.otOrigenId, ["Reservada"]);
+  if (reservadasOt.error) return { chapaBloqueadaId: null, error: reservadasOt.error };
+
+  const chapaABloquear =
+    opts.chapaId ||
+    reservadasOt.data[0]?.id ||
+    null;
+
+  if (opts.tipo === "pieza") {
+    const pieza = opts.pieza;
+    if (!pieza) return { chapaBloqueadaId: null, error: new Error("Indicá las medidas de la pieza.") };
+    if (chapaABloquear) {
+      const bloqueo = await bloquearChapaPorRotura({
+        chapaId: chapaABloquear,
+        otId: opts.otOrigenId,
+        clienteNombre: opts.clienteNombre,
+        campos: {
+          ...campos,
+          tipo: "pieza",
+          motivo: `${motivo} (${pieza.largoCm}×${pieza.anchoCm} cm)`,
+        },
+        created_by: opts.created_by ?? null,
+      });
+      if (bloqueo.error) return { chapaBloqueadaId: null, error: bloqueo.error };
+      chapaBloqueadaId = chapaABloquear;
+      materialId = bloqueo.materialId;
+      materialLabel = bloqueo.materialLabel;
+    } else {
+      const alta = await crearPedazoBloqueadoDePieza({
+        otId: opts.otOrigenId,
+        clienteNombre: opts.clienteNombre,
+        materialId: pieza.materialId,
+        materialLabel: pieza.materialLabel,
+        largoCm: pieza.largoCm,
+        anchoCm: pieza.anchoCm,
+        campos: { ...campos, tipo: "pieza" },
+        created_by: opts.created_by ?? null,
+      });
+      if (alta.error) return { chapaBloqueadaId: null, error: alta.error };
+      chapaBloqueadaId = alta.chapaId ?? null;
+      materialId = alta.materialId;
+      materialLabel = alta.materialLabel;
+    }
+  } else {
+    if (!chapaABloquear) {
+      return { chapaBloqueadaId: null, error: new Error("Elegí la chapa que se rompió.") };
+    }
+    const bloqueo = await bloquearChapaPorRotura({
+      chapaId: chapaABloquear,
+      otId: opts.otOrigenId,
+      clienteNombre: opts.clienteNombre,
+      campos: { ...campos, tipo: "chapa" },
+      created_by: opts.created_by ?? null,
+    });
+    if (bloqueo.error) return { chapaBloqueadaId: null, error: bloqueo.error };
+    chapaBloqueadaId = chapaABloquear;
+    materialId = bloqueo.materialId;
+    materialLabel = bloqueo.materialLabel;
+  }
 
   const now = new Date().toISOString();
   const notasOrigen = [origen.notas?.trim(), `Rotura: ${motivo}`].filter(Boolean).join("\n");
@@ -685,12 +749,28 @@ export async function registrarRoturaYReposicion(opts: {
       actualizado_en: now,
     })
     .eq("id", opts.otOrigenId);
-  if (pausa.error) return { otReposicionId: null, error: new Error(pausa.error.message) };
+  if (pausa.error) return { chapaBloqueadaId, error: new Error(pausa.error.message) };
 
-  if (opts.crearReposicion === false) {
-    return { otReposicionId: null, error: null };
-  }
+  return { chapaBloqueadaId, error: null, materialId, materialLabel };
+}
 
+export async function crearOtReposicionDesdeOrigen(opts: {
+  otOrigenId: string;
+  motivo: string;
+  chapaNuevaId?: string | null;
+  created_by?: string | null;
+}): Promise<{ otReposicionId: string | null; error: Error | null }> {
+  const motivo = opts.motivo.trim() || "Reposición";
+  const prev = await supabase
+    .from("ordenes_trabajo")
+    .select("*")
+    .eq("id", opts.otOrigenId)
+    .maybeSingle();
+  if (prev.error) return { otReposicionId: null, error: new Error(prev.error.message) };
+  const origen = prev.data as OrdenTrabajoRow | null;
+  if (!origen) return { otReposicionId: null, error: new Error("OT de origen no encontrada.") };
+
+  const now = new Date().toISOString();
   const tituloBase = origen.titulo.replace(/^Reposición\s*·\s*/i, "").trim() || origen.titulo;
   const etapaHija: EtapaOtKanban =
     coalesceEtapaOt(origen.etapa) === "medicion" ? "medicion" : "corte";
@@ -732,6 +812,46 @@ export async function registrarRoturaYReposicion(opts: {
   }
 
   return { otReposicionId: nuevaId, error: null };
+}
+
+export async function bajaPedazoBloqueadoYReponer(opts: {
+  chapaId: string;
+  created_by?: string | null;
+}): Promise<{ otReposicionId: string | null; error: Error | null; materialId?: string | null; materialLabel?: string }> {
+  const { data: chapa, error: selErr } = await supabase
+    .from("chapas_inventario")
+    .select("*")
+    .eq("id", opts.chapaId)
+    .maybeSingle();
+  if (selErr) return { otReposicionId: null, error: new Error(selErr.message) };
+  if (!chapa) return { otReposicionId: null, error: new Error("Pedazo no encontrado.") };
+  if (chapa.estado !== "Bloqueada") {
+    return { otReposicionId: null, error: new Error("Solo se puede reponer un pedazo bloqueado.") };
+  }
+  const otId = chapa.ot_rotura_id ?? chapa.ot_reserva_id;
+  if (!otId) {
+    return { otReposicionId: null, error: new Error("Ese pedazo no está ligado a una OT.") };
+  }
+
+  const baja = await bajaChapaPorRotura({
+    chapaId: opts.chapaId,
+    otId,
+    motivo: chapa.motivo_estado || "Reposición",
+    created_by: opts.created_by ?? null,
+  });
+  if (baja.error) return { otReposicionId: null, error: baja.error };
+
+  const repo = await crearOtReposicionDesdeOrigen({
+    otOrigenId: otId,
+    motivo: chapa.motivo_estado || "Reposición",
+    created_by: opts.created_by ?? null,
+  });
+  return {
+    otReposicionId: repo.otReposicionId,
+    error: repo.error,
+    materialId: baja.materialId,
+    materialLabel: baja.materialLabel,
+  };
 }
 
 /** Extrae fecha de entrega del payload del presupuesto (primer OT o logística). */
