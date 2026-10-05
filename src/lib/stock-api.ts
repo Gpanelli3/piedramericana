@@ -1,5 +1,6 @@
 import type { Database } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { esBloqueoPorBacha, etapaExigeBachaAsignada, MOTIVO_BLOQUEO_BACHA } from "@/lib/bacha-reglas";
 
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type ModoMedidasRemito = "iguales" | "distintas";
@@ -516,51 +517,183 @@ export async function fetchStockAgregadoPorMaterial(): Promise<MaterialStockAgre
   return aggregateChapasPorMaterial(chapas, materials);
 }
 
-export type BachaClienteRow = Database["public"]["Tables"]["bachas_clientes"]["Row"];
-type BachaClienteInsert = Database["public"]["Tables"]["bachas_clientes"]["Insert"];
+export type BachaInventarioRow = Database["public"]["Tables"]["bachas_inventario"]["Row"];
+type BachaInventarioInsert = Database["public"]["Tables"]["bachas_inventario"]["Insert"];
 
-export async function fetchBachasClientes(): Promise<BachaClienteRow[]> {
+function normNombre(s: string | null | undefined): string {
+  return (s ?? "").trim().toLowerCase();
+}
+
+export async function fetchBachasInventario(): Promise<BachaInventarioRow[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
-    .from("bachas_clientes")
+    .from("bachas_inventario")
     .select("*")
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BachaClienteRow[];
+  return (data ?? []) as BachaInventarioRow[];
 }
 
-export async function createBachaCliente(
-  input: Omit<BachaClienteInsert, "id" | "created_at">,
-): Promise<BachaClienteRow> {
+export async function fetchBachasDisponiblesParaOt(opts?: {
+  clienteNombre?: string | null;
+}): Promise<BachaInventarioRow[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("bachas_inventario")
+    .select("*")
+    .eq("estado", "disponible")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = (data ?? []) as BachaInventarioRow[];
+  const cliente = normNombre(opts?.clienteNombre);
+  return rows.filter((b) => {
+    if (b.origen === "propia") return true;
+    if (!cliente) return false;
+    return normNombre(b.cliente_nombre) === cliente;
+  });
+}
+
+export async function createBachaInventario(
+  input: Omit<BachaInventarioInsert, "id" | "created_at">,
+): Promise<BachaInventarioRow> {
   if (!isSupabaseConfigured) {
     throw new Error("Supabase no está configurado");
   }
+  const origen = input.origen === "cliente" ? "cliente" : "propia";
+  const clienteNombre =
+    origen === "cliente" ? (input.cliente_nombre ?? "").trim() : null;
+  if (origen === "cliente" && !clienteNombre) {
+    throw new Error("Indicá el nombre del cliente.");
+  }
   const { data, error } = await supabase
-    .from("bachas_clientes")
+    .from("bachas_inventario")
     .insert({
-      cliente_nombre: input.cliente_nombre.trim(),
+      origen,
+      cliente_nombre: clienteNombre,
       modelo: input.modelo?.trim() || null,
-      estado: input.estado ?? "pendiente",
+      medidas: input.medidas?.trim() || null,
       ubicacion: input.ubicacion?.trim() || null,
+      estado: input.estado ?? "disponible",
       ot_id: input.ot_id ?? null,
       notas: input.notas?.trim() || null,
     })
     .select("*")
     .single();
   if (error) throw new Error(error.message || "No se pudo registrar la bacha");
-  return data as BachaClienteRow;
+  return data as BachaInventarioRow;
 }
 
-export async function updateBachaClienteEstado(
+export async function updateBachaInventarioEstado(
   id: string,
-  estado: BachaClienteRow["estado"],
+  estado: BachaInventarioRow["estado"],
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
-  const { error } = await supabase
-    .from("bachas_clientes")
-    .update({ estado })
-    .eq("id", id);
+  const { error } = await supabase.from("bachas_inventario").update({ estado }).eq("id", id);
   if (error) throw new Error(error.message || "No se pudo actualizar la bacha");
+}
+
+export async function asignarBachaAOt(opts: {
+  bachaId: string;
+  otId: string;
+  clienteNombre?: string | null;
+}): Promise<{ error: Error | null }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
+
+  const [bachaRes, otRes] = await Promise.all([
+    supabase.from("bachas_inventario").select("*").eq("id", opts.bachaId).maybeSingle(),
+    supabase
+      .from("ordenes_trabajo")
+      .select("id,bacha_id,bloqueada,motivo_bloqueo")
+      .eq("id", opts.otId)
+      .maybeSingle(),
+  ]);
+  if (bachaRes.error) return { error: new Error(bachaRes.error.message) };
+  if (otRes.error) return { error: new Error(otRes.error.message) };
+  const bacha = bachaRes.data as BachaInventarioRow | null;
+  const ot = otRes.data;
+  if (!bacha) return { error: new Error("Bacha no encontrada.") };
+  if (!ot) return { error: new Error("Orden de trabajo no encontrada.") };
+  if (bacha.estado !== "disponible" && bacha.ot_id !== opts.otId) {
+    return { error: new Error("Esa bacha no está disponible.") };
+  }
+  if (bacha.origen === "cliente") {
+    const esperado = normNombre(opts.clienteNombre);
+    const deBacha = normNombre(bacha.cliente_nombre);
+    if (!deBacha || (esperado && deBacha !== esperado)) {
+      return { error: new Error("La bacha del cliente no corresponde a esta OT.") };
+    }
+  }
+
+  if (ot.bacha_id && ot.bacha_id !== opts.bachaId) {
+    const prev = await supabase
+      .from("bachas_inventario")
+      .update({ estado: "disponible", ot_id: null })
+      .eq("id", ot.bacha_id)
+      .eq("ot_id", opts.otId);
+    if (prev.error) return { error: new Error(prev.error.message) };
+  }
+
+  const upB = await supabase
+    .from("bachas_inventario")
+    .update({ estado: "asignada", ot_id: opts.otId })
+    .eq("id", opts.bachaId);
+  if (upB.error) return { error: new Error(upB.error.message) };
+
+  const otPatch: Database["public"]["Tables"]["ordenes_trabajo"]["Update"] = {
+    bacha_id: opts.bachaId,
+    actualizado_en: new Date().toISOString(),
+  };
+  if (ot.bloqueada && esBloqueoPorBacha(ot.motivo_bloqueo)) {
+    otPatch.bloqueada = false;
+    otPatch.motivo_bloqueo = null;
+  }
+  const upOt = await supabase.from("ordenes_trabajo").update(otPatch).eq("id", opts.otId);
+  if (upOt.error) return { error: new Error(upOt.error.message) };
+  return { error: null };
+}
+
+export async function liberarBachaDeOt(opts: {
+  otId: string;
+}): Promise<{ error: Error | null }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
+  const otRes = await supabase
+    .from("ordenes_trabajo")
+    .select("id,bacha_id,bacha_requerida,etapa,bloqueada")
+    .eq("id", opts.otId)
+    .maybeSingle();
+  if (otRes.error) return { error: new Error(otRes.error.message) };
+  const ot = otRes.data;
+  if (!ot) return { error: new Error("Orden de trabajo no encontrada.") };
+  if (ot.bacha_id) {
+    const upB = await supabase
+      .from("bachas_inventario")
+      .update({ estado: "disponible", ot_id: null })
+      .eq("id", ot.bacha_id);
+    if (upB.error) return { error: new Error(upB.error.message) };
+  }
+  const etapa = typeof ot.etapa === "string" ? ot.etapa : "";
+  const relock = Boolean(ot.bacha_requerida) && etapaExigeBachaAsignada(etapa);
+  const upOt = await supabase
+    .from("ordenes_trabajo")
+    .update({
+      bacha_id: null,
+      actualizado_en: new Date().toISOString(),
+      ...(relock && !ot.bloqueada
+        ? { bloqueada: true, motivo_bloqueo: MOTIVO_BLOQUEO_BACHA }
+        : {}),
+    })
+    .eq("id", opts.otId);
+  if (upOt.error) return { error: new Error(upOt.error.message) };
+  return { error: null };
+}
+
+export async function marcarBachaUsada(bachaId: string): Promise<{ error: Error | null }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
+  const { error } = await supabase
+    .from("bachas_inventario")
+    .update({ estado: "usada" })
+    .eq("id", bachaId);
+  return { error: error ? new Error(error.message) : null };
 }
 
 export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow[]> {

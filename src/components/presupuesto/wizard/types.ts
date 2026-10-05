@@ -14,6 +14,14 @@ export const MODELOS_BACHA = [
   { value: "sin", label: "Sin especificar / a definir" },
 ] as const;
 
+export function etiquetaModeloBacha(id: string): string {
+  return MODELOS_BACHA.find((m) => m.value === id)?.label ?? id;
+}
+
+export function etiquetaTipoColocacion(v: string): string {
+  return TIPOS_COLOCACION.find((t) => t.value === v)?.label ?? v;
+}
+
 export type LogisticaPresupuesto = {
   fechaCoord: string;
   fechaEntrega: string;
@@ -58,6 +66,9 @@ export type OrdenTrabajoWizard = {
   chapaSugeridaLabel: string;
   tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
   bachaId: string;
+  /** Si esta OT lleva bacha. Independiente de `bachaId` (que existía con default). */
+  llevaBacha: boolean;
+  bachaOrigen: "propia" | "cliente";
   items: LineaItemOT[];
   /** Dirección de obra (texto ingresado / buscado). */
   direccionObra: string;
@@ -106,6 +117,8 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     chapaSugeridaLabel: "",
     tipoColocacion: "bajo",
     bachaId: MODELOS_BACHA[0]!.value,
+    llevaBacha: false,
+    bachaOrigen: "propia",
     items: [],
     direccionObra: "",
     obraLat: null,

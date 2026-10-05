@@ -15,6 +15,14 @@ import type {
 } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import { etiquetaModeloBacha } from "@/components/presupuesto/wizard/types";
+import {
+  camposRequisitoBacha,
+  esBloqueoPorBacha,
+  etapaExigeBachaAsignada,
+  MOTIVO_BLOQUEO_BACHA,
+  ordenBachaParaOt,
+} from "@/lib/bacha-reglas";
 
 export type ChapaReservaPendiente = {
   otId: string;
@@ -251,6 +259,75 @@ async function resolveClientId(payload: Json, clienteNombre: string): Promise<st
   return inserted.data.id;
 }
 
+function camposBachaDesdeOrden(orden: PresupuestoPayloadV1["ordenes"][number]) {
+  const llevaBacha = orden.llevaBacha === true;
+  return camposRequisitoBacha({
+    llevaBacha,
+    origen: orden.bachaOrigen === "cliente" ? "cliente" : "propia",
+    tipoEtiqueta: llevaBacha ? etiquetaModeloBacha(orden.bachaId) : null,
+    colocacion: llevaBacha ? (orden.tipoColocacion ?? null) : null,
+  });
+}
+
+type OtBachaSync = {
+  id: string;
+  orden_key: string | null;
+  etapa: string | null;
+  bloqueada: boolean | null;
+  motivo_bloqueo: string | null;
+  bacha_id: string | null;
+  bacha_requerida: boolean | null;
+  bacha_origen: string | null;
+  bacha_tipo: string | null;
+  bacha_colocacion: string | null;
+};
+
+function parcheBloqueoBacha(
+  ot: Pick<OtBachaSync, "etapa" | "bloqueada" | "motivo_bloqueo" | "bacha_id">,
+  requerida: boolean,
+): { bloqueada: boolean; motivo_bloqueo: string | null } | null {
+  const asignada = Boolean(ot.bacha_id);
+  const bloqueada = Boolean(ot.bloqueada);
+  const porBacha = esBloqueoPorBacha(ot.motivo_bloqueo);
+  if (requerida && !asignada && etapaExigeBachaAsignada(ot.etapa) && !bloqueada) {
+    return { bloqueada: true, motivo_bloqueo: MOTIVO_BLOQUEO_BACHA };
+  }
+  if (bloqueada && porBacha && (!requerida || asignada)) {
+    return { bloqueada: false, motivo_bloqueo: null };
+  }
+  return null;
+}
+
+/** El presupuesto manda el requisito. La pieza asignada (`bacha_id`) no se pisa. */
+async function sincronizarBachaEnOtsExistentes(
+  existentes: OtBachaSync[],
+  payload: Json,
+): Promise<Error | null> {
+  const ordenes = parsePayload(payload)?.ordenes ?? [];
+  if (ordenes.length === 0) return null;
+  const now = new Date().toISOString();
+  for (const ot of existentes) {
+    const orden = ordenBachaParaOt(ot, existentes, ordenes);
+    if (!orden) continue;
+    const campos = camposBachaDesdeOrden(orden);
+    const igual =
+      Boolean(ot.bacha_requerida) === campos.bacha_requerida &&
+      (ot.bacha_origen ?? null) === campos.bacha_origen &&
+      (ot.bacha_tipo ?? null) === campos.bacha_tipo &&
+      (ot.bacha_colocacion ?? null) === campos.bacha_colocacion;
+    const bloqueo = parcheBloqueoBacha(ot, campos.bacha_requerida);
+    if (igual && !bloqueo) continue;
+    const patch: Database["public"]["Tables"]["ordenes_trabajo"]["Update"] = {
+      ...campos,
+      actualizado_en: now,
+      ...(bloqueo ?? {}),
+    };
+    const up = await supabase.from("ordenes_trabajo").update(patch).eq("id", ot.id);
+    if (up.error) return new Error(up.error.message);
+  }
+  return null;
+}
+
 async function crearJobOtSiAusente(opts: {
   ventaId: string;
   presupuestoNumero: string;
@@ -266,13 +343,17 @@ async function crearJobOtSiAusente(opts: {
   const empty = { otId: null as string | null, otIds: [] as string[], otByOrdenKey: {} as Record<string, string> };
   const exist = await supabase
     .from("ordenes_trabajo")
-    .select("id,orden_key,tipo")
+    .select(
+      "id,orden_key,tipo,etapa,bloqueada,motivo_bloqueo,bacha_id,bacha_requerida,bacha_origen,bacha_tipo,bacha_colocacion",
+    )
     .eq("venta_id", opts.ventaId)
     .neq("estado", "cancelled");
   if (exist.error) return { ...empty, error: new Error(exist.error.message) };
 
   const existentes = (exist.data ?? []).filter((r) => r.tipo !== "reposicion");
   if (existentes.length > 0) {
+    const syncErr = await sincronizarBachaEnOtsExistentes(existentes, opts.payload);
+    if (syncErr) return { ...empty, error: syncErr };
     const otByOrdenKey: Record<string, string> = {};
     for (const r of existentes) {
       if (r.orden_key) otByOrdenKey[r.orden_key] = r.id;
@@ -325,6 +406,8 @@ async function crearJobOtSiAusente(opts: {
             fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: orden.key,
             tipo: "normal" as const,
+            ...camposBachaDesdeOrden(orden),
+            bacha_id: null as string | null,
           };
         })
       : [

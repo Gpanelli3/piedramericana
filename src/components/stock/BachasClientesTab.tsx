@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -23,28 +30,34 @@ import {
 } from "@/components/ui/table";
 import { Plus } from "lucide-react";
 import {
-  createBachaCliente,
-  fetchBachasClientes,
-  updateBachaClienteEstado,
-  type BachaClienteRow,
+  createBachaInventario,
+  fetchBachasInventario,
+  updateBachaInventarioEstado,
+  type BachaInventarioRow,
 } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { BachaClienteEstado } from "@/types/database";
+import type { BachaInventarioEstado, BachaOrigen } from "@/types/database";
 
-const ESTADO_LABEL: Record<BachaClienteEstado, string> = {
-  pendiente: "Pendiente",
-  en_taller: "En taller",
+const ESTADO_LABEL: Record<BachaInventarioEstado, string> = {
+  disponible: "Disponible",
+  asignada: "Asignada",
   usada: "Usada",
+  baja: "Baja",
 };
 
-export function BachasClientesTab() {
-  const [rows, setRows] = useState<BachaClienteRow[]>([]);
+const ORIGEN_TODOS = "__all__";
+
+export function BachasInventarioTab() {
+  const [rows, setRows] = useState<BachaInventarioRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [filtroOrigen, setFiltroOrigen] = useState<string>(ORIGEN_TODOS);
   const [draft, setDraft] = useState({
+    origen: "propia" as BachaOrigen,
     cliente_nombre: "",
     modelo: "",
+    medidas: "",
     ubicacion: "",
     notas: "",
   });
@@ -56,7 +69,7 @@ export function BachasClientesTab() {
     }
     setLoading(true);
     try {
-      setRows(await fetchBachasClientes());
+      setRows(await fetchBachasInventario());
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron cargar las bachas");
       setRows([]);
@@ -69,8 +82,20 @@ export function BachasClientesTab() {
     void reload();
   }, [reload]);
 
+  const visibles = useMemo(() => {
+    if (filtroOrigen === ORIGEN_TODOS) return rows;
+    return rows.filter((r) => r.origen === filtroOrigen);
+  }, [rows, filtroOrigen]);
+
   const resetDraft = () =>
-    setDraft({ cliente_nombre: "", modelo: "", ubicacion: "", notas: "" });
+    setDraft({
+      origen: "propia",
+      cliente_nombre: "",
+      modelo: "",
+      medidas: "",
+      ubicacion: "",
+      notas: "",
+    });
 
   const handleOpenChange = (next: boolean) => {
     if (!next) resetDraft();
@@ -78,19 +103,20 @@ export function BachasClientesTab() {
   };
 
   const handleSave = async () => {
-    const nombre = draft.cliente_nombre.trim();
-    if (!nombre) {
+    if (draft.origen === "cliente" && !draft.cliente_nombre.trim()) {
       toast.error("Indicá el nombre del cliente.");
       return;
     }
     setSaving(true);
     try {
-      await createBachaCliente({
-        cliente_nombre: nombre,
+      await createBachaInventario({
+        origen: draft.origen,
+        cliente_nombre: draft.origen === "cliente" ? draft.cliente_nombre.trim() : null,
         modelo: draft.modelo.trim() || null,
+        medidas: draft.medidas.trim() || null,
         ubicacion: draft.ubicacion.trim() || null,
         notas: draft.notas.trim() || null,
-        estado: "pendiente",
+        estado: "disponible",
       });
       toast.success("Bacha registrada");
       handleOpenChange(false);
@@ -102,9 +128,9 @@ export function BachasClientesTab() {
     }
   };
 
-  const handleEstado = async (id: string, estado: BachaClienteEstado) => {
+  const handleEstado = async (id: string, estado: BachaInventarioEstado) => {
     try {
-      await updateBachaClienteEstado(id, estado);
+      await updateBachaInventarioEstado(id, estado);
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, estado } : r)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo actualizar");
@@ -115,12 +141,24 @@ export function BachasClientesTab() {
     <div className="space-y-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          Bachas que trae el cliente. Registro mínimo (sin vínculo OT todavía).
+          Bachas propias (para vender) y del cliente (con su nombre, no vendibles).
         </p>
-        <Button type="button" size="sm" className="h-9 gap-1.5" onClick={() => setOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Registrar bacha
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={filtroOrigen} onValueChange={setFiltroOrigen}>
+            <SelectTrigger className="h-9 w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ORIGEN_TODOS}>Todos los orígenes</SelectItem>
+              <SelectItem value="propia">Nuestras</SelectItem>
+              <SelectItem value="cliente">Del cliente</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm" className="h-9 gap-1.5" onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Registrar bacha
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -129,6 +167,9 @@ export function BachasClientesTab() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Origen
+                </TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Cliente
                 </TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -148,22 +189,36 @@ export function BachasClientesTab() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
-              ) : rows.length === 0 ? (
+              ) : visibles.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                    Todavía no hay bachas de clientes registradas.
+                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
+                    Todavía no hay bachas registradas.
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((r) => (
+                visibles.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="pl-4 text-sm font-medium">{r.cliente_nombre}</TableCell>
+                    <TableCell className="pl-4 text-sm">
+                      {r.origen === "cliente" ? (
+                        <span className="font-medium">Del cliente</span>
+                      ) : (
+                        "Nuestra"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {r.origen === "cliente" ? (
+                        <span className="font-medium">{r.cliente_nombre?.trim() || "—"}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {r.modelo?.trim() || "—"}
+                      {r.medidas?.trim() ? ` · ${r.medidas.trim()}` : ""}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {r.ubicacion?.trim() || "—"}
@@ -173,10 +228,10 @@ export function BachasClientesTab() {
                         className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                         value={r.estado}
                         onChange={(e) =>
-                          void handleEstado(r.id, e.target.value as BachaClienteEstado)
+                          void handleEstado(r.id, e.target.value as BachaInventarioEstado)
                         }
                       >
-                        {(Object.keys(ESTADO_LABEL) as BachaClienteEstado[]).map((k) => (
+                        {(Object.keys(ESTADO_LABEL) as BachaInventarioEstado[]).map((k) => (
                           <option key={k} value={k}>
                             {ESTADO_LABEL[k]}
                           </option>
@@ -185,6 +240,9 @@ export function BachasClientesTab() {
                     </TableCell>
                     <TableCell className="pr-4 text-sm text-muted-foreground">
                       {r.notas?.trim() || "—"}
+                      {r.origen === "cliente" ? (
+                        <span className="ml-1 text-[11px] text-muted-foreground">No vendible</span>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))
@@ -197,18 +255,41 @@ export function BachasClientesTab() {
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Registrar bacha de cliente</DialogTitle>
+            <DialogTitle>Registrar bacha</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-1">
             <div className="space-y-1.5">
-              <Label className="text-sm">Cliente</Label>
-              <Input
-                className="h-10"
-                value={draft.cliente_nombre}
-                onChange={(e) => setDraft((d) => ({ ...d, cliente_nombre: e.target.value }))}
-                placeholder="Nombre del cliente"
-              />
+              <Label className="text-sm">Origen</Label>
+              <Select
+                value={draft.origen}
+                onValueChange={(v) =>
+                  setDraft((d) => ({
+                    ...d,
+                    origen: v === "cliente" ? "cliente" : "propia",
+                    cliente_nombre: v === "cliente" ? d.cliente_nombre : "",
+                  }))
+                }
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="propia">Nuestra</SelectItem>
+                  <SelectItem value="cliente">Del cliente (no vendible)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {draft.origen === "cliente" ? (
+              <div className="space-y-1.5">
+                <Label className="text-sm">Cliente</Label>
+                <Input
+                  className="h-10"
+                  value={draft.cliente_nombre}
+                  onChange={(e) => setDraft((d) => ({ ...d, cliente_nombre: e.target.value }))}
+                  placeholder="Nombre del cliente"
+                />
+              </div>
+            ) : null}
             <div className="space-y-1.5">
               <Label className="text-sm">Modelo (opcional)</Label>
               <Input
@@ -216,6 +297,15 @@ export function BachasClientesTab() {
                 value={draft.modelo}
                 onChange={(e) => setDraft((d) => ({ ...d, modelo: e.target.value }))}
                 placeholder="Ej. Johnson 70x40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Medidas (opcional)</Label>
+              <Input
+                className="h-10"
+                value={draft.medidas}
+                onChange={(e) => setDraft((d) => ({ ...d, medidas: e.target.value }))}
+                placeholder="Ej. 70 × 40"
               />
             </div>
             <div className="space-y-1.5">
@@ -244,7 +334,7 @@ export function BachasClientesTab() {
             </DialogClose>
             <Button
               type="button"
-              disabled={saving || !draft.cliente_nombre.trim()}
+              disabled={saving || (draft.origen === "cliente" && !draft.cliente_nombre.trim())}
               onClick={() => void handleSave()}
             >
               {saving ? "Guardando…" : "Guardar"}

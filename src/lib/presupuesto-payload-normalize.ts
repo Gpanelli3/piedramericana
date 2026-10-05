@@ -84,6 +84,8 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
           ? ot.tipoColocacion
           : "bajo",
       bachaId: typeof ot.bachaId === "string" ? ot.bachaId : "johnson-ss",
+      llevaBacha: ot.llevaBacha === true,
+      bachaOrigen: ot.bachaOrigen === "cliente" ? "cliente" : "propia",
       items: itemsRaw.map(normalizeLineaItemFromPayload),
       direccionObra: typeof ot.direccionObra === "string" ? ot.direccionObra : "",
       obraLat: normalizeCoord(ot.obraLat),

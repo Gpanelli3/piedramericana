@@ -10,6 +10,7 @@ import { formatMetraje, type M2Trio } from "@/lib/presupuesto-calculos";
 import { bajaChapaPorRotura, reservarChapasAOt } from "@/lib/stock-ot-api";
 import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
 import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
+import { bachaResuelta, MOTIVO_BLOQUEO_BACHA, motivoBloqueoBacha } from "@/lib/bacha-reglas";
 import type {
   Database,
   EtapaOtKanban,
@@ -496,6 +497,42 @@ async function assertPuedeSalirDeMedicion(
   return null;
 }
 
+/** Compuerta: no se sale de corte a producción (ni se salta a logística) sin bacha asignada. */
+async function assertBachaResuelta(
+  ot: OrdenTrabajoRow,
+  nextEtapa: EtapaOtId,
+): Promise<Error | null> {
+  if (nextEtapa === "medicion" || nextEtapa === "corte") return null;
+  const r = bachaResuelta({
+    bachaRequerida: Boolean(ot.bacha_requerida),
+    bachaAsignada: Boolean(ot.bacha_id),
+  });
+  const motivo = motivoBloqueoBacha(r);
+  if (motivo) return new Error(motivo);
+  return null;
+}
+
+async function bloquearPorBachaSiCorte(
+  ot: OrdenTrabajoRow,
+  nextEtapa: EtapaOtId,
+): Promise<void> {
+  if (nextEtapa !== "corte") return;
+  const pendiente = bachaResuelta({
+    bachaRequerida: Boolean(ot.bacha_requerida),
+    bachaAsignada: Boolean(ot.bacha_id),
+  });
+  if (pendiente.ok || ot.bloqueada) return;
+  const now = new Date().toISOString();
+  await supabase
+    .from("ordenes_trabajo")
+    .update({
+      bloqueada: true,
+      motivo_bloqueo: MOTIVO_BLOQUEO_BACHA,
+      actualizado_en: now,
+    })
+    .eq("id", ot.id);
+}
+
 export async function enviarPresupuestoAProduccion(presupuestoId: string): Promise<{
   error: Error | null;
   otIds: string[];
@@ -559,14 +596,19 @@ export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | nul
 
   const gate = await assertPuedeSalirDeMedicion(ot, next);
   if (gate) return { error: gate };
+  const gateBacha = await assertBachaResuelta(ot, next);
+  if (gateBacha) return { error: gateBacha };
 
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
 
-  return persistJobOtProduccion({
+  const persist = await persistJobOtProduccion({
     ordenTrabajoId: otId,
     patch: { etapa: next, status },
   });
+  if (persist.error) return persist;
+  await bloquearPorBachaSiCorte(ot, next);
+  return { error: null };
 }
 
 export async function setEtapaOt(
@@ -583,14 +625,19 @@ export async function setEtapaOt(
   const next = etapaOtValida(etapa);
   const gate = await assertPuedeSalirDeMedicion(ot, next);
   if (gate) return { error: gate };
+  const gateBacha = await assertBachaResuelta(ot, next);
+  if (gateBacha) return { error: gateBacha };
 
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
 
-  return persistJobOtProduccion({
+  const persist = await persistJobOtProduccion({
     ordenTrabajoId: otId,
     patch: { etapa: next, status },
   });
+  if (persist.error) return persist;
+  await bloquearPorBachaSiCorte(ot, next);
+  return { error: null };
 }
 
 export async function marcarOtEntregada(otId: string): Promise<{ error: Error | null }> {

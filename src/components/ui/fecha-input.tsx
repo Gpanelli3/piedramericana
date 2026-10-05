@@ -49,9 +49,17 @@ type FechaInputProps = {
   className?: string;
   disabled?: boolean;
   id?: string;
+  placeholder?: string;
 };
 
-export function FechaInput({ value, onChange, className, disabled, id }: FechaInputProps) {
+export function FechaInput({
+  value,
+  onChange,
+  className,
+  disabled,
+  id,
+  placeholder = "dd/mm/aaaa",
+}: FechaInputProps) {
   const [text, setText] = useState(() => isoToDisplay(value));
   const [open, setOpen] = useState(false);
   const selected = parseIsoLocal(value);
@@ -80,7 +88,7 @@ export function FechaInput({ value, onChange, className, disabled, id }: FechaIn
         type="text"
         inputMode="numeric"
         autoComplete="off"
-        placeholder="dd/mm/aaaa"
+        placeholder={placeholder}
         disabled={disabled}
         value={text}
         onChange={(e) => aplicarTexto(formatTyping(e.target.value))}

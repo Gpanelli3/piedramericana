@@ -25,6 +25,7 @@ import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTa
 import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab";
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { StockProductosUnidadesTab } from "@/components/stock/StockProductosUnidadesTab";
+import { BachasInventarioTab } from "@/components/stock/BachasClientesTab";
 import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
 import { DisponibilidadProductoSheet } from "@/components/stock/DisponibilidadProductoSheet";
 import {
@@ -203,6 +204,8 @@ export function VistaStock() {
             <p className="mt-1 text-sm text-muted-foreground">
               {stockTab === "listas"
                 ? "Precios de mármoles, planchas y bachas por lista."
+                : stockTab === "bachas"
+                  ? "Bachas propias y del cliente."
                 : `${resumen.planchas} disponibles${
                     resumen.reservadas > 0 ? ` · ${resumen.reservadas} reservadas` : ""
                   } · ${resumen.materiales} materiales${
@@ -250,6 +253,7 @@ export function VistaStock() {
         <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
           <TabsList>
             <TabsTrigger value="inventario">Inventario</TabsTrigger>
+            <TabsTrigger value="bachas">Bachas</TabsTrigger>
             <TabsTrigger value="listas">Listas de precio</TabsTrigger>
           </TabsList>
           <TabsContent value="inventario" className="space-y-4">
@@ -268,6 +272,9 @@ export function VistaStock() {
             setProductoOpen(true);
           }}
         />
+          </TabsContent>
+          <TabsContent value="bachas">
+            <BachasInventarioTab />
           </TabsContent>
           <TabsContent value="listas">
             <ListasPrecioPanel />

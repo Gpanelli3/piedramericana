@@ -270,6 +270,8 @@ describe("computePresupuestoTotalM2", () => {
         chapaSugeridaLabel: "",
         tipoColocacion: "bajo",
         bachaId: "sin",
+        llevaBacha: false,
+        bachaOrigen: "propia",
         items: [
           {
             key: "l1",
@@ -309,6 +311,8 @@ describe("computePresupuestoTotalM2", () => {
         chapaSugeridaLabel: "",
         tipoColocacion: "bajo",
         bachaId: "sin",
+        llevaBacha: false,
+        bachaOrigen: "propia",
         items: [
           {
             key: "l2",
@@ -370,6 +374,8 @@ describe("trioM2DeOrden", () => {
       chapaSugeridaLabel: "",
       tipoColocacion: "bajo",
       bachaId: "",
+      llevaBacha: false,
+      bachaOrigen: "propia",
       items: [
         {
           key: "l1",
@@ -474,6 +480,8 @@ describe("computePresupuestoComercial", () => {
       chapaSugeridaLabel: "",
       tipoColocacion: "bajo",
       bachaId: "sin",
+      llevaBacha: false,
+      bachaOrigen: "propia",
       items: [
         {
           key: "l1",

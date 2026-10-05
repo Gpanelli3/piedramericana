@@ -14,6 +14,10 @@ import { cn } from "@/lib/utils";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import type { OrdenTrabajoWizard } from "@/components/presupuesto/wizard/types";
+import {
+  etiquetaModeloBacha,
+  etiquetaTipoColocacion,
+} from "@/components/presupuesto/wizard/types";
 import { mecAlgunoActivo } from "@/components/presupuesto/wizard/validacion";
 
 export type PresupuestoDocumentoProps = {
@@ -121,6 +125,7 @@ type GrupoDoc = {
   planoNombre?: string;
   excluirMec: boolean;
   obsMec: string;
+  bachaTexto?: string;
   filas: FilaDoc[];
   subtotal: number;
 };
@@ -197,6 +202,13 @@ export function PresupuestoDocumento({
         ot.obraFormattedAddress.trim() || ot.direccionObra.trim() || undefined;
       const referencia = ot.referenciaObra.trim() || undefined;
       const planoNombre = ot.planoAdjunto?.name.trim() || undefined;
+      const bachaTexto = ot.llevaBacha
+        ? [
+            etiquetaModeloBacha(ot.bachaId),
+            etiquetaTipoColocacion(ot.tipoColocacion),
+            ot.bachaOrigen === "cliente" ? "del cliente" : "nuestra",
+          ].join(" · ")
+        : undefined;
       grupos.push({
         key: ot.key,
         titulo,
@@ -205,6 +217,7 @@ export function PresupuestoDocumento({
         planoNombre,
         excluirMec: Boolean(ot.excluirMec),
         obsMec: (ot.obsMec ?? "").trim(),
+        bachaTexto,
         filas,
         subtotal: subOt,
       });
@@ -328,11 +341,12 @@ export function PresupuestoDocumento({
                 <tr className="bg-neutral-100 border-t border-neutral-800">
                   <td colSpan={5} className="px-2 py-1.5 font-semibold">
                     <p>{g.titulo}</p>
-                    {g.direccionObra || g.referenciaObra || g.planoNombre || g.excluirMec ? (
+                    {g.direccionObra || g.referenciaObra || g.planoNombre || g.excluirMec || g.bachaTexto ? (
                       <div className="mt-0.5 space-y-0.5 text-[10px] font-normal text-neutral-600">
                         {g.direccionObra ? <p>Obra: {g.direccionObra}</p> : null}
                         {g.referenciaObra ? <p>Ref.: {g.referenciaObra}</p> : null}
                         {g.planoNombre ? <p>Plano: {g.planoNombre}</p> : null}
+                        {g.bachaTexto ? <p>Bacha: {g.bachaTexto}</p> : null}
                         {g.excluirMec ? (
                           <p>
                             No incluye MEC
@@ -467,7 +481,7 @@ export function PresupuestoDocumento({
           {dolarHoy > 0 ? ` (dólar del día ${formatMoney(dolarHoy, "usd")})` : ""}.
         </p>
         <p>
-          No incluye bachas u otros artículos de stock salvo que figuren como ítem en alguna OT.
+          No incluye otros artículos de stock salvo que figuren como ítem en alguna OT.
         </p>
       </footer>
 

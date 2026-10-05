@@ -13,7 +13,8 @@ export type ProfileRole = "admin" | "staff" | "sales";
 export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja";
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
-export type BachaClienteEstado = "pendiente" | "en_taller" | "usada";
+export type BachaOrigen = "propia" | "cliente";
+export type BachaInventarioEstado = "disponible" | "asignada" | "usada" | "baja";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
 export type MedicionEstado =
   | "sin_solicitar"
@@ -494,6 +495,11 @@ export interface Database {
           orden_key: string | null;
           tipo: OtTipo;
           ot_origen_id: string | null;
+          bacha_requerida: boolean;
+          bacha_origen: BachaOrigen | null;
+          bacha_tipo: string | null;
+          bacha_colocacion: string | null;
+          bacha_id: string | null;
         };
         Insert: {
           id?: string;
@@ -516,6 +522,11 @@ export interface Database {
           orden_key?: string | null;
           tipo?: OtTipo;
           ot_origen_id?: string | null;
+          bacha_requerida?: boolean;
+          bacha_origen?: BachaOrigen | null;
+          bacha_tipo?: string | null;
+          bacha_colocacion?: string | null;
+          bacha_id?: string | null;
         };
         Update: {
           id?: string;
@@ -538,6 +549,11 @@ export interface Database {
           orden_key?: string | null;
           tipo?: OtTipo;
           ot_origen_id?: string | null;
+          bacha_requerida?: boolean;
+          bacha_origen?: BachaOrigen | null;
+          bacha_tipo?: string | null;
+          bacha_colocacion?: string | null;
+          bacha_id?: string | null;
         };
         Relationships: [
           {
@@ -566,6 +582,13 @@ export interface Database {
             columns: ["ot_origen_id"];
             isOneToOne: false;
             referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ordenes_trabajo_bacha_id_fkey";
+            columns: ["bacha_id"];
+            isOneToOne: false;
+            referencedRelation: "bachas_inventario";
             referencedColumns: ["id"];
           },
         ];
@@ -1250,6 +1273,52 @@ export interface Database {
           },
         ];
       };
+      seguimiento_presupuestos: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "seguimiento_presupuestos_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: false;
+            referencedRelation: "presupuestos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      comisiones: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "comisiones_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: false;
+            referencedRelation: "presupuestos";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       presupuesto_mediciones: {
         Row: {
           id: string;
@@ -1490,40 +1559,46 @@ export interface Database {
           },
         ];
       };
-      bachas_clientes: {
+      bachas_inventario: {
         Row: {
           id: string;
-          cliente_nombre: string;
+          origen: BachaOrigen;
+          cliente_nombre: string | null;
           modelo: string | null;
-          estado: BachaClienteEstado;
+          medidas: string | null;
           ubicacion: string | null;
+          estado: BachaInventarioEstado;
           ot_id: string | null;
           notas: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
-          cliente_nombre: string;
+          origen: BachaOrigen;
+          cliente_nombre?: string | null;
           modelo?: string | null;
-          estado?: BachaClienteEstado;
+          medidas?: string | null;
           ubicacion?: string | null;
+          estado?: BachaInventarioEstado;
           ot_id?: string | null;
           notas?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
-          cliente_nombre?: string;
+          origen?: BachaOrigen;
+          cliente_nombre?: string | null;
           modelo?: string | null;
-          estado?: BachaClienteEstado;
+          medidas?: string | null;
           ubicacion?: string | null;
+          estado?: BachaInventarioEstado;
           ot_id?: string | null;
           notas?: string | null;
           created_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "bachas_clientes_ot_id_fkey";
+            foreignKeyName: "bachas_inventario_ot_id_fkey";
             columns: ["ot_id"];
             isOneToOne: false;
             referencedRelation: "ordenes_trabajo";
@@ -2154,7 +2229,8 @@ export interface Database {
       inventory_slab_estado: InventorySlabEstado;
       origen_placa: OrigenPlaca;
       material_kind: MaterialKindDb;
-      bacha_cliente_estado: BachaClienteEstado;
+      bacha_origen: BachaOrigen;
+      bacha_inventario_estado: BachaInventarioEstado;
       presupuesto_estado: PresupuestoEstado;
       medicion_estado: MedicionEstado;
       venta_estado: VentaEstado;

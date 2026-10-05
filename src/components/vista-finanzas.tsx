@@ -506,6 +506,7 @@ export function VistaFinanzas() {
           if (!o) setOtDetalle(null);
         }}
         onChanged={() => void recargar()}
+        mostrarSaldo
       />
 
       <Dialog open={dialogMov} onOpenChange={setDialogMov}>

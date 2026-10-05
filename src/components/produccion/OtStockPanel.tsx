@@ -38,10 +38,19 @@ import {
   type OtStockUnidadRow,
   type StockProductoUnidad,
 } from "@/lib/stock-unidades-api";
+import {
+  asignarBachaAOt,
+  createBachaInventario,
+  fetchBachasDisponiblesParaOt,
+  fetchBachasInventario,
+  liberarBachaDeOt,
+  type BachaInventarioRow,
+} from "@/lib/stock-api";
 import { registrarRoturaYReposicion } from "@/lib/produccion-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useStock } from "@/contexts/StockContext";
 import { cn } from "@/lib/utils";
+import { etiquetaTipoColocacion } from "@/components/presupuesto/wizard/types";
 import {
   Select,
   SelectContent,
@@ -55,6 +64,12 @@ type Props = {
   materialHint?: string;
   requiereReservaStock?: boolean;
   otTitulo?: string;
+  clienteNombre?: string | null;
+  bachaRequerida?: boolean;
+  bachaOrigen?: "propia" | "cliente" | null;
+  bachaTipo?: string | null;
+  bachaColocacion?: string | null;
+  bachaId?: string | null;
   onChanged?: () => void;
 };
 
@@ -78,6 +93,12 @@ export function OtStockPanel({
   materialHint,
   requiereReservaStock = false,
   otTitulo,
+  clienteNombre,
+  bachaRequerida = false,
+  bachaOrigen = null,
+  bachaTipo = null,
+  bachaColocacion = null,
+  bachaId = null,
   onChanged,
 }: Props) {
   const { reloadChapas } = useStock();
@@ -105,6 +126,12 @@ export function OtStockPanel({
   const [roturaCrearOt, setRoturaCrearOt] = useState(true);
   const [roturaChapaNuevaId, setRoturaChapaNuevaId] = useState<string>("");
   const [roturaDisponibles, setRoturaDisponibles] = useState<ChapaInventarioRow[]>([]);
+  const [bachaAsignada, setBachaAsignada] = useState<BachaInventarioRow | null>(null);
+  const [bachasDisponibles, setBachasDisponibles] = useState<BachaInventarioRow[]>([]);
+  const [bachaSelectId, setBachaSelectId] = useState("");
+  const [registrarClienteOpen, setRegistrarClienteOpen] = useState(false);
+  const [registrarModelo, setRegistrarModelo] = useState("");
+  const [registrarUbicacion, setRegistrarUbicacion] = useState("");
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -126,8 +153,25 @@ export function OtStockPanel({
     setMovimientos(mov.data);
     setUnidadesOt(und.data);
     setProductosDisponibles(prods.data);
+    try {
+      const bachas = await fetchBachasDisponiblesParaOt({ clienteNombre });
+      setBachasDisponibles(bachas);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudieron cargar las bachas");
+      setBachasDisponibles([]);
+    }
+    if (bachaId) {
+      try {
+        const todas = await fetchBachasInventario();
+        setBachaAsignada(todas.find((b) => b.id === bachaId) ?? null);
+      } catch {
+        setBachaAsignada(null);
+      }
+    } else {
+      setBachaAsignada(null);
+    }
     setLoading(false);
-  }, [otId]);
+  }, [otId, bachaId, clienteNombre]);
 
   useEffect(() => {
     void reload();
@@ -367,6 +411,77 @@ export function OtStockPanel({
     onChanged?.();
   };
 
+  const mostrarBacha = bachaRequerida || Boolean(bachaId) || Boolean(bachaAsignada);
+
+  const onAsignarBacha = async (id: string) => {
+    if (!id) {
+      toast.error("Elegí una bacha del stock.");
+      return;
+    }
+    setBusy(true);
+    const res = await asignarBachaAOt({
+      bachaId: id,
+      otId,
+      clienteNombre,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Bacha asignada.");
+    setBachaSelectId("");
+    await reload();
+    onChanged?.();
+  };
+
+  const onLiberarBacha = async () => {
+    setBusy(true);
+    const res = await liberarBachaDeOt({ otId });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Bacha liberada.");
+    await reload();
+    onChanged?.();
+  };
+
+  const onRegistrarBachaCliente = async () => {
+    const nombre = (clienteNombre ?? "").trim();
+    if (!nombre) {
+      toast.error("La OT no tiene nombre de cliente.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await createBachaInventario({
+        origen: "cliente",
+        cliente_nombre: nombre,
+        modelo: registrarModelo.trim() || bachaTipo || null,
+        ubicacion: registrarUbicacion.trim() || null,
+        estado: "disponible",
+      });
+      const asg = await asignarBachaAOt({
+        bachaId: created.id,
+        otId,
+        clienteNombre: nombre,
+      });
+      if (asg.error) throw asg.error;
+      toast.success("Bacha del cliente registrada y asignada.");
+      setRegistrarClienteOpen(false);
+      setRegistrarModelo("");
+      setRegistrarUbicacion("");
+      await reload();
+      onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo registrar la bacha");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!isSupabaseConfigured) {
     return (
       <p className="text-xs text-muted-foreground">Stock remoto no disponible en esta sesión.</p>
@@ -375,6 +490,108 @@ export function OtStockPanel({
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
+      {mostrarBacha ? (
+        <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Package className="h-3.5 w-3.5" />
+            Bacha
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {bachaTipo?.trim() || "Sin tipo"}
+            {bachaColocacion ? ` · ${etiquetaTipoColocacion(bachaColocacion)}` : ""}
+            {bachaOrigen === "cliente"
+              ? " · del cliente"
+              : bachaOrigen === "propia"
+                ? " · nuestra"
+                : ""}
+          </p>
+          {bachaAsignada ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="min-w-0 text-xs">
+                <span className="font-medium">
+                  {bachaAsignada.modelo?.trim() || "Asignada"}
+                </span>
+                {bachaAsignada.origen === "cliente" ? (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {bachaAsignada.cliente_nombre} · no vendible
+                  </span>
+                ) : null}
+              </p>
+              <div className="flex gap-1">
+                <Badge variant="secondary" className="text-[10px]">
+                  Asignada
+                </Badge>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs"
+                  disabled={busy}
+                  onClick={() => void onLiberarBacha()}
+                >
+                  Liberar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                Bacha pendiente
+              </p>
+              {bachasDisponibles.length > 0 ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Select value={bachaSelectId} onValueChange={setBachaSelectId}>
+                    <SelectTrigger className="h-8 w-full text-xs sm:flex-1">
+                      <SelectValue placeholder="Elegir del stock…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bachasDisponibles.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {(b.modelo?.trim() || "Sin modelo") +
+                            (b.origen === "cliente"
+                              ? ` · ${b.cliente_nombre} (no vendible)`
+                              : " · nuestra")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={busy || !bachaSelectId}
+                    onClick={() => void onAsignarBacha(bachaSelectId)}
+                  >
+                    Asignar
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No hay bachas disponibles
+                  {bachaOrigen === "cliente" ? " de este cliente" : " en stock"}.
+                </p>
+              )}
+              {bachaOrigen === "cliente" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-full text-xs"
+                  disabled={busy}
+                  onClick={() => {
+                    setRegistrarModelo(bachaTipo ?? "");
+                    setRegistrarClienteOpen(true);
+                  }}
+                >
+                  Registró llegada
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Layers className="h-3.5 w-3.5" />
@@ -569,11 +786,7 @@ export function OtStockPanel({
           </Button>
         </div>
 
-        {unidadesOt.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Sin productos asignados. Los adoquines y demás unidades se reservan acá.
-          </p>
-        ) : (
+        {unidadesOt.length > 0 ? (
           <ul className="space-y-1.5">
             {unidadesOt.map((u) => (
               <li
@@ -622,7 +835,7 @@ export function OtStockPanel({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
 
       {movimientos.length > 0 ? (
@@ -863,6 +1076,46 @@ export function OtStockPanel({
             </Button>
             <Button disabled={busy} onClick={() => void onConfirmarRotura()}>
               Registrar rotura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={registrarClienteOpen} onOpenChange={setRegistrarClienteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bacha del cliente</DialogTitle>
+            <DialogDescription>
+              Entra a stock con el nombre de {clienteNombre?.trim() || "este cliente"} y no se puede
+              vender. Queda asignada a esta OT.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Modelo</Label>
+              <Input
+                className="h-8 text-xs"
+                value={registrarModelo}
+                onChange={(e) => setRegistrarModelo(e.target.value)}
+                placeholder="Ej. Johnson 70"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Ubicación (opcional)</Label>
+              <Input
+                className="h-8 text-xs"
+                value={registrarUbicacion}
+                onChange={(e) => setRegistrarUbicacion(e.target.value)}
+                placeholder="Estantería, taller…"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRegistrarClienteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void onRegistrarBachaCliente()}>
+              Registrar y asignar
             </Button>
           </DialogFooter>
         </DialogContent>

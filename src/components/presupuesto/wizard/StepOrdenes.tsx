@@ -27,7 +27,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { PickMaterial, SectionPresupuesto } from "./fields";
 import { PickChapaParaOt } from "./PickChapaParaOt";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
-import type { LineaItemOT, OrdenTrabajoWizard } from "./types";
+import {
+  MODELOS_BACHA,
+  TIPOS_COLOCACION,
+  type LineaItemOT,
+  type OrdenTrabajoWizard,
+} from "./types";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type PorOtRes = {
   key: string;
@@ -223,6 +236,95 @@ export function StepOrdenes({
                               })
                             }
                           />
+                        </div>
+
+                        <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80 sm:p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-foreground">Bacha</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Tipo, colocación y si es nuestra o del cliente.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Label
+                                htmlFor={`${ot.key}-lleva-bacha`}
+                                className="text-xs text-muted-foreground"
+                              >
+                                Lleva bacha
+                              </Label>
+                              <Switch
+                                id={`${ot.key}-lleva-bacha`}
+                                checked={ot.llevaBacha}
+                                onCheckedChange={(v) =>
+                                  patchOrden(ot.key, { llevaBacha: v === true })
+                                }
+                              />
+                            </div>
+                          </div>
+                          {ot.llevaBacha ? (
+                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                              <div className="min-w-0 space-y-1.5">
+                                <Label className="text-xs font-medium">Tipo</Label>
+                                <Select
+                                  value={ot.bachaId}
+                                  onValueChange={(v) => patchOrden(ot.key, { bachaId: v })}
+                                >
+                                  <SelectTrigger className="h-9 w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {MODELOS_BACHA.map((m) => (
+                                      <SelectItem key={m.value} value={m.value}>
+                                        {m.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="min-w-0 space-y-1.5">
+                                <Label className="text-xs font-medium">Colocación</Label>
+                                <Select
+                                  value={ot.tipoColocacion}
+                                  onValueChange={(v) =>
+                                    patchOrden(ot.key, {
+                                      tipoColocacion: v as OrdenTrabajoWizard["tipoColocacion"],
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TIPOS_COLOCACION.map((t) => (
+                                      <SelectItem key={t.value} value={t.value}>
+                                        {t.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="min-w-0 space-y-1.5">
+                                <Label className="text-xs font-medium">Origen</Label>
+                                <Select
+                                  value={ot.bachaOrigen}
+                                  onValueChange={(v) =>
+                                    patchOrden(ot.key, {
+                                      bachaOrigen: v === "cliente" ? "cliente" : "propia",
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="propia">Nuestra</SelectItem>
+                                    <SelectItem value="cliente">Del cliente</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">

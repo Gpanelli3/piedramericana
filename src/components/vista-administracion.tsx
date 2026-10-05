@@ -21,6 +21,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Wallet,
   TrendingUp,
   ChevronDown,
@@ -40,6 +47,10 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { exportVentasCsv } from "@/lib/reportes-export-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { FechaInput } from "@/components/ui/fecha-input";
+
+const VENDEDOR_TODOS = "__all__";
+const VENDEDOR_SIN = "__none__";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
   const opts: Intl.NumberFormatOptions = {
@@ -70,6 +81,8 @@ export function VistaAdministracion() {
   const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
+  const [fecha, setFecha] = useState("");
+  const [vendedorId, setVendedorId] = useState("");
   const [cobrosAbierto, setCobrosAbierto] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [filaCobros, setFilaCobros] = useState<PresupuestoRowList | null>(null);
@@ -122,24 +135,49 @@ export function VistaAdministracion() {
     limpiarPid();
   }, [cargando, filas, searchParams, limpiarPid]);
 
+  const vendedoresOpciones = useMemo(() => {
+    const map = new Map<string, string>();
+    let haySinVendedor = false;
+    for (const r of filas) {
+      if (!r.created_by) {
+        haySinVendedor = true;
+        continue;
+      }
+      const nombre = r.vendedor_nombre?.trim() || "Sin nombre";
+      if (!map.has(r.created_by)) map.set(r.created_by, nombre);
+    }
+    const lista = [...map.entries()]
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    return { lista, haySinVendedor };
+  }, [filas]);
+
+  const hayFiltrosActivos =
+    Boolean(busqueda.trim()) || Boolean(fecha) || Boolean(vendedorId);
+
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return filas;
     return filas.filter((r) => {
+      if (fecha && r.created_at.slice(0, 10) !== fecha) return false;
+      if (vendedorId === VENDEDOR_SIN) {
+        if (r.created_by) return false;
+      } else if (vendedorId && r.created_by !== vendedorId) {
+        return false;
+      }
+      if (!q) return true;
       const etapa = etiquetaEtapaOt(r.ot_etapa, r.ot_estado).toLowerCase();
       return (
         r.numero.toLowerCase().includes(q) ||
         r.cliente.toLowerCase().includes(q) ||
-        (r.vendedor_nombre ?? "").toLowerCase().includes(q) ||
         etapa.includes(q)
       );
     });
-  }, [filas, busqueda]);
+  }, [filas, busqueda, fecha, vendedorId]);
 
   const kpis = useMemo(() => {
     let saldoUsd = 0;
     let saldoArs = 0;
-    for (const r of filas) {
+    for (const r of filtradas) {
       const sal = r.saldo_misma_moneda;
       if (r.moneda === "usd") {
         if (typeof sal === "number" && sal > 0) saldoUsd += sal;
@@ -147,18 +185,23 @@ export function VistaAdministracion() {
         if (typeof sal === "number" && sal > 0) saldoArs += sal;
       }
     }
-    const conSaldo =
-      filas.filter((r) => {
-        const s = r.saldo_misma_moneda;
-        return typeof s === "number" && s > 0.005;
-      }).length;
+    const conSaldo = filtradas.filter((r) => {
+      const s = r.saldo_misma_moneda;
+      return typeof s === "number" && s > 0.005;
+    }).length;
     return {
       saldoUsd,
       saldoArs,
       conSaldo,
-      totalAprob: filas.length,
+      totalAprob: filtradas.length,
     };
-  }, [filas]);
+  }, [filtradas]);
+
+  function limpiarFiltros() {
+    setBusqueda("");
+    setFecha("");
+    setVendedorId("");
+  }
 
   function abrirCobros(f: PresupuestoRowList) {
     setFilaCobros(f);
@@ -185,77 +228,50 @@ export function VistaAdministracion() {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-              Ventas — Caja y cuentas corrientes
-            </h1>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <div className="relative w-full sm:w-[320px]">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden
-              />
-              <Input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar obra, cliente, vendedor o etapa…"
-                className="h-9 rounded-lg border-border bg-muted/40 pl-9 pr-9 shadow-none focus-visible:bg-background"
-                aria-label="Buscar en obras y cobros"
-              />
-              {busqueda.trim() ? (
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => setBusqueda("")}
-                  aria-label="Limpiar búsqueda"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              ) : null}
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={exportBusy || cargando}
-                  className="h-9 shrink-0 gap-1.5"
-                >
-                  <Download className="h-4 w-4" aria-hidden />
-                  Exportar
-                  <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-[10.5rem]">
-                <DropdownMenuItem
-                  disabled={exportBusy}
-                  onSelect={() => void onExportExcel()}
-                  className="gap-2"
-                >
-                  <FileSpreadsheet className="h-4 w-4" aria-hidden />
-                  Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={exportBusy}
-                  onSelect={onExportPdf}
-                  className="gap-2"
-                >
-                  <FileText className="h-4 w-4" aria-hidden />
-                  PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={exportBusy}
-                  onSelect={onExportImprimir}
-                  className="gap-2"
-                >
-                  <Printer className="h-4 w-4" aria-hidden />
-                  Imprimir
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+            Ventas — Caja y cuentas corrientes
+          </h1>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exportBusy || cargando}
+                className="h-9 shrink-0 gap-1.5 self-start sm:self-auto"
+              >
+                <Download className="h-4 w-4" aria-hidden />
+                Exportar
+                <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[10.5rem]">
+              <DropdownMenuItem
+                disabled={exportBusy}
+                onSelect={() => void onExportExcel()}
+                className="gap-2"
+              >
+                <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={exportBusy}
+                onSelect={onExportPdf}
+                className="gap-2"
+              >
+                <FileText className="h-4 w-4" aria-hidden />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={exportBusy}
+                onSelect={onExportImprimir}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" aria-hidden />
+                Imprimir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -271,7 +287,9 @@ export function VistaAdministracion() {
                 <p className="text-2xl font-semibold tabular-nums tracking-tight text-foreground">
                   {cargando ? "…" : kpis.totalAprob}
                 </p>
-                <p className="text-xs text-muted-foreground">Presupuestos en estado aprobado</p>
+                <p className="text-xs text-muted-foreground">
+                  {hayFiltrosActivos ? "Según filtros activos" : "Presupuestos en estado aprobado"}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -303,6 +321,69 @@ export function VistaAdministracion() {
             </CardContent>
           </Card>
         </div>
+
+        <div className="flex flex-1 flex-wrap gap-2">
+            <div className="relative max-w-md min-w-[200px] flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 pl-9 pr-9"
+                placeholder="Buscar por obra, cliente o etapa…"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                aria-label="Buscar en obras y cobros"
+              />
+              {busqueda.trim() ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => setBusqueda("")}
+                  aria-label="Limpiar búsqueda"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              ) : null}
+            </div>
+            <div className="w-[160px] shrink-0">
+              <FechaInput
+                id="ventas-fecha"
+                value={fecha}
+                onChange={setFecha}
+                placeholder="Fecha"
+                className="h-9"
+              />
+            </div>
+            <Select
+              value={vendedorId || VENDEDOR_TODOS}
+              onValueChange={(v) => setVendedorId(v === VENDEDOR_TODOS ? "" : v)}
+            >
+              <SelectTrigger className="h-9 w-48">
+                <SelectValue placeholder="Todos los vendedores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={VENDEDOR_TODOS}>Todos los vendedores</SelectItem>
+                {vendedoresOpciones.haySinVendedor ? (
+                  <SelectItem value={VENDEDOR_SIN}>Sin vendedor</SelectItem>
+                ) : null}
+                {vendedoresOpciones.lista.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hayFiltrosActivos ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 gap-1.5 text-muted-foreground"
+                onClick={limpiarFiltros}
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+                Limpiar
+              </Button>
+            ) : null}
+          </div>
 
         <Card className="border-border shadow-sm">
           <CardContent className="p-0">
@@ -349,8 +430,8 @@ export function VistaAdministracion() {
                   ) : filtradas.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
-                        {busqueda.trim() ?
-                          `No hay resultados para «${busqueda}».`
+                        {hayFiltrosActivos ?
+                          "Ninguna venta coincide con los filtros."
                         : "No hay presupuestos aprobados."}
                       </TableCell>
                     </TableRow>
