@@ -3,37 +3,37 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
 import { OtListRow } from "@/components/produccion/OtListRow";
+import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
 import { formatFechaCorta } from "@/components/produccion/ot-ui";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { getOtsPorFiltro, type OtProduccionItem } from "@/lib/produccion-api";
+import { getOtsAgrupadasPorFiltro, type VentaGrupoOt } from "@/lib/produccion-api";
 
 export function VistaEntregadas() {
-  const [items, setItems] = useState<OtProduccionItem[]>([]);
+  const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
   const [loading, setLoading] = useState(false);
-  const [detalleOpen, setDetalleOpen] = useState(false);
-  const [navIndex, setNavIndex] = useState(0);
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
-      setItems([]);
+      setGrupos([]);
       return;
     }
     setLoading(true);
-    const { data, error } = await getOtsPorFiltro("entregadas");
+    const { data, error } = await getOtsAgrupadasPorFiltro("entregadas");
     setLoading(false);
     if (error) {
       toast.error(error.message);
-      setItems([]);
+      setGrupos([]);
       return;
     }
-    setItems(data);
+    setGrupos(data);
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const totalOts = grupos.reduce((acc, g) => acc + g.ots.length, 0);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
@@ -46,50 +46,32 @@ export function VistaEntregadas() {
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm font-medium">
-            {items.length} entregadas
+            {totalOts} entregadas
           </Badge>
         </div>
       </header>
 
       <main className="p-4 sm:p-6">
-        {loading ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : items.length === 0 ? (
-          <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm text-muted-foreground">
-            Todavía no hay OTs entregadas.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-            {items.map((item) => (
-              <OtListRow
-                key={item.orden.id}
-                item={item}
-                onVer={() => {
-                  setNavIndex(items.findIndex((i) => i.orden.id === item.orden.id));
-                  setDetalleOpen(true);
-                }}
-                extra={
-                  <p className="text-[11px] text-muted-foreground">
-                    Cerrada {formatFechaCorta(item.orden.actualizado_en)} · Presupuesto{" "}
-                    {item.presupuestoNumero}
-                  </p>
-                }
-              />
-            ))}
-          </div>
-        )}
+        <OtsGruposAccordion
+          grupos={grupos}
+          loading={loading}
+          emptyText="Todavía no hay OTs entregadas."
+          onChanged={() => void refresh()}
+          permitirEntregar={false}
+          renderRow={(item, { onVer }) => (
+            <OtListRow
+              key={item.orden.id}
+              item={item}
+              onVer={onVer}
+              extra={
+                <p className="text-[11px] text-muted-foreground">
+                  Cerrada {formatFechaCorta(item.orden.actualizado_en)}
+                </p>
+              }
+            />
+          )}
+        />
       </main>
-
-      <OtDetalleDialog
-        item={items[navIndex] ?? null}
-        open={detalleOpen}
-        onOpenChange={setDetalleOpen}
-        onChanged={() => void refresh()}
-        permitirEntregar={false}
-        navItems={items}
-        navIndex={navIndex}
-        onNavChange={setNavIndex}
-      />
     </div>
   );
 }

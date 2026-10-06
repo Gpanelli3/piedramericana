@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -8,8 +8,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
-import { etiquetaVentaEstado } from "@/components/produccion/ot-ui";
-import { formatDifMetraje, formatMetraje } from "@/lib/presupuesto-calculos";
+import { etiquetaVentaEstado, resumenMetrosGrupo } from "@/components/produccion/ot-ui";
 import type { OtProduccionItem, VentaGrupoOt } from "@/lib/produccion-api";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
@@ -20,20 +19,21 @@ type Props = {
   emptyText: string;
   renderRow: (item: OtProduccionItem, ctx: { onVer: () => void }) => ReactNode;
   onChanged: () => void;
+  permitirEntregar?: boolean;
 };
 
-export function OtsGruposAccordion({ grupos, loading, emptyText, renderRow, onChanged }: Props) {
+export function OtsGruposAccordion({
+  grupos,
+  loading,
+  emptyText,
+  renderRow,
+  onChanged,
+  permitirEntregar = true,
+}: Props) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [navIndex, setNavIndex] = useState(0);
   const allOts = grupos.flatMap((g) => g.ots);
-
-  useEffect(() => {
-    setOpenIds((prev) => {
-      if (prev.size > 0) return prev;
-      return new Set(grupos.slice(0, 5).map((g) => g.ventaId));
-    });
-  }, [grupos]);
 
   if (loading) {
     return <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>;
@@ -51,7 +51,7 @@ export function OtsGruposAccordion({ grupos, loading, emptyText, renderRow, onCh
       <div className="space-y-3">
         {grupos.map((g) => {
           const open = openIds.has(g.ventaId);
-          const dif = g.m2Obra - g.m2Venta;
+          const cant = `${g.ots.length} ${g.ots.length === 1 ? "OT" : "OTs"}`;
           return (
             <Collapsible
               key={g.ventaId}
@@ -84,13 +84,9 @@ export function OtsGruposAccordion({ grupos, loading, emptyText, renderRow, onCh
                         {g.cliente}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {etiquetaVentaEstado(g.ventaEstado)} · {g.ots.length} OT
-                        {g.ots.length === 1 ? "" : "s"}
+                        {etiquetaVentaEstado(g.ventaEstado)} · {cant}
                         <span className="mx-1.5 text-border">·</span>
-                        <span className="tabular-nums">
-                          Cot. {formatMetraje(g.m2Venta)} · Obra {formatMetraje(g.m2Obra)} ·{" "}
-                          {formatDifMetraje(dif)}
-                        </span>
+                        <span className="tabular-nums">{resumenMetrosGrupo(g.m2Venta, g.m2Obra)}</span>
                       </p>
                     </div>
                     <Badge variant="secondary" className="shrink-0 tabular-nums">
@@ -121,6 +117,7 @@ export function OtsGruposAccordion({ grupos, loading, emptyText, renderRow, onCh
         open={detalleOpen}
         onOpenChange={setDetalleOpen}
         onChanged={onChanged}
+        permitirEntregar={permitirEntregar}
         navItems={allOts}
         navIndex={navIndex}
         onNavChange={setNavIndex}

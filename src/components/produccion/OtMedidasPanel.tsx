@@ -227,15 +227,15 @@ export function OtMedidasPanel({
       <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
         <div className="grid grid-cols-3 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           <span>Cotizado</span>
-          <span className="text-center">Obra</span>
-          <span className="text-right">Dif.</span>
+          <span className="text-center">Medido en obra</span>
+          <span className="text-right">Diferencia</span>
         </div>
         <div className="grid grid-cols-3 items-baseline gap-y-1 px-3 py-2 tabular-nums">
           <span className="text-muted-foreground">{formatMetraje(m2Venta)} m²</span>
           <span className="text-center font-medium text-foreground">
             {formatMetraje(m2ObraMostrado)} m²
           </span>
-          <span className="text-right text-muted-foreground">{formatDifMetraje(m2Dif)}</span>
+          <span className="text-right text-muted-foreground">{formatDifMetraje(m2Dif)} m²</span>
           <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
           <span className="text-center font-medium text-foreground">
             {formatMonto(totalVigente, moneda)}

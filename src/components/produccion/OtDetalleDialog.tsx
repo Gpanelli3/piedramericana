@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
-import { M2TrioTexto, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
+import { M2Comparacion, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
 import {
   avanzarEtapaOt,
   coalesceEtapaOt,
@@ -40,7 +40,7 @@ import {
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
-import { parseDecimalInput } from "@/lib/presupuesto-calculos";
+import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -524,16 +524,10 @@ export function OtDetalleDialog({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-3 border-b border-border bg-muted/20 px-5 py-3">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs sm:grid-cols-3">
                 <div>
                   <p className="text-muted-foreground">Material</p>
                   <p className="font-medium text-foreground">{item.materialLabel}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">m²</p>
-                  <p className="font-medium tabular-nums text-foreground">
-                    <M2TrioTexto item={item} />
-                  </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Ingreso</p>
@@ -570,6 +564,7 @@ export function OtDetalleDialog({
                   )}
                 </div>
               </div>
+              <M2Comparacion item={item} />
               {item.direccionObra !== "—" ? (
                 <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -578,12 +573,7 @@ export function OtDetalleDialog({
               ) : null}
               {loadingExtra ? (
                 <p className="text-xs text-muted-foreground">Cargando piezas…</p>
-              ) : medidaItems.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {item.materialLabel}
-                  {item.m2Display ? ` · ${item.m2Display}` : ""}
-                </p>
-              ) : (
+              ) : medidaItems.length > 0 ? (
                 <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   {grupos.flatMap((g, gi) =>
                     g.items.map((it, ii) => (
@@ -591,7 +581,7 @@ export function OtDetalleDialog({
                         <span className="font-medium text-foreground">{it.articuloLabel}</span>
                         <span className="tabular-nums text-muted-foreground">
                           {it.m2Approx > 0
-                            ? ` · ${it.m2Approx.toFixed(2)} m²`
+                            ? ` · ${formatMetraje(it.m2Approx)} m²`
                             : it.cantidad && it.cantidad !== "1"
                               ? ` · ×${it.cantidad}`
                               : ""}
@@ -600,7 +590,7 @@ export function OtDetalleDialog({
                     )),
                   )}
                 </ul>
-              )}
+              ) : null}
             </div>
 
             <Tabs key={item.orden.id} defaultValue="medidas" className="gap-0 px-5 py-3">

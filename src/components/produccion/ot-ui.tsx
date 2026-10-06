@@ -144,14 +144,58 @@ export function otTituloDisplay(item: OtProduccionItem): string {
   return item.orden.titulo?.trim() || `OT · ${item.presupuestoNumero}`;
 }
 
-export function M2TrioTexto({ item }: { item: OtProduccionItem }) {
+export function resumenMetrosGrupo(venta: number, obra: number): string {
+  const dif = obra - venta;
+  const igual = Math.abs(dif) < 0.005;
+  const diferencia = igual ? "Igual" : `${formatDifMetraje(dif)} m²`;
+  return `Cotizado ${formatMetraje(venta)} m² · Medido ${formatMetraje(obra)} m² · ${diferencia}`;
+}
+
+export function M2Comparacion({ item }: { item: OtProduccionItem }) {
+  const sinDatos = item.m2Venta <= 0 && item.m2Obra <= 0;
+  const igual = Math.abs(item.m2Dif) < 0.005;
+  const destaca = !igual && item.m2Significativo;
+
+  if (sinDatos) {
+    return (
+      <p className="text-xs text-muted-foreground">Todavía no hay metros cargados.</p>
+    );
+  }
+
   return (
-    <span className="tabular-nums">
-      Cot. {formatMetraje(item.m2Venta)}
-      <span className="mx-1 text-border">·</span>
-      Obra {formatMetraje(item.m2Obra)}
-      <span className="mx-1 text-border">·</span>
-      {formatDifMetraje(item.m2Dif)}
-    </span>
+    <div className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Metros cuadrados
+      </p>
+      <div className="mt-1.5 grid grid-cols-3 gap-3">
+        <div>
+          <p className="text-muted-foreground">Cotizado</p>
+          <p className="font-medium tabular-nums text-foreground">
+            {formatMetraje(item.m2Venta)} m²
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Medido en obra</p>
+          <p className="font-medium tabular-nums text-foreground">
+            {formatMetraje(item.m2Obra)} m²
+          </p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Diferencia</p>
+          <p
+            className={cn(
+              "font-medium tabular-nums",
+              destaca
+                ? "text-amber-800 dark:text-amber-200"
+                : igual
+                  ? "text-muted-foreground"
+                  : "text-foreground",
+            )}
+          >
+            {igual ? "Igual" : `${formatDifMetraje(item.m2Dif)} m²`}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

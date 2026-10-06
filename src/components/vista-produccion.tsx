@@ -3,14 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
 import { OtListRow } from "@/components/produccion/OtListRow";
-import { etiquetaVentaEstado } from "@/components/produccion/ot-ui";
+import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   avanzarEtapaOt,
@@ -18,15 +12,11 @@ import {
   type OtProduccionItem,
   type VentaGrupoOt,
 } from "@/lib/produccion-api";
-import { cn } from "@/lib/utils";
-import { ChevronDown, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 
 export function VistaProduccion() {
   const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
   const [loading, setLoading] = useState(false);
-  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [detalleOpen, setDetalleOpen] = useState(false);
-  const [navIndex, setNavIndex] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -43,10 +33,6 @@ export function VistaProduccion() {
       return;
     }
     setGrupos(data);
-    setOpenIds((prev) => {
-      if (prev.size > 0) return prev;
-      return new Set(data.slice(0, 5).map((g) => g.ventaId));
-    });
   }, []);
 
   useEffect(() => {
@@ -96,117 +82,34 @@ export function VistaProduccion() {
         </div>
       </header>
 
-      <main className="space-y-3 p-4 sm:p-6">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-            Cargando órdenes de trabajo…
-          </div>
-        ) : grupos.length === 0 ? (
-          <div className="mx-auto max-w-lg rounded-lg border border-dashed border-border bg-muted/40 px-6 py-10 text-center text-sm leading-relaxed text-muted-foreground">
-            No hay órdenes de trabajo. Se generan cuando registrás la primera seña sobre un
-            presupuesto aprobado en Ventas.
-          </div>
-        ) : (
-          grupos.map((g) => {
-            const open = openIds.has(g.ventaId);
-            return (
-              <Collapsible
-                key={g.ventaId}
-                open={open}
-                onOpenChange={(next) => {
-                  setOpenIds((prev) => {
-                    const s = new Set(prev);
-                    if (next) s.add(g.ventaId);
-                    else s.delete(g.ventaId);
-                    return s;
-                  });
-                }}
-              >
-                <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 border-b border-border/80 bg-muted/30 px-4 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                          open && "rotate-180",
-                        )}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          Venta · {g.presupuestoNumero}
-                          <span className="mx-1.5 font-normal text-muted-foreground">·</span>
-                          {g.cliente}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {etiquetaVentaEstado(g.ventaEstado)} · {g.ots.length} OT
-                          {g.ots.length === 1 ? "" : "s"}
-                          <span className="mx-1.5 text-border">·</span>
-                          <span className="tabular-nums">
-                            Cot. {g.m2Venta.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} · Obra{" "}
-                            {g.m2Obra.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
-                          </span>
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="shrink-0 tabular-nums">
-                        {g.ots.length}
-                      </Badge>
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div>
-                      {g.ots.map((item) => {
-                        const allOts = grupos.flatMap((gr) => gr.ots);
-                        const idx = allOts.findIndex((o) => o.orden.id === item.orden.id);
-                        return (
-                          <OtListRow
-                            key={item.orden.id}
-                            item={item}
-                            onVer={() => {
-                              setNavIndex(idx);
-                              setDetalleOpen(true);
-                            }}
-                            primaryAction={
-                              item.orden.estado === "done"
-                                ? undefined
-                                : {
-                                    label: "Avanzar",
-                                    disabled:
-                                      busyId === item.orden.id ||
-                                      Boolean(item.orden.bloqueada) ||
-                                      Boolean(item.orden.pausada) ||
-                                      item.orden.etapa === "despacho",
-                                    onClick: () => void onAvanzar(item),
-                                  }
-                            }
-                          />
-                        );
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </div>
-              </Collapsible>
-            );
-          })
-        )}
+      <main className="p-4 sm:p-6">
+        <OtsGruposAccordion
+          grupos={grupos}
+          loading={loading}
+          emptyText="No hay órdenes de trabajo. Se generan cuando registrás la primera seña sobre un presupuesto aprobado en Ventas."
+          onChanged={() => void refresh()}
+          renderRow={(item, { onVer }) => (
+            <OtListRow
+              key={item.orden.id}
+              item={item}
+              onVer={onVer}
+              primaryAction={
+                item.orden.estado === "done"
+                  ? undefined
+                  : {
+                      label: "Avanzar",
+                      disabled:
+                        busyId === item.orden.id ||
+                        Boolean(item.orden.bloqueada) ||
+                        Boolean(item.orden.pausada) ||
+                        item.orden.etapa === "despacho",
+                      onClick: () => void onAvanzar(item),
+                    }
+              }
+            />
+          )}
+        />
       </main>
-
-      {(() => {
-        const allOts = grupos.flatMap((g) => g.ots);
-        return (
-          <OtDetalleDialog
-            item={allOts[navIndex] ?? null}
-            open={detalleOpen}
-            onOpenChange={setDetalleOpen}
-            onChanged={() => void refresh()}
-            navItems={allOts}
-            navIndex={navIndex}
-            onNavChange={setNavIndex}
-          />
-        );
-      })()}
     </div>
   );
 }

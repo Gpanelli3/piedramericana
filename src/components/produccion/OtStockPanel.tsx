@@ -26,20 +26,9 @@ import {
   materialSinChapasDisponibles,
   listChapasRoturaPorOt,
   reservarChapasAOt,
-  sugerirChapasParaOt,
   type ChapaInventarioRow,
   type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
-import {
-  consumirOtStockUnidades,
-  formatQtyUnidad,
-  liberarOtStockUnidades,
-  listOtStockUnidades,
-  listStockProductosUnidades,
-  reservarOtStockUnidades,
-  type OtStockUnidadRow,
-  type StockProductoUnidad,
-} from "@/lib/stock-unidades-api";
 import {
   asignarBachaAOt,
   createBachaInventario,
@@ -127,10 +116,6 @@ export function OtStockPanel({
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
-  const [unidadesOt, setUnidadesOt] = useState<OtStockUnidadRow[]>([]);
-  const [productosDisponibles, setProductosDisponibles] = useState<StockProductoUnidad[]>([]);
-  const [productoId, setProductoId] = useState("");
-  const [productoQty, setProductoQty] = useState("1");
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
   const [consumoOpen, setConsumoOpen] = useState(false);
@@ -138,8 +123,6 @@ export function OtStockPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forzarMezcla, setForzarMezcla] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [sugeridas, setSugeridas] = useState<ChapaInventarioRow[]>([]);
-  const [loteSugerido, setLoteSugerido] = useState<string | null>(null);
   const [retazosByChapa, setRetazosByChapa] = useState<
     Record<string, Array<{ largo: string; ancho: string }>>
   >({});
@@ -162,26 +145,20 @@ export function OtStockPanel({
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const [r, u, rot, mov, und, prods] = await Promise.all([
+    const [r, u, rot, mov] = await Promise.all([
       listChapasPorOt(otId, ["Reservada"]),
       listChapasPorOt(otId, ["Usada", "Baja"]),
       listChapasRoturaPorOt(otId),
       listTrazabilidadStockPorOt(otId),
-      listOtStockUnidades(otId),
-      listStockProductosUnidades(),
     ]);
     if (r.error) toast.error(r.error.message);
     if (u.error) toast.error(u.error.message);
     if (rot.error) toast.error(rot.error.message);
     if (mov.error) toast.error(mov.error.message);
-    if (und.error) toast.error(und.error.message);
-    if (prods.error) toast.error(prods.error.message);
     setReservadas(r.data);
     setUsadas(u.data);
     setBloqueadas(rot.data);
     setMovimientos(mov.data);
-    setUnidadesOt(und.data);
-    setProductosDisponibles(prods.data);
     try {
       const bachas = await fetchBachasDisponiblesParaOt({ clienteNombre });
       setBachasDisponibles(bachas);
@@ -206,28 +183,10 @@ export function OtStockPanel({
     void reload();
   }, [reload]);
 
-  const unidadesReservadas = unidadesOt.filter((u) => u.qty_reservada > 0);
-  const reservaPendiente =
-    requiereReservaStock && reservadas.length === 0 && unidadesReservadas.length === 0;
+  const reservaPendiente = requiereReservaStock && reservadas.length === 0;
   const esperaReponer = bloqueadas.length > 0 && reservadas.length === 0;
 
-  const productosParaReservar = productosDisponibles.filter((p) => p.qty_disponible > 0);
-
-  const cargarSugerencias = useCallback(async () => {
-    const sug = await sugerirChapasParaOt({ materialHint, cantidad: 1 });
-    if (sug.error) {
-      toast.error(sug.error.message);
-      return;
-    }
-    setSugeridas(sug.data.chapas);
-    setLoteSugerido(sug.data.lotePreferido);
-  }, [materialHint]);
-
-  useEffect(() => {
-    if (reservaPendiente) void cargarSugerencias();
-  }, [reservaPendiente, cargarSugerencias]);
-
-  const abrirReservar = async (preselectSugeridas = false) => {
+  const abrirReservar = async () => {
     setReservarOpen(true);
     setForzarMezcla(false);
     const needle = materialHint && materialHint !== "—" ? materialHint.split(" ")[0] : undefined;
@@ -239,39 +198,7 @@ export function OtStockPanel({
       pool = all.data;
     }
     setDisponibles(pool);
-    if (preselectSugeridas && sugeridas.length > 0) {
-      setSelected(new Set(sugeridas.map((c) => c.id)));
-    } else {
-      setSelected(new Set());
-    }
-  };
-
-  const onReservarSugeridas = async () => {
-    if (sugeridas.length === 0) {
-      await abrirReservar(false);
-      return;
-    }
-    setBusy(true);
-    const res = await reservarChapasAOt({
-      otId,
-      chapaIds: sugeridas.map((c) => c.id),
-      permitirMezclaLotes: false,
-    });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      await abrirReservar(true);
-      return;
-    }
-    toast.success(
-      loteSugerido
-        ? `Reservada(s) del lote ${loteSugerido}.`
-        : "Chapas sugeridas reservadas.",
-    );
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-    await toastSiAgotado(null, materialHint);
+    setSelected(new Set());
   };
 
   const mezclaPreview = useMemo(() => {
@@ -418,58 +345,6 @@ export function OtStockPanel({
     await reloadChapas();
     onChanged?.();
     await toastSiAgotado(null, materialHint);
-  };
-
-  const onReservarProducto = async () => {
-    const qty = Number(String(productoQty).replace(",", "."));
-    if (!productoId) {
-      toast.error("Elegí un producto.");
-      return;
-    }
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error("Indicá una cantidad mayor a 0.");
-      return;
-    }
-    setBusy(true);
-    const res = await reservarOtStockUnidades({ otId, materialId: productoId, qty });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Producto reservado a la OT.");
-    setProductoQty("1");
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-  };
-
-  const onConsumirProducto = async (materialId: string) => {
-    setBusy(true);
-    const res = await consumirOtStockUnidades({ otId, materialId });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Producto consumido.");
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-  };
-
-  const onLiberarProducto = async (materialId: string) => {
-    setBusy(true);
-    const res = await liberarOtStockUnidades({ otId, materialId });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Producto liberado.");
-    await reload();
-    await reloadChapas();
-    onChanged?.();
   };
 
   const mostrarBacha = bachaRequerida || Boolean(bachaId) || Boolean(bachaAsignada);
@@ -659,7 +534,7 @@ export function OtStockPanel({
           Placas / stock
         </p>
         <div className="flex flex-wrap gap-1.5">
-          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => void abrirReservar(false)}>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => void abrirReservar()}>
             Reservar
           </Button>
           <Button
@@ -698,28 +573,10 @@ export function OtStockPanel({
             <div className="min-w-0 space-y-1">
               <p className="font-semibold">Reserva pendiente</p>
               <p className="text-amber-900/80 dark:text-amber-100/80">
-                La OT necesita stock asignado. Reservá placas o productos para no venderlos a otro
-                cliente.
-                {loteSugerido ? ` Lote sugerido: ${loteSugerido}.` : null}
+                Esta orden todavía no tiene placas apartadas. Usá Reservar para elegirlas.
               </p>
-              {sugeridas.length > 0 ? (
-                <p className="font-mono text-[11px]">
-                  Sugerida: {sugeridas.map((c) => c.bulto).join(", ")}
-                </p>
-              ) : (
-                <p>No hay chapas disponibles que coincidan con el material.</p>
-              )}
             </div>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-7 w-full text-xs"
-            disabled={busy}
-            onClick={() => void onReservarSugeridas()}
-          >
-            {sugeridas.length > 0 ? "Reservar sugeridas" : "Elegir chapas…"}
-          </Button>
         </div>
       ) : null}
 
@@ -734,7 +591,7 @@ export function OtStockPanel({
             size="sm"
             className="h-7 w-full text-xs"
             disabled={busy}
-            onClick={() => void abrirReservar(false)}
+            onClick={() => void abrirReservar()}
           >
             Apartar otro mármol
           </Button>
@@ -808,108 +665,6 @@ export function OtStockPanel({
           ))}
         </ul>
       )}
-
-      <div className="space-y-2 border-t border-border/60 pt-3">
-        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Package className="h-3.5 w-3.5" />
-          Productos
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-1">
-            <Label className="text-xs">Producto</Label>
-            <Select value={productoId || undefined} onValueChange={setProductoId}>
-              <SelectTrigger className="h-8 w-full text-xs">
-                <SelectValue placeholder="Elegí un producto…" />
-              </SelectTrigger>
-              <SelectContent>
-                {productosParaReservar.length === 0 ? (
-                  <SelectItem value="__none" disabled>
-                    Sin stock de productos
-                  </SelectItem>
-                ) : (
-                  productosParaReservar.map((p) => (
-                    <SelectItem key={p.material_id} value={p.material_id}>
-                      {p.name} · {formatQtyUnidad(p.qty_disponible, p.unit)} disp.
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-24 space-y-1">
-            <Label className="text-xs" htmlFor="ot-prod-qty">
-              Cantidad
-            </Label>
-            <Input
-              id="ot-prod-qty"
-              className="h-8 text-xs"
-              inputMode="decimal"
-              value={productoQty}
-              onChange={(e) => setProductoQty(e.target.value)}
-            />
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 text-xs"
-            disabled={busy || productosParaReservar.length === 0}
-            onClick={() => void onReservarProducto()}
-          >
-            Reservar
-          </Button>
-        </div>
-
-        {unidadesOt.length > 0 ? (
-          <ul className="space-y-1.5">
-            {unidadesOt.map((u) => (
-              <li
-                key={u.id}
-                className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs"
-              >
-                <div className="min-w-0">
-                  <span className="font-medium">{u.name}</span>
-                  <span className="text-muted-foreground">
-                    {u.qty_reservada > 0
-                      ? ` · ${formatQtyUnidad(u.qty_reservada, u.unit)} reserv.`
-                      : ""}
-                    {u.qty_consumida > 0
-                      ? ` · ${formatQtyUnidad(u.qty_consumida, u.unit)} cons.`
-                      : ""}
-                  </span>
-                </div>
-                {u.qty_reservada > 0 ? (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-1.5 text-xs"
-                      disabled={busy}
-                      onClick={() => void onConsumirProducto(u.material_id)}
-                    >
-                      Consumir
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5 text-xs"
-                      disabled={busy}
-                      onClick={() => void onLiberarProducto(u.material_id)}
-                    >
-                      Liberar
-                    </Button>
-                  </div>
-                ) : (
-                  <Badge variant="outline" className="text-[10px]">
-                    Consumido
-                  </Badge>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
 
       {movimientos.length > 0 ? (
         <div className="space-y-1.5 border-t border-border/60 pt-2">
