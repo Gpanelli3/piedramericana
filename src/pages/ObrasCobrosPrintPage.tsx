@@ -10,6 +10,7 @@ import {
   type PresupuestoRowList,
 } from "@/lib/presupuestos-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { fechaEnRango, formatoDiaCalendario } from "@/lib/fecha-rango";
 import { cn } from "@/lib/utils";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
@@ -40,6 +41,8 @@ export function ObrasCobrosPrintPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const autoDescargar = searchParams.get("descargar") === "1";
+  const fechaDesde = searchParams.get("desde")?.trim() ?? "";
+  const fechaHasta = searchParams.get("hasta")?.trim() ?? "";
   const autoPrintDone = useRef(false);
 
   const [cargando, setCargando] = useState(true);
@@ -55,7 +58,11 @@ export function ObrasCobrosPrintPage() {
         toast.error(error.message);
         setFilas([]);
       } else {
-        setFilas((data ?? []).filter((r) => r.status === "aprobado"));
+        setFilas(
+          (data ?? []).filter(
+            (r) => r.status === "aprobado" && fechaEnRango(r.created_at, fechaDesde, fechaHasta),
+          ),
+        );
       }
       setCargando(false);
     }
@@ -63,7 +70,7 @@ export function ObrasCobrosPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fechaDesde, fechaHasta]);
 
   useEffect(() => {
     if (!autoDescargar || cargando || autoPrintDone.current) return;
@@ -100,6 +107,14 @@ export function ObrasCobrosPrintPage() {
   }, [navigate]);
 
   const fechaEmision = new Date().toLocaleDateString("es-AR");
+  const leyendaRango =
+    fechaDesde && fechaHasta
+      ? `${formatoDiaCalendario(fechaDesde)} – ${formatoDiaCalendario(fechaHasta)}`
+      : fechaDesde
+        ? `desde ${formatoDiaCalendario(fechaDesde)}`
+        : fechaHasta
+          ? `hasta ${formatoDiaCalendario(fechaHasta)}`
+          : null;
 
   return (
     <div className="min-h-dvh bg-neutral-100 text-foreground print:bg-white">
@@ -141,6 +156,7 @@ export function ObrasCobrosPrintPage() {
                 <h1 className="mt-1 text-lg font-semibold">Obras y cobros</h1>
                 <p className="text-xs text-neutral-600">
                   Cuentas corrientes · {filas.length} venta{filas.length === 1 ? "" : "s"}
+                  {leyendaRango ? ` · ${leyendaRango}` : ""}
                 </p>
               </div>
               <p className="text-xs tabular-nums text-neutral-600">{fechaEmision}</p>

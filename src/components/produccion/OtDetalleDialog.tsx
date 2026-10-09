@@ -39,6 +39,7 @@ import {
   type OtSaldoVenta,
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
+import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { cn } from "@/lib/utils";
@@ -47,9 +48,11 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  FileImage,
   FileText,
   Layers,
   MapPin,
+  Printer,
   Receipt,
   Ruler,
 } from "lucide-react";
@@ -68,6 +71,8 @@ type Props = {
   onNavChange?: (index: number) => void;
   /** Mostrar pestaña de cobros (p. ej. desde Finanzas). */
   mostrarSaldo?: boolean;
+  /** Botones de rótulo de taller y plano (Producción y Logística). */
+  mostrarRotulo?: boolean;
 };
 
 function fmtMoneda(n: number, moneda: "ars" | "usd") {
@@ -180,7 +185,9 @@ export function OtDetalleDialog({
   navItems,
   onNavChange,
   mostrarSaldo = false,
+  mostrarRotulo = false,
 }: Props) {
+  const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
   const [fechaLocal, setFechaLocal] = useState("");
   const [savingFecha, setSavingFecha] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -802,7 +809,33 @@ export function OtDetalleDialog({
           </div>
 
           <div className="shrink-0 border-t border-border bg-background px-4 py-2.5">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {mostrarRotulo ? (
+                <div className="mr-auto flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onOpenChange(false);
+                      irARotulo(item.orden.id);
+                    }}
+                  >
+                    <Printer className="mr-1 h-3.5 w-3.5" />
+                    Rótulo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busyPlanoId === item.orden.id}
+                    onClick={() => void abrirPlano(item)}
+                  >
+                    <FileImage className="mr-1 h-3.5 w-3.5" />
+                    Plano
+                  </Button>
+                </div>
+              ) : null}
               {!done && nextEtapa ? (
                 <Button
                   type="button"

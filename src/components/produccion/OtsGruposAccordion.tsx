@@ -20,6 +20,7 @@ type Props = {
   renderRow: (item: OtProduccionItem, ctx: { onVer: () => void }) => ReactNode;
   onChanged: () => void;
   permitirEntregar?: boolean;
+  mostrarRotulo?: boolean;
 };
 
 export function OtsGruposAccordion({
@@ -29,6 +30,7 @@ export function OtsGruposAccordion({
   renderRow,
   onChanged,
   permitirEntregar = true,
+  mostrarRotulo = false,
 }: Props) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [detalleOpen, setDetalleOpen] = useState(false);
@@ -118,6 +120,7 @@ export function OtsGruposAccordion({
         onOpenChange={setDetalleOpen}
         onChanged={onChanged}
         permitirEntregar={permitirEntregar}
+        mostrarRotulo={mostrarRotulo}
         navItems={allOts}
         navIndex={navIndex}
         onNavChange={setNavIndex}

@@ -48,6 +48,7 @@ import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { exportVentasCsv } from "@/lib/reportes-export-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import { FechaInput } from "@/components/ui/fecha-input";
+import { fechaEnRango, rangoFechasInvertido } from "@/lib/fecha-rango";
 
 const VENDEDOR_TODOS = "__all__";
 const VENDEDOR_SIN = "__none__";
@@ -81,7 +82,8 @@ export function VistaAdministracion() {
   const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
-  const [fecha, setFecha] = useState("");
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [cobrosAbierto, setCobrosAbierto] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
@@ -152,13 +154,15 @@ export function VistaAdministracion() {
     return { lista, haySinVendedor };
   }, [filas]);
 
+  const rangoInvertido = rangoFechasInvertido(fechaDesde, fechaHasta);
+
   const hayFiltrosActivos =
-    Boolean(busqueda.trim()) || Boolean(fecha) || Boolean(vendedorId);
+    Boolean(busqueda.trim()) || Boolean(fechaDesde) || Boolean(fechaHasta) || Boolean(vendedorId);
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return filas.filter((r) => {
-      if (fecha && r.created_at.slice(0, 10) !== fecha) return false;
+      if (!fechaEnRango(r.created_at, fechaDesde, fechaHasta)) return false;
       if (vendedorId === VENDEDOR_SIN) {
         if (r.created_by) return false;
       } else if (vendedorId && r.created_by !== vendedorId) {
@@ -172,7 +176,7 @@ export function VistaAdministracion() {
         etapa.includes(q)
       );
     });
-  }, [filas, busqueda, fecha, vendedorId]);
+  }, [filas, busqueda, fechaDesde, fechaHasta, vendedorId]);
 
   const kpis = useMemo(() => {
     let saldoUsd = 0;
@@ -199,8 +203,16 @@ export function VistaAdministracion() {
 
   function limpiarFiltros() {
     setBusqueda("");
-    setFecha("");
+    setFechaDesde("");
+    setFechaHasta("");
     setVendedorId("");
+  }
+
+  function paramsRango(): URLSearchParams {
+    const p = new URLSearchParams();
+    if (fechaDesde) p.set("desde", fechaDesde);
+    if (fechaHasta) p.set("hasta", fechaHasta);
+    return p;
   }
 
   function abrirCobros(f: PresupuestoRowList) {
@@ -210,18 +222,21 @@ export function VistaAdministracion() {
 
   async function onExportExcel() {
     setExportBusy(true);
-    const res = await exportVentasCsv();
+    const res = await exportVentasCsv({ desde: fechaDesde, hasta: fechaHasta });
     setExportBusy(false);
     if (res.error) toast.error(res.error.message);
     else toast.success("Excel descargado.");
   }
 
   function onExportPdf() {
-    navigate("/obras-cobros/imprimir?descargar=1");
+    const p = paramsRango();
+    p.set("descargar", "1");
+    navigate(`/obras-cobros/imprimir?${p.toString()}`);
   }
 
   function onExportImprimir() {
-    navigate("/obras-cobros/imprimir");
+    const q = paramsRango().toString();
+    navigate(q ? `/obras-cobros/imprimir?${q}` : "/obras-cobros/imprimir");
   }
 
   return (
@@ -345,10 +360,19 @@ export function VistaAdministracion() {
             </div>
             <div className="w-[160px] shrink-0">
               <FechaInput
-                id="ventas-fecha"
-                value={fecha}
-                onChange={setFecha}
-                placeholder="Fecha"
+                id="ventas-fecha-desde"
+                value={fechaDesde}
+                onChange={setFechaDesde}
+                placeholder="Desde"
+                className="h-9"
+              />
+            </div>
+            <div className="w-[160px] shrink-0">
+              <FechaInput
+                id="ventas-fecha-hasta"
+                value={fechaHasta}
+                onChange={setFechaHasta}
+                placeholder="Hasta"
                 className="h-9"
               />
             </div>
@@ -382,6 +406,11 @@ export function VistaAdministracion() {
                 <X className="h-3.5 w-3.5" aria-hidden />
                 Limpiar
               </Button>
+            ) : null}
+            {rangoInvertido ? (
+              <p className="w-full text-xs text-destructive">
+                La fecha desde es posterior a hasta.
+              </p>
             ) : null}
           </div>
 

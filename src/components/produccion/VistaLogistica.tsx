@@ -12,11 +12,13 @@ import {
   type OtProduccionItem,
   type VentaGrupoOt,
 } from "@/lib/produccion-api";
+import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
 
 export function VistaLogistica() {
   const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -74,11 +76,17 @@ export function VistaLogistica() {
           loading={loading}
           emptyText="No hay OTs en logística."
           onChanged={() => void refresh()}
+          mostrarRotulo
           renderRow={(item, { onVer }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              tallerActions={{
+                onRotulo: () => irARotulo(item.orden.id),
+                onPlano: () => void abrirPlano(item),
+                planoBusy: busyPlanoId === item.orden.id,
+              }}
               primaryAction={{
                 label: "Entregar",
                 disabled:

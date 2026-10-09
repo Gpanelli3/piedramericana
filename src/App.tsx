@@ -5,6 +5,7 @@ import { MainWorkspace } from "./pages/MainWorkspace";
 import { PresupuestoPrintPage } from "./pages/PresupuestoPrintPage";
 import { CobrosComprobantePrintPage } from "./pages/CobrosComprobantePrintPage";
 import { ObrasCobrosPrintPage } from "./pages/ObrasCobrosPrintPage";
+import { OtRotuloPrintPage } from "./pages/OtRotuloPrintPage";
 import { RequireAuth } from "./routes/RequireAuth";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
               element={<CobrosComprobantePrintPage />}
             />
             <Route path="/obras-cobros/imprimir" element={<ObrasCobrosPrintPage />} />
+            <Route path="/ordenes-trabajo/:id/rotulo" element={<OtRotuloPrintPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

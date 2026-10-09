@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { listPresupuestosResumen } from "@/lib/presupuestos-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { fechaEnRango } from "@/lib/fecha-rango";
 import { fetchRemitosList, fetchRemitoLines } from "@/lib/stock-api";
 
 function fechaArchivo(): string {
@@ -9,10 +10,17 @@ function fechaArchivo(): string {
 }
 
 /** Exporta obras y cobros (ventas aprobadas) en CSV compatible con Excel. */
-export async function exportVentasCsv(): Promise<{ error: Error | null }> {
+export async function exportVentasCsv(opts?: {
+  desde?: string;
+  hasta?: string;
+}): Promise<{ error: Error | null }> {
   const { data, error } = await listPresupuestosResumen();
   if (error) return { error };
-  const aprob = (data ?? []).filter((r) => r.status === "aprobado");
+  const desde = opts?.desde ?? "";
+  const hasta = opts?.hasta ?? "";
+  const aprob = (data ?? []).filter(
+    (r) => r.status === "aprobado" && fechaEnRango(r.created_at, desde, hasta),
+  );
 
   const headers = [
     "Presupuesto",
