@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { METODOS_COBRO_UI } from "@/lib/finanzas-api";
+import { calcularRetencion, metodoAplicaRetencion } from "@/lib/retencion-reglas";
+import { validateFinanzasComprobanteFile } from "@/lib/finanzas-documentos-storage";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export type PresupuestoRowAprobacion = {
   id: string;
@@ -31,19 +35,31 @@ export type PresupuestoRowAprobacion = {
   moneda: "ars" | "usd";
 };
 
+export type AprobarPresupuestoPayload = {
+  totalAprobado: number;
+  montoSenia: number;
+  fecha: string;
+  metodo: string;
+  nota: string;
+  retencionPorcentaje?: number;
+  retencionMonto?: number;
+  comprobante?: File | null;
+};
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   row: PresupuestoRowAprobacion | null;
   busy: boolean;
-  onConfirm: (payload: {
-    totalAprobado: number;
-    montoSenia: number;
-    fecha: string;
-    metodo: string;
-    nota: string;
-  }) => Promise<void>;
+  onConfirm: (payload: AprobarPresupuestoPayload) => Promise<void>;
 };
+
+function parseMontoCampo(raw: string): number | null {
+  const t = String(raw).replace(",", ".").trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
 
 export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConfirm }: Props) {
   const [totalStr, setTotalStr] = useState("");
@@ -51,6 +67,12 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
   const [fecha, setFecha] = useState("");
   const [metodo, setMetodo] = useState("transferencia");
   const [nota, setNota] = useState("");
+  const [esAgente, setEsAgente] = useState(false);
+  const [pctCliente, setPctCliente] = useState<number | null>(null);
+  const [retencionPctStr, setRetencionPctStr] = useState("");
+  const [retencionMontoStr, setRetencionMontoStr] = useState("");
+  const [retencionMontoManual, setRetencionMontoManual] = useState(false);
+  const [comprobante, setComprobante] = useState<File | null>(null);
 
   useEffect(() => {
     if (!open || !row) return;
@@ -59,9 +81,55 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
     setFecha(new Date().toISOString().slice(0, 10));
     setMetodo("transferencia");
     setNota("");
+    setComprobante(null);
+    setRetencionMontoManual(false);
+    setEsAgente(false);
+    setPctCliente(null);
+    setRetencionPctStr("");
+    setRetencionMontoStr("");
+
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    void (async () => {
+      const pres = await supabase
+        .from("presupuestos")
+        .select("client_id")
+        .eq("id", row.id)
+        .maybeSingle();
+      if (cancelled || pres.error || !pres.data?.client_id) return;
+      const cli = await supabase
+        .from("clients")
+        .select("es_agente_retencion, retencion_porcentaje")
+        .eq("id", pres.data.client_id)
+        .maybeSingle();
+      if (cancelled || cli.error || !cli.data) return;
+      const agente = Boolean(cli.data.es_agente_retencion);
+      const n = Number(cli.data.retencion_porcentaje);
+      const pct = agente && Number.isFinite(n) ? n : null;
+      setEsAgente(agente);
+      setPctCliente(pct);
+      setRetencionPctStr(pct != null ? String(pct) : "");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, row?.id]);
 
   const monedaLabel = row?.moneda === "usd" ? "USD" : "ARS";
+  const senaNum = parseMontoCampo(senaStr) ?? 0;
+  const muestraRetencion = esAgente && metodoAplicaRetencion(metodo) && senaNum > 0;
+  const retencionPreview = useMemo(
+    () =>
+      calcularRetencion({
+        bruto: senaNum,
+        esAgente,
+        metodo,
+        porcentajeCliente: pctCliente,
+        porcentajeOverride: parseMontoCampo(retencionPctStr),
+        retencionMontoOverride: retencionMontoManual ? parseMontoCampo(retencionMontoStr) : undefined,
+      }),
+    [senaNum, esAgente, metodo, pctCliente, retencionPctStr, retencionMontoStr, retencionMontoManual],
+  );
 
   const handleSubmit = async () => {
     if (!row) return;
@@ -70,12 +138,26 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
     if (!Number.isFinite(total) || total < 0) return;
     if (!Number.isFinite(sena) || sena < 0) return;
     if (sena > total) return;
+    if (sena > 0 && retencionPreview.error) {
+      toast.error(retencionPreview.error);
+      return;
+    }
+    if (comprobante) {
+      const fileErr = validateFinanzasComprobanteFile(comprobante);
+      if (fileErr) {
+        toast.error(fileErr);
+        return;
+      }
+    }
     await onConfirm({
       totalAprobado: total,
       montoSenia: sena,
       fecha,
       metodo: metodo || "transferencia",
       nota: nota.trim(),
+      retencionPorcentaje: retencionPreview.aplica ? retencionPreview.porcentaje : undefined,
+      retencionMonto: retencionPreview.aplica ? retencionPreview.retencionMonto : undefined,
+      comprobante,
     });
   };
 
@@ -142,7 +224,14 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
               </div>
               <div className="space-y-1.5">
                 <Label>Cómo se paga</Label>
-                <Select value={metodo} onValueChange={setMetodo}>
+                <Select
+                  value={metodo}
+                  onValueChange={(v) => {
+                    setMetodo(v);
+                    setRetencionMontoManual(false);
+                    setRetencionPctStr(pctCliente != null ? String(pctCliente) : "");
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -157,9 +246,76 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
               </div>
             </div>
 
+            {muestraRetencion ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="ap-ret-pct">Retención %</Label>
+                  <Input
+                    id="ap-ret-pct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="any"
+                    value={retencionPctStr}
+                    onChange={(e) => {
+                      setRetencionPctStr(e.target.value);
+                      setRetencionMontoManual(false);
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ap-ret-monto">Retención</Label>
+                  <Input
+                    id="ap-ret-monto"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={
+                      retencionMontoManual
+                        ? retencionMontoStr
+                        : String(retencionPreview.retencionMonto || "")
+                    }
+                    onChange={(e) => {
+                      setRetencionMontoManual(true);
+                      setRetencionMontoStr(e.target.value);
+                    }}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Entra a caja: {retencionPreview.neto.toLocaleString("es-AR")} {monedaLabel}
+                </p>
+              </div>
+            ) : esAgente && senaNum > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                En efectivo, tarjeta y Mercado Pago no se descuenta retención.
+              </p>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="ap-nota">Nota (opcional)</Label>
               <Textarea id="ap-nota" rows={2} value={nota} onChange={(e) => setNota(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ap-comp">Comprobante (opcional)</Label>
+              <Input
+                id="ap-comp"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f) {
+                    const err = validateFinanzasComprobanteFile(f);
+                    if (err) {
+                      toast.error(err);
+                      e.target.value = "";
+                      setComprobante(null);
+                      return;
+                    }
+                  }
+                  setComprobante(f);
+                }}
+              />
             </div>
           </div>
         : null}

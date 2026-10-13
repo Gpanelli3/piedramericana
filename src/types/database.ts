@@ -67,6 +67,14 @@ export type ImportacionDocumentoTipo =
   | "bill_of_lading"
   | "packing_list"
   | "otro";
+export type ExportacionEstado = "pedido" | "facturada" | "embarcada" | "cobrada";
+export type ExportacionGastoConcepto =
+  | "valor_mercaderia"
+  | "flete_internacional"
+  | "seguro"
+  | "gasto_despachante"
+  | "otro";
+export type ExportacionDocumentoTipo = "factura" | "packing_list" | "bill_of_lading" | "otro";
 export type LiquidacionEstado = "borrador" | "cerrada";
 export type LiquidacionConceptoTipo =
   | "sueldo_base"
@@ -1482,6 +1490,8 @@ export interface Database {
           metodo: string;
           nota: string | null;
           cuenta_id: string | null;
+          retencion_porcentaje: number | null;
+          retencion_monto: number;
           created_by: string | null;
           created_at: string;
         };
@@ -1494,6 +1504,8 @@ export interface Database {
           metodo: string;
           nota?: string | null;
           cuenta_id?: string | null;
+          retencion_porcentaje?: number | null;
+          retencion_monto?: number;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1506,6 +1518,8 @@ export interface Database {
           metodo?: string;
           nota?: string | null;
           cuenta_id?: string | null;
+          retencion_porcentaje?: number | null;
+          retencion_monto?: number;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1888,6 +1902,11 @@ export interface Database {
           cuenta_contraparte_id: string | null;
           transferencia_grupo_id: string | null;
           supplier_id: string | null;
+          comprobante_path: string | null;
+          acreditacion: "no_aplica" | "pendiente" | "acreditado";
+          monto_acreditado: number | null;
+          fecha_acreditacion: string | null;
+          movimiento_origen_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -1906,6 +1925,11 @@ export interface Database {
           cuenta_contraparte_id?: string | null;
           transferencia_grupo_id?: string | null;
           supplier_id?: string | null;
+          comprobante_path?: string | null;
+          acreditacion?: "no_aplica" | "pendiente" | "acreditado";
+          monto_acreditado?: number | null;
+          fecha_acreditacion?: string | null;
+          movimiento_origen_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1924,6 +1948,11 @@ export interface Database {
           cuenta_contraparte_id?: string | null;
           transferencia_grupo_id?: string | null;
           supplier_id?: string | null;
+          comprobante_path?: string | null;
+          acreditacion?: "no_aplica" | "pendiente" | "acreditado";
+          monto_acreditado?: number | null;
+          fecha_acreditacion?: string | null;
+          movimiento_origen_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -1940,6 +1969,13 @@ export interface Database {
             columns: ["supplier_id"];
             isOneToOne: false;
             referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "movimientos_caja_movimiento_origen_id_fkey";
+            columns: ["movimiento_origen_id"];
+            isOneToOne: true;
+            referencedRelation: "movimientos_caja";
             referencedColumns: ["id"];
           },
         ];
@@ -2160,6 +2196,195 @@ export interface Database {
           },
         ];
       };
+      exportaciones: {
+        Row: {
+          id: string;
+          client_id: string;
+          descripcion: string;
+          pais_destino: string | null;
+          nro_pedido: string | null;
+          fecha_pedido: string | null;
+          nro_factura: string | null;
+          fecha_factura: string | null;
+          monto_factura: number | null;
+          moneda: "ars" | "usd";
+          medio_transporte: ImportacionMedioTransporte | null;
+          nro_bl: string | null;
+          fecha_embarque: string | null;
+          estado: ExportacionEstado;
+          banco_nombre: string | null;
+          banco_cuenta: string | null;
+          cuenta_id: string | null;
+          fecha_cobro: string | null;
+          movimiento_id: string | null;
+          notas: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          descripcion: string;
+          pais_destino?: string | null;
+          nro_pedido?: string | null;
+          fecha_pedido?: string | null;
+          nro_factura?: string | null;
+          fecha_factura?: string | null;
+          monto_factura?: number | null;
+          moneda?: "ars" | "usd";
+          medio_transporte?: ImportacionMedioTransporte | null;
+          nro_bl?: string | null;
+          fecha_embarque?: string | null;
+          estado?: ExportacionEstado;
+          banco_nombre?: string | null;
+          banco_cuenta?: string | null;
+          cuenta_id?: string | null;
+          fecha_cobro?: string | null;
+          movimiento_id?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          descripcion?: string;
+          pais_destino?: string | null;
+          nro_pedido?: string | null;
+          fecha_pedido?: string | null;
+          nro_factura?: string | null;
+          fecha_factura?: string | null;
+          monto_factura?: number | null;
+          moneda?: "ars" | "usd";
+          medio_transporte?: ImportacionMedioTransporte | null;
+          nro_bl?: string | null;
+          fecha_embarque?: string | null;
+          estado?: ExportacionEstado;
+          banco_nombre?: string | null;
+          banco_cuenta?: string | null;
+          cuenta_id?: string | null;
+          fecha_cobro?: string | null;
+          movimiento_id?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "exportaciones_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exportaciones_cuenta_id_fkey";
+            columns: ["cuenta_id"];
+            isOneToOne: false;
+            referencedRelation: "cuentas_financieras";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exportaciones_movimiento_id_fkey";
+            columns: ["movimiento_id"];
+            isOneToOne: true;
+            referencedRelation: "movimientos_caja";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "exportaciones_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      exportacion_gastos: {
+        Row: {
+          id: string;
+          exportacion_id: string;
+          concepto: ExportacionGastoConcepto;
+          monto: number;
+          moneda: "ars" | "usd";
+          notas: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          exportacion_id: string;
+          concepto: ExportacionGastoConcepto;
+          monto: number;
+          moneda?: "ars" | "usd";
+          notas?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          exportacion_id?: string;
+          concepto?: ExportacionGastoConcepto;
+          monto?: number;
+          moneda?: "ars" | "usd";
+          notas?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "exportacion_gastos_exportacion_id_fkey";
+            columns: ["exportacion_id"];
+            isOneToOne: false;
+            referencedRelation: "exportaciones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      exportacion_documentos: {
+        Row: {
+          id: string;
+          exportacion_id: string;
+          tipo: ExportacionDocumentoTipo;
+          nombre_archivo: string;
+          url: string;
+          notas: string | null;
+          etapa: ExportacionEstado | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          exportacion_id: string;
+          tipo: ExportacionDocumentoTipo;
+          nombre_archivo: string;
+          url: string;
+          notas?: string | null;
+          etapa?: ExportacionEstado | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          exportacion_id?: string;
+          tipo?: ExportacionDocumentoTipo;
+          nombre_archivo?: string;
+          url?: string;
+          notas?: string | null;
+          etapa?: ExportacionEstado | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "exportacion_documentos_exportacion_id_fkey";
+            columns: ["exportacion_id"];
+            isOneToOne: false;
+            referencedRelation: "exportaciones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       v_saldos_cuentas: {
@@ -2260,6 +2485,7 @@ export interface Database {
       unidad_articulo: UnidadArticuloDb;
       rol_operativo: RolOperativo;
       importacion_estado: ImportacionEstado;
+      exportacion_estado: ExportacionEstado;
       liquidacion_estado: LiquidacionEstado;
     };
   };

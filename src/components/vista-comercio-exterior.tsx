@@ -1,20 +1,36 @@
 "use client";
 
+import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ImportacionesCatalogo } from "@/components/comercio-exterior/ImportacionesCatalogo";
+import { ExportacionesCatalogo } from "@/components/comercio-exterior/ExportacionesCatalogo";
 
 export function VistaComercioExterior() {
+  const [tab, setTab] = useState("importaciones");
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="border-b border-border bg-white">
         <div className="px-8 pt-5 pb-5">
           <h1 className="text-xl font-bold tracking-tight text-foreground">Comercio exterior</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Seguimiento de importaciones, costos de nacionalización y mercadería en tránsito.
+            Importaciones de mercadería y exportaciones con cliente, banco, factura y cobro.
           </p>
         </div>
       </header>
       <main className="p-8 [scrollbar-gutter:stable]">
-        <ImportacionesCatalogo />
+        <Tabs value={tab} onValueChange={setTab} className="gap-5">
+          <TabsList>
+            <TabsTrigger value="importaciones">Importaciones</TabsTrigger>
+            <TabsTrigger value="exportaciones">Exportaciones</TabsTrigger>
+          </TabsList>
+          <TabsContent value="importaciones">
+            <ImportacionesCatalogo />
+          </TabsContent>
+          <TabsContent value="exportaciones">
+            <ExportacionesCatalogo />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

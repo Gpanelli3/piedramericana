@@ -371,6 +371,9 @@ export function VistaVentas() {
       fecha: string;
       metodo: string;
       nota: string;
+      retencionPorcentaje?: number;
+      retencionMonto?: number;
+      comprobante?: File | null;
     }) => {
       if (!aprobDialogRow) return;
       setAprobBusy(true);
@@ -382,6 +385,9 @@ export function VistaVentas() {
         metodo: payload.metodo,
         nota: payload.nota || undefined,
         created_by: null,
+        retencionPorcentaje: payload.retencionPorcentaje,
+        retencionMonto: payload.retencionMonto,
+        comprobante: payload.comprobante,
       });
       setAprobBusy(false);
       if (res.error) {

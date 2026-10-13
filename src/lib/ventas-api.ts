@@ -1,9 +1,12 @@
 import { supabase } from "@/lib/supabase";
 import {
+  adjuntarComprobanteMovimiento,
   listCuentasActivas,
+  normalizarMetodoLibro,
   registrarMovimientoPorCobro,
   sugerirCuentaPorMetodo,
 } from "@/lib/finanzas-api";
+import { calcularRetencion } from "@/lib/retencion-reglas";
 import { reservarChapasAOt } from "@/lib/stock-ot-api";
 import { getOrCreateMedicion } from "@/lib/medicion-api";
 import type {
@@ -74,6 +77,9 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
   metodo: string;
   nota?: string;
   created_by?: string | null;
+  retencionPorcentaje?: number | null;
+  retencionMonto?: number | null;
+  comprobante?: File | null;
 }): Promise<ResultadoSenia> {
   const presRes = await supabase.from("presupuestos").select("*").eq("id", opts.presupuestoId).maybeSingle();
   if (presRes.error) return { error: new Error(presRes.error.message) };
@@ -113,6 +119,9 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
     metodo: opts.metodo,
     nota: opts.nota,
     created_by: opts.created_by ?? null,
+    retencionPorcentaje: opts.retencionPorcentaje,
+    retencionMonto: opts.retencionMonto,
+    comprobante: opts.comprobante,
   });
 }
 
@@ -639,6 +648,9 @@ export async function registrarPagoSena(opts: {
   nota?: string;
   cuenta_id?: string | null;
   created_by?: string | null;
+  retencionPorcentaje?: number | null;
+  retencionMonto?: number | null;
+  comprobante?: File | null;
 }): Promise<ResultadoSenia> {
   const { data: pres, error: pErr } = await supabase
     .from("presupuestos")
@@ -659,6 +671,30 @@ export async function registrarPagoSena(opts: {
     return { error: new Error("Indicá cómo se paga: efectivo, transferencia, cheque o tarjeta.") };
   }
 
+  let esAgente = false;
+  let porcentajeCliente: number | null = null;
+  if (presCast.client_id) {
+    const cli = await supabase
+      .from("clients")
+      .select("es_agente_retencion, retencion_porcentaje")
+      .eq("id", presCast.client_id)
+      .maybeSingle();
+    if (cli.error) return { error: new Error(cli.error.message) };
+    esAgente = Boolean(cli.data?.es_agente_retencion);
+    const pct = Number(cli.data?.retencion_porcentaje);
+    porcentajeCliente = Number.isFinite(pct) ? pct : null;
+  }
+
+  const ret = calcularRetencion({
+    bruto: opts.monto,
+    esAgente,
+    metodo: opts.metodo,
+    porcentajeCliente,
+    porcentajeOverride: opts.retencionPorcentaje,
+    retencionMontoOverride: opts.retencionMonto,
+  });
+  if (ret.error) return { error: new Error(ret.error) };
+
   let cuentaId = opts.cuenta_id ?? null;
   if (!cuentaId) {
     const cuentas = await listCuentasActivas();
@@ -674,22 +710,30 @@ export async function registrarPagoSena(opts: {
     metodo: opts.metodo,
     nota: opts.nota ?? null,
     cuenta_id: cuentaId,
+    retencion_porcentaje: ret.aplica ? ret.porcentaje : null,
+    retencion_monto: ret.aplica ? ret.retencionMonto : 0,
     created_by: opts.created_by ?? null,
   }).select("id").single();
   if (pIns.error) return { error: new Error(pIns.error.message) };
 
-  if (cuentaId && pIns.data?.id) {
+  if (cuentaId && pIns.data?.id && ret.neto > 0) {
+    const metodoLibro = normalizarMetodoLibro(opts.metodo);
     const mov = await registrarMovimientoPorCobro({
       cuentaId,
       pagoId: pIns.data.id,
-      monto: opts.monto,
+      monto: ret.neto,
       moneda: opts.moneda,
       fecha: opts.fecha,
       metodo: opts.metodo,
       descripcion: `Cobro ${presCast.numero} · ${opts.metodo}`,
       created_by: opts.created_by ?? null,
+      acreditacion: metodoLibro === "tarjeta" ? "pendiente" : "no_aplica",
     });
     if (mov.error) return { error: mov.error };
+    if (opts.comprobante && mov.id) {
+      const up = await adjuntarComprobanteMovimiento(mov.id, opts.comprobante);
+      if (up.error) return { error: up.error };
+    }
   }
 
   /** Con seña nace la venta comercial; producción espera medición + envío explícito. */

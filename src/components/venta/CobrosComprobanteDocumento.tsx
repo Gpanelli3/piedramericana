@@ -8,6 +8,8 @@ export type CobrosComprobantePago = {
   moneda: "ars" | "usd";
   metodo: string;
   nota?: string | null;
+  retencionMonto?: number;
+  retencionPorcentaje?: number | null;
 };
 
 export type CobrosComprobanteDocumentoProps = {
@@ -85,6 +87,12 @@ export function CobrosComprobanteDocumento({
     });
 
   const pagosOrdenados = [...pagos].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const hayRetencion = pagosOrdenados.some((p) => (p.retencionMonto ?? 0) > 0.009);
+  const totalRetencion = pagosOrdenados.reduce((acc, p) => {
+    if (p.moneda !== moneda) return acc;
+    return acc + (p.retencionMonto ?? 0);
+  }, 0);
+  const totalNeto = cobrado - totalRetencion;
 
   return (
     <div
@@ -178,38 +186,95 @@ export function CobrosComprobanteDocumento({
                 <th className="border-b border-neutral-800 px-3 py-2 font-semibold">Fecha</th>
                 <th className="border-b border-neutral-800 px-3 py-2 font-semibold">Método</th>
                 <th className="border-b border-neutral-800 px-3 py-2 font-semibold">Nota</th>
-                <th className="border-b border-neutral-800 px-3 py-2 text-right font-semibold">
-                  Monto
-                </th>
+                {hayRetencion ? (
+                  <>
+                    <th className="border-b border-neutral-800 px-3 py-2 text-right font-semibold">
+                      Bruto
+                    </th>
+                    <th className="border-b border-neutral-800 px-3 py-2 text-right font-semibold">
+                      Retención
+                    </th>
+                    <th className="border-b border-neutral-800 px-3 py-2 text-right font-semibold">
+                      Neto
+                    </th>
+                  </>
+                ) : (
+                  <th className="border-b border-neutral-800 px-3 py-2 text-right font-semibold">
+                    Monto
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {pagosOrdenados.map((p) => (
-                <tr key={p.id} className="align-top">
-                  <td className="border-b border-neutral-200 px-3 py-2 tabular-nums">
-                    {formatoFecha(p.fecha)}
-                  </td>
-                  <td className="border-b border-neutral-200 px-3 py-2">
-                    {etiquetaMetodo(p.metodo)}
-                  </td>
-                  <td className="border-b border-neutral-200 px-3 py-2 text-neutral-600">
-                    {p.nota?.trim() || "—"}
-                  </td>
-                  <td className="border-b border-neutral-200 px-3 py-2 text-right font-medium tabular-nums">
-                    {formatMonto(p.monto, p.moneda)}
-                  </td>
-                </tr>
-              ))}
+              {pagosOrdenados.map((p) => {
+                const ret = p.retencionMonto ?? 0;
+                const neto = p.monto - ret;
+                const retLabel =
+                  ret > 0.009 && p.retencionPorcentaje != null
+                    ? `${formatMonto(ret, p.moneda)} (${p.retencionPorcentaje}%)`
+                    : ret > 0.009
+                      ? formatMonto(ret, p.moneda)
+                      : "—";
+                return (
+                  <tr key={p.id} className="align-top">
+                    <td className="border-b border-neutral-200 px-3 py-2 tabular-nums">
+                      {formatoFecha(p.fecha)}
+                    </td>
+                    <td className="border-b border-neutral-200 px-3 py-2">
+                      {etiquetaMetodo(p.metodo)}
+                    </td>
+                    <td className="border-b border-neutral-200 px-3 py-2 text-neutral-600">
+                      {p.nota?.trim() || "—"}
+                    </td>
+                    {hayRetencion ? (
+                      <>
+                        <td className="border-b border-neutral-200 px-3 py-2 text-right font-medium tabular-nums">
+                          {formatMonto(p.monto, p.moneda)}
+                        </td>
+                        <td className="border-b border-neutral-200 px-3 py-2 text-right tabular-nums">
+                          {retLabel}
+                        </td>
+                        <td className="border-b border-neutral-200 px-3 py-2 text-right font-medium tabular-nums">
+                          {formatMonto(neto, p.moneda)}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="border-b border-neutral-200 px-3 py-2 text-right font-medium tabular-nums">
+                        {formatMonto(p.monto, p.moneda)}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
-              <tr className="bg-neutral-50">
-                <td colSpan={3} className="px-3 py-2 text-right font-semibold">
-                  Total cobrado ({moneda.toUpperCase()})
-                </td>
-                <td className="px-3 py-2 text-right font-bold tabular-nums">
-                  {formatMonto(cobrado, moneda)}
-                </td>
-              </tr>
+              {hayRetencion ? (
+                <>
+                  <tr className="bg-neutral-50">
+                    <td colSpan={3} className="px-3 py-2 text-right font-semibold">
+                      Total bruto ({moneda.toUpperCase()})
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums">
+                      {formatMonto(cobrado, moneda)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatMonto(totalRetencion, moneda)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums">
+                      {formatMonto(totalNeto, moneda)}
+                    </td>
+                  </tr>
+                </>
+              ) : (
+                <tr className="bg-neutral-50">
+                  <td colSpan={3} className="px-3 py-2 text-right font-semibold">
+                    Total cobrado ({moneda.toUpperCase()})
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold tabular-nums">
+                    {formatMonto(cobrado, moneda)}
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         )}

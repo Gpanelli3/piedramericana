@@ -32,6 +32,8 @@ import {
   type ChapaReservaPendiente,
 } from "@/lib/ventas-api";
 import { METODOS_COBRO_UI, etiquetaMetodo } from "@/lib/finanzas-api";
+import { calcularRetencion, metodoAplicaRetencion } from "@/lib/retencion-reglas";
+import { validateFinanzasComprobanteFile } from "@/lib/finanzas-documentos-storage";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   listChapasUsadasPorOt,
@@ -73,6 +75,19 @@ function formatoFechaCortaDb(s: string): string {
 function montoPagoNum(p: VentasPagoRow): number {
   const val = typeof p.monto === "string" ? parseFloat(p.monto) : Number(p.monto ?? 0);
   return Number.isFinite(val) ? val : 0;
+}
+
+function retencionPagoNum(p: VentasPagoRow): number {
+  const val =
+    typeof p.retencion_monto === "string" ? parseFloat(p.retencion_monto) : Number(p.retencion_monto ?? 0);
+  return Number.isFinite(val) ? val : 0;
+}
+
+function parseMontoCampo(raw: string): number | null {
+  const t = String(raw).replace(",", ".").trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 }
 
 type BadgeCobro = { label: string; className: string };
@@ -132,6 +147,12 @@ export function VentaCobrosDialog({
   const [pagoMetodo, setPagoMetodo] = useState("transferencia");
   const [pagoFecha, setPagoFecha] = useState("");
   const [pagoNota, setPagoNota] = useState("");
+  const [esAgente, setEsAgente] = useState(false);
+  const [pctCliente, setPctCliente] = useState<number | null>(null);
+  const [retencionPctStr, setRetencionPctStr] = useState("");
+  const [retencionMontoStr, setRetencionMontoStr] = useState("");
+  const [retencionMontoManual, setRetencionMontoManual] = useState(false);
+  const [comprobante, setComprobante] = useState<File | null>(null);
   const [placasOt, setPlacasOt] = useState<ChapaInventarioRow[]>([]);
   const [otEtapa, setOtEtapa] = useState<string | null>(null);
   const [otEstado, setOtEstado] = useState<JobStatus | null>(null);
@@ -151,7 +172,7 @@ export function VentaCobrosDialog({
     if (isSupabaseConfigured) {
       const presRes = await supabase
         .from("presupuestos")
-        .select("numero, cliente, total, moneda")
+        .select("numero, cliente, total, moneda, client_id")
         .eq("id", pid)
         .maybeSingle();
       if (!presRes.error && presRes.data) {
@@ -163,8 +184,29 @@ export function VentaCobrosDialog({
           moneda: monedaPres,
         });
         setPagoMoneda(monedaPres);
+        let agente = false;
+        let pct: number | null = null;
+        if (presRes.data.client_id) {
+          const cli = await supabase
+            .from("clients")
+            .select("es_agente_retencion, retencion_porcentaje")
+            .eq("id", presRes.data.client_id)
+            .maybeSingle();
+          if (!cli.error && cli.data) {
+            agente = Boolean(cli.data.es_agente_retencion);
+            const n = Number(cli.data.retencion_porcentaje);
+            pct = agente && Number.isFinite(n) ? n : null;
+          }
+        }
+        setEsAgente(agente);
+        setPctCliente(pct);
+        setRetencionPctStr(pct != null ? String(pct) : "");
+        setRetencionMontoStr("");
+        setRetencionMontoManual(false);
       } else {
         setPresCabecera(null);
+        setEsAgente(false);
+        setPctCliente(null);
       }
     }
 
@@ -221,6 +263,8 @@ export function VentaCobrosDialog({
     setPagoMetodo("transferencia");
     setMontoDigitado("");
     setPagoNota("");
+    setComprobante(null);
+    setRetencionMontoManual(false);
     if (rowResumen?.moneda) setPagoMoneda(rowResumen.moneda);
     setOtEtapa(rowResumen?.ot_etapa ?? null);
     setOtEstado(rowResumen?.ot_estado ?? null);
@@ -243,6 +287,29 @@ export function VentaCobrosDialog({
   const pagado = saldo <= 0.009;
   const cobroBadge = badgeCobro(cobrado, saldo);
 
+  const brutoDigitado = parseMontoCampo(montoDigitado) ?? 0;
+  const retencionPreview = useMemo(
+    () =>
+      calcularRetencion({
+        bruto: brutoDigitado,
+        esAgente,
+        metodo: pagoMetodo,
+        porcentajeCliente: pctCliente,
+        porcentajeOverride: parseMontoCampo(retencionPctStr),
+        retencionMontoOverride: retencionMontoManual ? parseMontoCampo(retencionMontoStr) : undefined,
+      }),
+    [
+      brutoDigitado,
+      esAgente,
+      pagoMetodo,
+      pctCliente,
+      retencionPctStr,
+      retencionMontoStr,
+      retencionMontoManual,
+    ],
+  );
+  const muestraRetencion = esAgente && metodoAplicaRetencion(pagoMetodo);
+
   const etapaLabel = etiquetaEtapaOt(
     otEtapa,
     ventaCabecera?.estado === "entregado" ? "done" : otEstado,
@@ -260,6 +327,17 @@ export function VentaCobrosDialog({
         toast.error("Indicá cómo se paga: efectivo, transferencia, cheque o tarjeta.");
         return;
       }
+      if (retencionPreview.error) {
+        toast.error(retencionPreview.error);
+        return;
+      }
+      if (comprobante) {
+        const fileErr = validateFinanzasComprobanteFile(comprobante);
+        if (fileErr) {
+          toast.error(fileErr);
+          return;
+        }
+      }
 
       setPagoBusy(true);
       const res = await registrarPagoSena({
@@ -270,6 +348,9 @@ export function VentaCobrosDialog({
         metodo: pagoMetodo,
         nota: pagoNota.trim() ? pagoNota.trim() : undefined,
         created_by: null,
+        retencionPorcentaje: retencionPreview.aplica ? retencionPreview.porcentaje : undefined,
+        retencionMonto: retencionPreview.aplica ? retencionPreview.retencionMonto : undefined,
+        comprobante,
       });
       if (res.error) {
         toast.error(res.error.message);
@@ -285,6 +366,8 @@ export function VentaCobrosDialog({
       }
       setMontoDigitado("");
       setPagoNota("");
+      setComprobante(null);
+      setRetencionMontoManual(false);
       await cargar(presupuestoId);
       await onDatosCambiaron();
     } catch (error) {
@@ -301,6 +384,8 @@ export function VentaCobrosDialog({
     pagoFecha,
     pagoMetodo,
     pagoNota,
+    retencionPreview,
+    comprobante,
     cargar,
     onDatosCambiaron,
   ]);
@@ -458,7 +543,11 @@ export function VentaCobrosDialog({
                       <Label>Cómo se paga</Label>
                       <Select
                         value={pagoMetodo}
-                        onValueChange={setPagoMetodo}
+                        onValueChange={(v) => {
+                          setPagoMetodo(v);
+                          setRetencionMontoManual(false);
+                          setRetencionPctStr(pctCliente != null ? String(pctCliente) : "");
+                        }}
                         disabled={pagado}
                       >
                         <SelectTrigger>
@@ -483,6 +572,55 @@ export function VentaCobrosDialog({
                       />
                     </div>
                   </div>
+                  {muestraRetencion ? (
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vc-ret-pct">Retención %</Label>
+                        <Input
+                          id="vc-ret-pct"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step="any"
+                          value={retencionPctStr}
+                          onChange={(e) => {
+                            setRetencionPctStr(e.target.value);
+                            setRetencionMontoManual(false);
+                          }}
+                          disabled={pagado}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vc-ret-monto">Retención</Label>
+                        <Input
+                          id="vc-ret-monto"
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={
+                            retencionMontoManual
+                              ? retencionMontoStr
+                              : String(retencionPreview.retencionMonto || "")
+                          }
+                          onChange={(e) => {
+                            setRetencionMontoManual(true);
+                            setRetencionMontoStr(e.target.value);
+                          }}
+                          disabled={pagado}
+                        />
+                      </div>
+                      <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                        <Label>Entra a caja</Label>
+                        <p className="flex h-9 items-center rounded-md border border-border bg-muted/40 px-3 text-sm tabular-nums">
+                          {formatMonto(retencionPreview.neto, pagoMoneda)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : esAgente ? (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      En efectivo, tarjeta y Mercado Pago no se descuenta retención.
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <Label htmlFor="vc-nota">Nota (opcional)</Label>
@@ -492,6 +630,28 @@ export function VentaCobrosDialog({
                         onChange={(e) => setPagoNota(e.target.value)}
                         placeholder="Referencia, n° de transferencia…"
                         disabled={pagado}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Label htmlFor="vc-comp">Comprobante (opcional)</Label>
+                      <Input
+                        id="vc-comp"
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                        disabled={pagado}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          if (f) {
+                            const err = validateFinanzasComprobanteFile(f);
+                            if (err) {
+                              toast.error(err);
+                              e.target.value = "";
+                              setComprobante(null);
+                              return;
+                            }
+                          }
+                          setComprobante(f);
+                        }}
                       />
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -522,14 +682,19 @@ export function VentaCobrosDialog({
                   <ul className="divide-y divide-border rounded-lg border border-border">
                     {pagosVentas.map((p) => {
                       const val = montoPagoNum(p);
+                      const ret = retencionPagoNum(p);
+                      const monedaPago = p.moneda === "usd" ? "usd" : "ars";
                       return (
                         <li key={p.id} className="flex items-center gap-3 px-3.5 py-2.5">
                           <p className="w-28 shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                            {formatMonto(val, p.moneda === "usd" ? "usd" : "ars")}
+                            {formatMonto(val, monedaPago)}
                           </p>
                           <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                             {formatoFechaCortaDb(p.fecha)}
                             {p.nota ? ` · ${p.nota}` : ""}
+                            {ret > 0
+                              ? ` · retención ${formatMonto(ret, monedaPago)} · neto ${formatMonto(val - ret, monedaPago)}`
+                              : ""}
                           </p>
                           <p className="shrink-0 text-xs font-medium text-muted-foreground">
                             {etiquetaMetodo(p.metodo)}

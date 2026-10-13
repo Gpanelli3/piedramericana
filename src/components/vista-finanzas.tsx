@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Plus } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, FileText, Paperclip, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -39,13 +40,18 @@ import {
   METODOS_PAGO,
   etiquetaConcepto,
   etiquetaMetodo,
+  acreditarMovimientoTarjeta,
+  adjuntarComprobanteMovimiento,
+  abrirComprobanteMovimiento,
   listCuentasActivas,
   listMovimientos,
   listSaldosCuentas,
+  listTarjetaPendiente,
   registrarMovimientoManual,
   resumenCajaDelDia,
   sugerirCuentaPorMetodo,
   transferirEntreCuentas,
+  validarMontoAcreditado,
   type ConceptoMovimiento,
   type CuentaFinancieraRow,
   type MetodoPago,
@@ -53,6 +59,7 @@ import {
   type SaldoCuentaRow,
 } from "@/lib/finanzas-api";
 import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
+import { validateFinanzasComprobanteFile } from "@/lib/finanzas-documentos-storage";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
 import { getOtsDesdePagoId, type OtProduccionItem } from "@/lib/produccion-api";
 import { cn } from "@/lib/utils";
@@ -95,6 +102,12 @@ function etiquetaCajon(c: { tipo: CuentaFinancieraRow["tipo"]; moneda: "ars" | "
   return `${etiquetaFormaPago(c.tipo)} ${c.moneda.toUpperCase()}`;
 }
 
+function etiquetaAcreditacion(a: MovimientoCajaRow["acreditacion"]): string | null {
+  if (a === "pendiente") return "Tarjeta pendiente";
+  if (a === "acreditado") return "Tarjeta acreditada";
+  return null;
+}
+
 function emptyMovForm(hoy: string, tipo: "ingreso" | "egreso" = "egreso") {
   return {
     tipo,
@@ -123,8 +136,14 @@ export function VistaFinanzas() {
   const [saldos, setSaldos] = useState<SaldoCuentaRow[]>([]);
   const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoCajaRow[]>([]);
+  const [tarjetaPendiente, setTarjetaPendiente] = useState<MovimientoCajaRow[]>([]);
+  const [tarjetaDraft, setTarjetaDraft] = useState<Record<string, { checked: boolean; monto: string }>>({});
+  const [fechaAcreditacion, setFechaAcreditacion] = useState(() => new Date().toISOString().slice(0, 10));
   const [cargando, setCargando] = useState(true);
   const [filtroCuenta, setFiltroCuenta] = useState<string>("todas");
+  const [comprobanteFile, setComprobanteFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [adjuntoTargetId, setAdjuntoTargetId] = useState<string | null>(null);
 
   const [dialogMov, setDialogMov] = useState(false);
   const [dialogTransf, setDialogTransf] = useState(false);
@@ -180,21 +199,34 @@ export function VistaFinanzas() {
       return;
     }
     setCargando(true);
-    const [s, c, m, r] = await Promise.all([
+    const [s, c, m, r, t] = await Promise.all([
       listSaldosCuentas(),
       listCuentasActivas(),
       listMovimientos({ limit: 100 }),
       resumenCajaDelDia(hoy),
+      listTarjetaPendiente(),
     ]);
     void fetchSuppliers().then(setSuppliersFinanzas).catch(() => {});
     if (s.error) toast.error(s.error.message);
     if (c.error) toast.error(c.error.message);
     if (m.error) toast.error(m.error.message);
     if (r.error) toast.error(r.error.message);
+    if (t.error) toast.error(t.error.message);
     setSaldos(s.data);
     setCuentas(c.data);
     setMovimientos(m.data);
     setResumenDia(r.data);
+    setTarjetaPendiente(t.data);
+    setTarjetaDraft((prev) => {
+      const next: Record<string, { checked: boolean; monto: string }> = {};
+      for (const row of t.data) {
+        next[row.id] = prev[row.id] ?? {
+          checked: false,
+          monto: String(row.monto),
+        };
+      }
+      return next;
+    });
     setCargando(false);
   }, [hoy]);
 
@@ -251,6 +283,7 @@ export function VistaFinanzas() {
       fecha: movForm.fecha,
       descripcion: movForm.descripcion,
       supplier_id: movForm.supplier_id || null,
+      comprobante: comprobanteFile,
     });
     setBusy(false);
     if (res.error) {
@@ -260,6 +293,70 @@ export function VistaFinanzas() {
     toast.success(movForm.tipo === "ingreso" ? "Ingreso anotado." : "Egreso anotado.");
     setDialogMov(false);
     setMovForm(emptyMovForm(hoy, movForm.tipo));
+    setComprobanteFile(null);
+    await recargar();
+  }
+
+  async function onAcreditarSeleccion() {
+    const seleccion = tarjetaPendiente.filter((m) => tarjetaDraft[m.id]?.checked);
+    if (seleccion.length === 0) {
+      toast.error("Tildá al menos un cobro pendiente.");
+      return;
+    }
+    if (!fechaAcreditacion.trim()) {
+      toast.error("Indicá la fecha de acreditación.");
+      return;
+    }
+    setBusy(true);
+    try {
+      for (const m of seleccion) {
+        const n = Number(String(tarjetaDraft[m.id]?.monto ?? "").replace(",", "."));
+        const check = validarMontoAcreditado(Number(m.monto), n);
+        if (!check.ok) {
+          toast.error(check.error);
+          return;
+        }
+        const res = await acreditarMovimientoTarjeta({
+          movimientoId: m.id,
+          montoAcreditado: n,
+          fecha: fechaAcreditacion,
+        });
+        if (res.error) {
+          toast.error(res.error.message);
+          return;
+        }
+      }
+      toast.success(
+        seleccion.length === 1
+          ? "Acreditación registrada."
+          : `${seleccion.length} acreditaciones registradas.`,
+      );
+      setTarjetaDraft({});
+      await recargar();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onElegirComprobante(file: File | null, movimientoId?: string) {
+    if (!file) return;
+    const err = validateFinanzasComprobanteFile(file);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (!movimientoId) {
+      setComprobanteFile(file);
+      return;
+    }
+    setBusy(true);
+    const res = await adjuntarComprobanteMovimiento(movimientoId, file);
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("Comprobante adjunto.");
     await recargar();
   }
 
@@ -314,6 +411,7 @@ export function VistaFinanzas() {
               size="sm"
               onClick={() => {
                 setMovForm(emptyMovForm(hoy, "egreso"));
+                setComprobanteFile(null);
                 setDialogMov(true);
               }}
             >
@@ -375,6 +473,10 @@ export function VistaFinanzas() {
         <Tabs defaultValue="cuentas">
           <TabsList>
             <TabsTrigger value="cuentas">Por forma de pago</TabsTrigger>
+            <TabsTrigger value="tarjeta">
+              Tarjeta por acreditar
+              {tarjetaPendiente.length > 0 ? ` (${tarjetaPendiente.length})` : ""}
+            </TabsTrigger>
             <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
           </TabsList>
 
@@ -423,6 +525,100 @@ export function VistaFinanzas() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="tarjeta" className="mt-4">
+            <Card>
+              <CardHeader className="space-y-3 border-b">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base">Tarjeta por acreditar</CardTitle>
+                    <p className="text-sm font-normal text-muted-foreground">
+                      Se cobró hoy, la plata entra cuando la ves en el banco. Cargá cuánto ingresó de verdad (puede ser menos).
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fecha de acreditación</Label>
+                      <FechaInput value={fechaAcreditacion} onChange={setFechaAcreditacion} />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy || tarjetaPendiente.length === 0}
+                      onClick={() => void onAcreditarSeleccion()}
+                    >
+                      Registrar acreditación
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10"></TableHead>
+                      <TableHead>Fecha cobro</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead className="text-right">Cobrado</TableHead>
+                      <TableHead className="w-40 text-right">Ingresó</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tarjetaPendiente.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                          {cargando ? "Cargando…" : "No hay cobros de tarjeta pendientes."}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      tarjetaPendiente.map((m) => {
+                        const draft = tarjetaDraft[m.id] ?? {
+                          checked: false,
+                          monto: String(m.monto),
+                        };
+                        return (
+                          <TableRow key={m.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={draft.checked}
+                                onCheckedChange={(v) =>
+                                  setTarjetaDraft((prev) => ({
+                                    ...prev,
+                                    [m.id]: { ...draft, checked: v === true },
+                                  }))
+                                }
+                                aria-label={`Seleccionar cobro ${m.fecha}`}
+                              />
+                            </TableCell>
+                            <TableCell className="tabular-nums text-sm">{m.fecha}</TableCell>
+                            <TableCell className="max-w-[280px] truncate text-sm text-muted-foreground">
+                              {m.descripcion ?? "Cobro con tarjeta"}
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {formatMonto(Number(m.monto), m.moneda)}
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                className="h-8 text-right"
+                                inputMode="decimal"
+                                value={draft.monto}
+                                onChange={(e) =>
+                                  setTarjetaDraft((prev) => ({
+                                    ...prev,
+                                    [m.id]: { ...draft, monto: e.target.value },
+                                  }))
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="movimientos" className="mt-4">
             <Card>
               <CardHeader className="flex flex-col gap-3 border-b sm:flex-row sm:items-center sm:justify-between">
@@ -450,13 +646,14 @@ export function VistaFinanzas() {
                       <TableHead>Concepto</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Descripción</TableHead>
+                      <TableHead>Comprobante</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {movFiltrados.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                           {cargando ? "Cargando…" : "Sin movimientos."}
                         </TableCell>
                       </TableRow>
@@ -476,6 +673,47 @@ export function VistaFinanzas() {
                             <TableCell className="text-sm">{etiquetaTipo(m.tipo)}</TableCell>
                             <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                               {m.descripcion ?? "—"}
+                              {etiquetaAcreditacion(m.acreditacion) ? (
+                                <span className="mt-0.5 block text-[11px]">
+                                  {etiquetaAcreditacion(m.acreditacion)}
+                                  {m.acreditacion === "acreditado" && m.monto_acreditado != null
+                                    ? ` · ${formatMonto(Number(m.monto_acreditado), m.moneda)}`
+                                    : ""}
+                                </span>
+                              ) : null}
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                {m.comprobante_path ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 px-2"
+                                    onClick={() =>
+                                      void abrirComprobanteMovimiento(m.comprobante_path as string).then((r) => {
+                                        if (r.error) toast.error(r.error.message);
+                                      })
+                                    }
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                    Ver
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 px-2"
+                                  onClick={() => {
+                                    setAdjuntoTargetId(m.id);
+                                    fileInputRef.current?.click();
+                                  }}
+                                >
+                                  <Paperclip className="h-4 w-4" />
+                                  {m.comprobante_path ? "Cambiar" : "Adjuntar"}
+                                </Button>
+                              </div>
                             </TableCell>
                             <TableCell
                               className={cn(
@@ -509,7 +747,27 @@ export function VistaFinanzas() {
         mostrarSaldo
       />
 
-      <Dialog open={dialogMov} onOpenChange={setDialogMov}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          const id = adjuntoTargetId;
+          e.target.value = "";
+          setAdjuntoTargetId(null);
+          void onElegirComprobante(f, id ?? undefined);
+        }}
+      />
+
+      <Dialog
+        open={dialogMov}
+        onOpenChange={(o) => {
+          setDialogMov(o);
+          if (!o) setComprobanteFile(null);
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Entró o salió plata</DialogTitle>
@@ -643,6 +901,22 @@ export function VistaFinanzas() {
                 value={movForm.descripcion}
                 onChange={(e) => setMovForm((f) => ({ ...f, descripcion: e.target.value }))}
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="fin-comp">Comprobante (opcional)</Label>
+              <Input
+                id="fin-comp"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  void onElegirComprobante(f);
+                  if (!f) setComprobanteFile(null);
+                }}
+              />
+              {comprobanteFile ? (
+                <p className="text-[11px] text-muted-foreground">{comprobanteFile.name}</p>
+              ) : null}
             </div>
             {movForm.tipo === "egreso" ? (
               <div className="space-y-1">

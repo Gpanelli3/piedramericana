@@ -135,14 +135,27 @@ export function CobrosComprobantePrintPage() {
 
   const pagosDoc: CobrosComprobantePago[] = useMemo(
     () =>
-      pagos.map((p) => ({
-        id: p.id,
-        fecha: p.fecha,
-        monto: montoPagoNum(p),
-        moneda: p.moneda === "usd" ? "usd" : "ars",
-        metodo: p.metodo,
-        nota: p.nota,
-      })),
+      pagos.map((p) => {
+        const retRaw =
+          typeof p.retencion_monto === "string"
+            ? parseFloat(p.retencion_monto)
+            : Number(p.retencion_monto ?? 0);
+        const ret = Number.isFinite(retRaw) ? retRaw : 0;
+        const pctRaw =
+          typeof p.retencion_porcentaje === "string"
+            ? parseFloat(p.retencion_porcentaje)
+            : Number(p.retencion_porcentaje ?? NaN);
+        return {
+          id: p.id,
+          fecha: p.fecha,
+          monto: montoPagoNum(p),
+          moneda: p.moneda === "usd" ? "usd" : "ars",
+          metodo: p.metodo,
+          nota: p.nota,
+          retencionMonto: ret,
+          retencionPorcentaje: Number.isFinite(pctRaw) ? pctRaw : null,
+        };
+      }),
     [pagos],
   );
 
