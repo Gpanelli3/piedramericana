@@ -109,20 +109,6 @@ export function VistaStock() {
     refreshHistorialRelated();
   }, [refreshHistorialRelated]);
 
-  const resumen = useMemo(() => {
-    const disponibles = chapas.filter((c) => c.estado === "Disponible");
-    const reservadas = chapas.filter((c) => c.estado === "Reservada");
-    const materiales = new Set(
-      [...disponibles, ...reservadas].map((c) => c.material.trim() || "Sin material"),
-    );
-    return {
-      planchas: disponibles.length,
-      reservadas: reservadas.length,
-      materiales: materiales.size,
-      productos: productosUnidades.length,
-    };
-  }, [chapas, productosUnidades]);
-
   const existingBultosLower = useMemo(
     () => new Set(chapas.map((c) => c.bulto.toLowerCase())),
     [chapas],
@@ -202,21 +188,15 @@ export function VistaStock() {
                 </span>
               ) : null}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {stockTab === "listas"
-                ? "Precios de mármoles, planchas y bachas por lista."
-                : stockTab === "bloqueados"
-                  ? "Pedazos rotos, fuera de venta, para recortar o reponer."
-                : stockTab === "bachas"
-                  ? "Bachas propias y del cliente."
-                : `${resumen.planchas} disponibles${
-                    resumen.reservadas > 0 ? ` · ${resumen.reservadas} reservadas` : ""
-                  } · ${resumen.materiales} materiales${
-                    resumen.productos > 0
-                      ? ` · ${resumen.productos} producto${resumen.productos === 1 ? "" : "s"}`
-                      : ""
-                  }`}
-            </p>
+            {stockTab === "inventario" ? null : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {stockTab === "listas"
+                  ? "Precios de mármoles, planchas y bachas por lista."
+                  : stockTab === "bloqueados"
+                    ? "Pedazos rotos, fuera de venta, para recortar o reponer."
+                    : "Bachas propias y del cliente."}
+              </p>
+            )}
           </div>
           {stockTab === "inventario" ? (
             <div className="flex flex-wrap items-center gap-2">

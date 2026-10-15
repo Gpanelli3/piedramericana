@@ -23,9 +23,6 @@ export function StockProductosUnidadesTab({ productos, loading, error, onOpenPro
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="border-b border-border px-4 py-3">
         <p className="text-sm font-semibold text-foreground">Productos</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Unidades de cantera (adoquines, laja, etc.). No son planchas.
-        </p>
       </div>
       <div className="overflow-x-auto">
         <Table>

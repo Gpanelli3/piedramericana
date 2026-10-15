@@ -165,7 +165,7 @@ export function VistaDashboard() {
                 </Button>
                 <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("stock")}>
                   <Package className="h-4 w-4" />
-                  Stock de piedra
+                  Stock
                 </Button>
               </CardContent>
             </Card>

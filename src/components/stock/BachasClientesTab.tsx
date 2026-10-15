@@ -139,10 +139,7 @@ export function BachasInventarioTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Bachas propias (para vender) y del cliente (con su nombre, no vendibles).
-        </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filtroOrigen} onValueChange={setFiltroOrigen}>
             <SelectTrigger className="h-9 w-44">

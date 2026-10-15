@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
+import { OtRoturaEstado } from "@/components/produccion/OtRoturaEstado";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
 import { M2Comparacion, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
 import {
@@ -712,6 +713,16 @@ export function OtDetalleDialog({
                         />
                       </div>
                     ) : null}
+
+                    <OtRoturaEstado
+                      otId={item.orden.id}
+                      etapa={etapa}
+                      materialHint={item.materialLabel}
+                      clienteNombre={item.cliente}
+                      onChanged={refresh}
+                      onPausada={() => setEstadoLocal("pausada")}
+                      onReanudada={() => setEstadoLocal("activa")}
+                    />
 
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">

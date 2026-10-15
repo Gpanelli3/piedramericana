@@ -1,7 +1,7 @@
 import type { Database, InventorySlabEstado } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { esChapaRetazo } from "@/lib/stock-api";
-import { materialCoincide, piezaCabeEnRetazo } from "@/lib/rotura-reglas";
+import { materialCoincide, validarRetazosEnPedazo } from "@/lib/rotura-reglas";
 
 export type ChapaInventarioRow = Database["public"]["Tables"]["chapas_inventario"]["Row"];
 
@@ -489,18 +489,14 @@ export async function crearPedazoBloqueadoDePieza(opts: {
 }
 
 /**
- * Recorta un pedazo bloqueado: alta un retazo Disponible y el bloqueado pasa a Baja.
+ * Recorta un pedazo bloqueado: da de alta uno o más retazos Disponibles y el bloqueado pasa a Baja.
  */
 export async function recortarPedazoBloqueado(opts: {
   chapaId: string;
-  largoCm: number;
-  anchoCm: number;
+  retazos: Array<{ largoCm: number; anchoCm: number }>;
   created_by?: string | null;
-}): Promise<{ error: Error | null; retazoBulto?: string; materialId?: string | null; materialLabel?: string }> {
+}): Promise<{ error: Error | null; retazoBultos?: string[]; materialId?: string | null; materialLabel?: string }> {
   if (!isSupabaseConfigured) return { error: new Error("Supabase no configurado.") };
-  if (!(opts.largoCm > 0) || !(opts.anchoCm > 0)) {
-    return { error: new Error("Indicá largo y ancho del recorte (cm).") };
-  }
 
   const { data: chapa, error: selErr } = await supabase
     .from("chapas_inventario")
@@ -514,44 +510,64 @@ export async function recortarPedazoBloqueado(opts: {
     return { error: new Error("Solo se pueden recortar pedazos bloqueados.") };
   }
 
-  if (!piezaCabeEnRetazo(opts.largoCm, opts.anchoCm, Number(c.largo_cm), Number(c.ancho_cm))) {
-    return { error: new Error("Ese recorte no entra en las medidas del pedazo bloqueado.") };
-  }
+  const pedazoLargo = Number(c.largo_cm);
+  const pedazoAncho = Number(c.ancho_cm);
+  const invalido = validarRetazosEnPedazo(opts.retazos, pedazoLargo, pedazoAncho);
+  if (invalido) return { error: new Error(invalido) };
 
-  const bulto = await nextRetazoBulto(c.bulto, 1);
-  const { data: inserted, error: insErr } = await supabase
-    .from("chapas_inventario")
-    .insert({
-      bulto,
+  const otId = c.ot_rotura_id ?? c.ot_reserva_id;
+  const bultos: string[] = [];
+  let rIdx = 1;
+  for (const ret of opts.retazos) {
+    const bulto = await nextRetazoBulto(c.bulto, rIdx);
+    rIdx += 1;
+    const { data: inserted, error: insErr } = await supabase
+      .from("chapas_inventario")
+      .insert({
+        bulto,
+        material_id: c.material_id,
+        material_label: c.material_label,
+        largo_cm: ret.largoCm,
+        ancho_cm: ret.anchoCm,
+        estado: "Disponible" as InventorySlabEstado,
+        lote_codigo: c.lote_codigo,
+        remito_line_id: c.remito_line_id,
+        chapa_origen_id: c.id,
+        origen_placa: c.origen_placa,
+        motivo_estado: `Retazo recortado de ${c.bulto}`,
+      })
+      .select("id")
+      .single();
+    if (insErr) return { error: new Error(insErr.message) };
+
+    bultos.push(bulto);
+    await logMovimiento({
+      chapaId: inserted.id,
+      otId,
+      tipo: "retazo_alta",
+      detalle: `Retazo ${bulto} ${ret.largoCm}×${ret.anchoCm} cm (de ${c.bulto})`,
+      created_by: opts.created_by,
+    });
+
+    await supabase.from("stock_scraps").insert({
+      accion: "Reingresar",
+      ingreso_tipo: "Recorte de rotura",
       material_id: c.material_id,
       material_label: c.material_label,
-      largo_cm: opts.largoCm,
-      ancho_cm: opts.anchoCm,
-      estado: "Disponible" as InventorySlabEstado,
-      lote_codigo: c.lote_codigo,
-      remito_line_id: c.remito_line_id,
-      chapa_origen_id: c.id,
-      origen_placa: c.origen_placa,
-      motivo_estado: `Retazo recortado de ${c.bulto}`,
-    })
-    .select("id")
-    .single();
-  if (insErr) return { error: new Error(insErr.message) };
+      cantidad: 1,
+      n_chapa: bulto,
+      observacion: `${ret.largoCm}×${ret.anchoCm} cm · de ${c.bulto}`,
+      created_by: opts.created_by ?? null,
+    });
+  }
 
-  await logMovimiento({
-    chapaId: inserted.id,
-    otId: c.ot_rotura_id ?? c.ot_reserva_id,
-    tipo: "retazo_alta",
-    detalle: `Retazo ${bulto} ${opts.largoCm}×${opts.anchoCm} cm (de ${c.bulto})`,
-    created_by: opts.created_by,
-  });
-
+  const lista = bultos.join(", ");
   const ts = nowIso();
   const { error: upErr } = await supabase
     .from("chapas_inventario")
     .update({
       estado: "Baja" as InventorySlabEstado,
-      motivo_estado: `Recortado → ${bulto}`,
+      motivo_estado: `Recortado → ${lista}`,
       updated_at: ts,
     })
     .eq("id", c.id);
@@ -559,26 +575,15 @@ export async function recortarPedazoBloqueado(opts: {
 
   await logMovimiento({
     chapaId: c.id,
-    otId: c.ot_rotura_id ?? c.ot_reserva_id,
+    otId,
     tipo: "baja",
-    detalle: `Recortado ${c.bulto} → ${bulto}`,
+    detalle: `Recortado ${c.bulto} → ${lista}`,
     created_by: opts.created_by,
-  });
-
-  await supabase.from("stock_scraps").insert({
-    accion: "Reingresar",
-    ingreso_tipo: "Recorte de rotura",
-    material_id: c.material_id,
-    material_label: c.material_label,
-    cantidad: 1,
-    n_chapa: bulto,
-    observacion: `${opts.largoCm}×${opts.anchoCm} cm · de ${c.bulto}`,
-    created_by: opts.created_by ?? null,
   });
 
   return {
     error: null,
-    retazoBulto: bulto,
+    retazoBultos: bultos,
     materialId: c.material_id,
     materialLabel: c.material_label,
   };

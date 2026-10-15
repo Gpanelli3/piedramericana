@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, History, Layers, Package, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, History, Layers, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,8 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  consumirChapasConRetazos,
-  liberarChapasDeOt,
   listChapasDisponibles,
   listChapasPorOt,
   listTrazabilidadStockPorOt,
@@ -37,15 +35,10 @@ import {
   liberarBachaDeOt,
   type BachaInventarioRow,
 } from "@/lib/stock-api";
-import { registrarRoturaBloqueo } from "@/lib/produccion-api";
+import { bajaPedazoBloqueadoYReponer } from "@/lib/produccion-api";
+import { useAuth } from "@/contexts/AuthContext";
 import { AvisoRetazoPiezas } from "@/components/stock/AvisoRetazoPiezas";
-import {
-  ROTURA_MOMENTOS,
-  ROTURA_TIPOS,
-  type PiezaMedida,
-  type RoturaMomento,
-  type RoturaTipo,
-} from "@/lib/rotura-reglas";
+import { type PiezaMedida } from "@/lib/rotura-reglas";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useStock } from "@/contexts/StockContext";
 import { cn } from "@/lib/utils";
@@ -103,7 +96,6 @@ export function OtStockPanel({
   materialId = null,
   piezas = [],
   requiereReservaStock = false,
-  otTitulo,
   clienteNombre,
   bachaRequerida = false,
   bachaOrigen = null,
@@ -112,29 +104,21 @@ export function OtStockPanel({
   bachaId = null,
   onChanged,
 }: Props) {
+  const { user } = useAuth();
   const { reloadChapas } = useStock();
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
-  const [consumoOpen, setConsumoOpen] = useState(false);
   const [disponibles, setDisponibles] = useState<ChapaInventarioRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forzarMezcla, setForzarMezcla] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [retazosByChapa, setRetazosByChapa] = useState<
-    Record<string, Array<{ largo: string; ancho: string }>>
-  >({});
-  const [roturaOpen, setRoturaOpen] = useState(false);
-  const [roturaTipo, setRoturaTipo] = useState<RoturaTipo>("chapa");
-  const [roturaChapa, setRoturaChapa] = useState<ChapaInventarioRow | null>(null);
-  const [roturaMotivo, setRoturaMotivo] = useState("");
-  const [roturaMomento, setRoturaMomento] = useState<RoturaMomento>("corte");
-  const [roturaPiezaLargo, setRoturaPiezaLargo] = useState("");
-  const [roturaPiezaAncho, setRoturaPiezaAncho] = useState("");
-  const [roturaPiezaLabel, setRoturaPiezaLabel] = useState("");
   const [bloqueadas, setBloqueadas] = useState<ChapaInventarioRow[]>([]);
+  const [reemplazoOpen, setReemplazoOpen] = useState(false);
+  const [reemplazoId, setReemplazoId] = useState("");
+  const [reemplazoOpciones, setReemplazoOpciones] = useState<ChapaInventarioRow[]>([]);
   const [bachaAsignada, setBachaAsignada] = useState<BachaInventarioRow | null>(null);
   const [bachasDisponibles, setBachasDisponibles] = useState<BachaInventarioRow[]>([]);
   const [bachaSelectId, setBachaSelectId] = useState("");
@@ -186,6 +170,47 @@ export function OtStockPanel({
   const reservaPendiente = requiereReservaStock && reservadas.length === 0;
   const esperaReponer = bloqueadas.length > 0 && reservadas.length === 0;
 
+  const abrirReemplazo = async () => {
+    const rota = bloqueadas[0];
+    if (!rota) return;
+    setReemplazoOpen(true);
+    setReemplazoId("");
+    const needle = rota.material_label?.trim() || (materialHint && materialHint !== "—" ? materialHint : "");
+    const res = await listChapasDisponibles(needle ? { materialNeedle: needle } : undefined);
+    let pool = res.data;
+    if (pool.length === 0 && needle) {
+      const all = await listChapasDisponibles();
+      pool = all.data;
+    }
+    if (res.error) toast.error(res.error.message);
+    setReemplazoOpciones(pool.filter((c) => c.id !== rota.id));
+  };
+
+  const onReemplazar = async () => {
+    const rota = bloqueadas[0];
+    if (!rota || !reemplazoId) {
+      toast.error("Elegí la placa que reemplaza a la rota.");
+      return;
+    }
+    setBusy(true);
+    const res = await bajaPedazoBloqueadoYReponer({
+      chapaId: rota.id,
+      chapaNuevaId: reemplazoId,
+      created_by: user?.id ?? null,
+    });
+    setBusy(false);
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    toast.success("La placa nueva reemplazó a la rota. La orden sigue.");
+    setReemplazoOpen(false);
+    await reload();
+    await reloadChapas();
+    onChanged?.();
+    await toastSiAgotado(res.materialId, res.materialLabel ?? materialHint);
+  };
+
   const abrirReservar = async () => {
     setReservarOpen(true);
     setForzarMezcla(false);
@@ -206,11 +231,6 @@ export function OtStockPanel({
     return lotesDistintosEnChapas([...reservadas, ...elegidas]);
   }, [disponibles, selected, reservadas]);
 
-  const chapasParaRotura = useMemo(
-    () => [...reservadas, ...usadas.filter((c) => c.estado === "Usada")],
-    [reservadas, usadas],
-  );
-
   const onReservar = async () => {
     setBusy(true);
     const res = await reservarChapasAOt({
@@ -226,121 +246,6 @@ export function OtStockPanel({
     if (res.warningMezclaLotes) toast.warning(res.warningMezclaLotes);
     else toast.success("Chapas reservadas a la OT.");
     setReservarOpen(false);
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-    await toastSiAgotado(null, materialHint);
-  };
-
-  const onLiberar = async (chapaId: string) => {
-    setBusy(true);
-    const res = await liberarChapasDeOt({ otId, chapaIds: [chapaId] });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Chapa liberada.");
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-  };
-
-  const abrirRotura = () => {
-    const primeraPieza = piezas[0];
-    const primeraChapa = chapasParaRotura[0] ?? null;
-    setRoturaTipo(primeraChapa ? "chapa" : "pieza");
-    setRoturaChapa(primeraChapa);
-    setRoturaMotivo("");
-    setRoturaMomento("corte");
-    setRoturaPiezaLargo(primeraPieza ? String(primeraPieza.largoCm) : "");
-    setRoturaPiezaAncho(primeraPieza ? String(primeraPieza.anchoCm) : "");
-    setRoturaPiezaLabel(primeraPieza?.label ?? otTitulo ?? "Pieza");
-    setRoturaOpen(true);
-  };
-
-  const onConfirmarRotura = async () => {
-    const motivo = roturaMotivo.trim();
-    if (!motivo) {
-      toast.error("Indicá el motivo de la rotura.");
-      return;
-    }
-    if (roturaTipo === "chapa" && !roturaChapa) {
-      toast.error("Elegí la chapa que se rompió.");
-      return;
-    }
-    const largoCm = Number(String(roturaPiezaLargo).replace(",", "."));
-    const anchoCm = Number(String(roturaPiezaAncho).replace(",", "."));
-    if (roturaTipo === "pieza" && (!(largoCm > 0) || !(anchoCm > 0))) {
-      toast.error("Indicá largo y ancho de la pieza en cm.");
-      return;
-    }
-    const materialLabel =
-      roturaChapa?.material_label ||
-      (materialHint && materialHint !== "—" ? materialHint : "") ||
-      "Material";
-    setBusy(true);
-    const res = await registrarRoturaBloqueo({
-      otOrigenId: otId,
-      tipo: roturaTipo,
-      momento: roturaMomento,
-      motivo,
-      chapaId: roturaChapa?.id ?? chapasParaRotura[0]?.id ?? null,
-      pieza:
-        roturaTipo === "pieza"
-          ? {
-              largoCm,
-              anchoCm,
-              materialId,
-              materialLabel,
-            }
-          : undefined,
-      clienteNombre,
-    });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    setRoturaOpen(false);
-    setRoturaChapa(null);
-    toast.success("Rotura registrada. Apartá otro mármol para reponer.");
-    await reload();
-    await reloadChapas();
-    onChanged?.();
-    await toastSiAgotado(res.materialId, res.materialLabel ?? materialHint);
-  };
-
-  const abrirConsumo = () => {
-    if (reservadas.length === 0) {
-      toast.error("No hay chapas reservadas para consumir.");
-      return;
-    }
-    const init: Record<string, Array<{ largo: string; ancho: string }>> = {};
-    for (const c of reservadas) init[c.id] = [{ largo: "", ancho: "" }];
-    setRetazosByChapa(init);
-    setConsumoOpen(true);
-  };
-
-  const onConsumir = async () => {
-    setBusy(true);
-    const items = reservadas.map((c) => ({
-      chapaId: c.id,
-      retazos: (retazosByChapa[c.id] ?? [])
-        .map((r) => ({
-          largo_cm: Number(String(r.largo).replace(",", ".")),
-          ancho_cm: Number(String(r.ancho).replace(",", ".")),
-        }))
-        .filter((r) => r.largo_cm > 0 && r.ancho_cm > 0),
-    }));
-    const res = await consumirChapasConRetazos({ otId, items });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Corte registrado: chapas consumidas y retazos dados de alta.");
-    setConsumoOpen(false);
     await reload();
     await reloadChapas();
     onChanged?.();
@@ -533,31 +438,17 @@ export function OtStockPanel({
           <Layers className="h-3.5 w-3.5" />
           Placas / stock
         </p>
-        <div className="flex flex-wrap gap-1.5">
-          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => void abrirReservar()}>
-            Reservar
-          </Button>
+        {reservadas.length === 0 && usadas.length === 0 && !esperaReponer ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
             className="h-7 text-xs"
-            disabled={reservadas.length === 0}
-            onClick={abrirConsumo}
+            onClick={() => void abrirReservar()}
           >
-            Consumir corte
+            Reservar
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs text-red-700 dark:text-red-300"
-            disabled={busy}
-            onClick={abrirRotura}
-          >
-            Rotura
-          </Button>
-        </div>
+        ) : null}
       </div>
 
       <AvisoRetazoPiezas
@@ -582,18 +473,18 @@ export function OtStockPanel({
 
       {esperaReponer ? (
         <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <p className="font-semibold">Se rompió el mármol</p>
+          <p className="font-semibold">Esta placa se rompió</p>
           <p className="text-amber-900/80 dark:text-amber-100/80">
-            Esa placa salió de este trabajo. Quedó vacío: apartá otro mármol para reponer.
+            Elegí la placa que la reemplaza. Esta misma orden sigue con esa placa.
           </p>
           <Button
             type="button"
             size="sm"
             className="h-7 w-full text-xs"
             disabled={busy}
-            onClick={() => void abrirReservar()}
+            onClick={() => void abrirReemplazo()}
           >
-            Apartar otro mármol
+            Elegir reemplazo
           </Button>
         </div>
       ) : null}
@@ -623,24 +514,7 @@ export function OtStockPanel({
                   {c.origen_placa ? ` · ${c.origen_placa}` : ""}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <Badge
-                  variant="secondary"
-                  className="border border-amber-200 bg-amber-50 text-[10px] text-amber-900"
-                >
-                  Apartada
-                </Badge>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-xs"
-                  disabled={busy}
-                  onClick={() => void onLiberar(c.id)}
-                >
-                  Liberar
-                </Button>
-              </div>
+              <span className="shrink-0 text-[11px] text-muted-foreground">Apartada</span>
             </li>
           ))}
           {usadas.map((c) => (
@@ -687,6 +561,49 @@ export function OtStockPanel({
           </ul>
         </div>
       ) : null}
+
+      <Dialog open={reemplazoOpen} onOpenChange={setReemplazoOpen}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Reemplazar mármol roto</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {reemplazoOpciones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay placas disponibles para reemplazar.</p>
+            ) : (
+              reemplazoOpciones.map((c) => {
+                const checked = reemplazoId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm",
+                      checked ? "border-primary bg-muted/40" : "border-border",
+                    )}
+                    onClick={() => setReemplazoId(c.id)}
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-mono font-medium">{c.bulto}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {c.material_label} · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReemplazoOpen(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={busy || !reemplazoId} onClick={() => void onReemplazar()}>
+              Reemplazar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={reservarOpen} onOpenChange={setReservarOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -753,254 +670,6 @@ export function OtStockPanel({
             </Button>
             <Button disabled={busy || selected.size === 0} onClick={() => void onReservar()}>
               Reservar {selected.size || ""}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={consumoOpen} onOpenChange={setConsumoOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Registrar corte / consumo</DialogTitle>
-            <DialogDescription>
-              Las chapas reservadas pasan a Usada. Opcional: dar de alta retazos con medidas (Disponible).
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {reservadas.map((c) => (
-              <div key={c.id} className="space-y-2 rounded-md border border-border p-3">
-                <p className="text-sm font-medium">
-                  <span className="font-mono">{c.bulto}</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm
-                  </span>
-                </p>
-                <p className="text-xs text-muted-foreground">Retazos a reingresar (opcional)</p>
-                {(retazosByChapa[c.id] ?? []).map((r, i) => (
-                  <div key={i} className="flex items-end gap-2">
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs">Largo cm</Label>
-                      <Input
-                        value={r.largo}
-                        onChange={(e) =>
-                          setRetazosByChapa((prev) => {
-                            const list = [...(prev[c.id] ?? [])];
-                            list[i] = { ...list[i]!, largo: e.target.value };
-                            return { ...prev, [c.id]: list };
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-xs">Ancho cm</Label>
-                      <Input
-                        value={r.ancho}
-                        onChange={(e) =>
-                          setRetazosByChapa((prev) => {
-                            const list = [...(prev[c.id] ?? [])];
-                            list[i] = { ...list[i]!, ancho: e.target.value };
-                            return { ...prev, [c.id]: list };
-                          })
-                        }
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-9 w-9"
-                      onClick={() =>
-                        setRetazosByChapa((prev) => ({
-                          ...prev,
-                          [c.id]: (prev[c.id] ?? []).filter((_, j) => j !== i),
-                        }))
-                      }
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() =>
-                    setRetazosByChapa((prev) => ({
-                      ...prev,
-                      [c.id]: [...(prev[c.id] ?? []), { largo: "", ancho: "" }],
-                    }))
-                  }
-                >
-                  <Plus className="h-3 w-3" />
-                  Otro retazo
-                </Button>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConsumoOpen(false)}>
-              Cancelar
-            </Button>
-            <Button disabled={busy} onClick={() => void onConsumir()}>
-              Confirmar consumo
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={roturaOpen}
-        onOpenChange={(open) => {
-          setRoturaOpen(open);
-          if (!open) setRoturaChapa(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Registrar rotura</DialogTitle>
-            <DialogDescription>
-              La placa sale de este trabajo y queda fuera de venta. Acá queda vacío hasta que
-              apartes otro mármol.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Qué se rompió</Label>
-              <Select
-                value={roturaTipo}
-                onValueChange={(v) => {
-                  const tipo = v === "pieza" ? "pieza" : "chapa";
-                  setRoturaTipo(tipo);
-                  if (tipo === "chapa" && !roturaChapa) {
-                    setRoturaChapa(chapasParaRotura[0] ?? null);
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROTURA_TIPOS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {roturaTipo === "chapa" ? (
-              <div className="space-y-1">
-                <Label className="text-xs">Placa</Label>
-                {chapasParaRotura.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No hay placas reservadas ni usadas en esta OT. Reservá una o registrá rotura de
-                    pieza.
-                  </p>
-                ) : (
-                  <Select
-                    value={roturaChapa?.id ?? ""}
-                    onValueChange={(id) => {
-                      setRoturaChapa(chapasParaRotura.find((c) => c.id === id) ?? null);
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Elegí la placa…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {chapasParaRotura.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.bulto} · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm · {c.estado}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {piezas.length > 1 ? (
-                  <div className="col-span-2 space-y-1">
-                    <Label className="text-xs">Pieza</Label>
-                    <Select
-                      value={roturaPiezaLabel || "__manual"}
-                      onValueChange={(v) => {
-                        const p = piezas.find((x) => x.label === v);
-                        if (!p) return;
-                        setRoturaPiezaLabel(p.label);
-                        setRoturaPiezaLargo(String(p.largoCm));
-                        setRoturaPiezaAncho(String(p.anchoCm));
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Elegí una pieza…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {piezas.map((p) => (
-                          <SelectItem key={`${p.label}-${p.largoCm}x${p.anchoCm}`} value={p.label}>
-                            {p.label} · {p.largoCm}×{p.anchoCm} cm
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-                <div className="space-y-1">
-                  <Label className="text-xs">Largo cm</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    value={roturaPiezaLargo}
-                    onChange={(e) => setRoturaPiezaLargo(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Ancho cm</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    value={roturaPiezaAncho}
-                    onChange={(e) => setRoturaPiezaAncho(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <Label className="text-xs">Cuándo</Label>
-              <Select
-                value={roturaMomento}
-                onValueChange={(v) => setRoturaMomento(v as RoturaMomento)}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROTURA_MOMENTOS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Motivo</Label>
-              <Input
-                className="h-8 text-xs"
-                placeholder="Quebrada al cortar, veta, golpe, etc."
-                value={roturaMotivo}
-                onChange={(e) => setRoturaMotivo(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRoturaOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              disabled={busy || (roturaTipo === "chapa" && !roturaChapa)}
-              onClick={() => void onConfirmarRotura()}
-            >
-              Registrar
             </Button>
           </DialogFooter>
         </DialogContent>

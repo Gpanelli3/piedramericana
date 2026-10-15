@@ -17,11 +17,13 @@ export type RotuloPieza = {
 
 export type RotuloOtDatos = {
   titulo: string;
+  ambiente: string;
   presupuestoNumero: string;
   fechaEntrega: string;
   cliente: string;
   direccion: string;
   material: string;
+  zocalo: string;
   bachaTitulo: string;
   bachaDetalle: string | null;
   piezas: RotuloPieza[];
@@ -29,6 +31,7 @@ export type RotuloOtDatos = {
 
 export type RotuloPiezaInput = {
   articuloLabel: string;
+  articuloCodigo?: string | null;
   muestraAlto: boolean;
   muestraAncho: boolean;
   altoM: string;
@@ -45,6 +48,7 @@ export type RotuloOtInput = {
   direccion: string;
   material: string;
   bachaRequerida: boolean;
+  bachaAsignada?: boolean;
   bachaTipo: string | null | undefined;
   bachaOrigen: string | null | undefined;
   bachaColocacion: string | null | undefined;
@@ -78,8 +82,47 @@ export function textoMedidasPiezaRotulo(input: {
   return `cant. ${input.cantidad.trim() || "—"}`;
 }
 
+const CODIGOS_ZOCALO = new Set(["ZOC-M2", "ZOC-ML"]);
+
+function textoIncluyeZocalo(texto: string): boolean {
+  return texto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .includes("zocalo");
+}
+
+export function esPiezaZocaloRotulo(input: {
+  articuloCodigo?: string | null;
+  articuloLabel?: string | null;
+}): boolean {
+  const codigo = (input.articuloCodigo ?? "").trim().toUpperCase();
+  if (CODIGOS_ZOCALO.has(codigo)) return true;
+  return textoIncluyeZocalo(input.articuloLabel ?? "");
+}
+
+/** «Sí» si alguna pieza es zócalo; si no, «No». */
+export function textoZocaloRotulo(
+  piezas: Array<{ articuloCodigo?: string | null; articuloLabel?: string | null }>,
+): string {
+  return piezas.some(esPiezaZocaloRotulo) ? "Sí" : "No";
+}
+
+function extrasBachaRotulo(input: {
+  origen: string | null | undefined;
+  colocacion: string | null | undefined;
+}): string[] {
+  const partes: string[] = [];
+  if (input.origen === "propia") partes.push("Nuestra");
+  if (input.origen === "cliente") partes.push("Del cliente");
+  const coloc = input.colocacion?.trim();
+  if (coloc) partes.push(etiquetaTipoColocacion(coloc));
+  return partes;
+}
+
 export function textoBachaRotulo(input: {
   requerida: boolean;
+  asignada?: boolean;
   tipo: string | null | undefined;
   origen: string | null | undefined;
   colocacion: string | null | undefined;
@@ -87,31 +130,37 @@ export function textoBachaRotulo(input: {
   if (!input.requerida) {
     return { titulo: "Sin bacha", detalle: null };
   }
-  const titulo = input.tipo?.trim() || "Sin especificar";
-  const partes: string[] = [];
-  if (input.origen === "propia") partes.push("Nuestra");
-  if (input.origen === "cliente") partes.push("Del cliente");
-  const coloc = input.colocacion?.trim();
-  if (coloc) partes.push(etiquetaTipoColocacion(coloc));
-  return { titulo, detalle: partes.length > 0 ? partes.join(" · ") : null };
+  const tipo = input.tipo?.trim() || "Sin especificar";
+  const extras = extrasBachaRotulo(input);
+  if (!input.asignada) {
+    return {
+      titulo: "Bacha pendiente",
+      detalle: [tipo, ...extras].join(" · "),
+    };
+  }
+  return { titulo: tipo, detalle: extras.length > 0 ? extras.join(" · ") : null };
 }
 
 export function armarRotuloOt(input: RotuloOtInput): RotuloOtDatos {
   const nro = input.presupuestoNumero.trim();
-  const titulo = input.titulo.trim() || (nro ? `OT · ${nro}` : "OT");
+  const tituloTrim = input.titulo.trim();
+  const titulo = tituloTrim || (nro ? `OT · ${nro}` : "OT");
   const bacha = textoBachaRotulo({
     requerida: input.bachaRequerida,
+    asignada: input.bachaAsignada,
     tipo: input.bachaTipo,
     origen: input.bachaOrigen,
     colocacion: input.bachaColocacion,
   });
   return {
     titulo,
+    ambiente: tituloTrim || "—",
     presupuestoNumero: nro || "—",
     fechaEntrega: formatoFechaEntregaRotulo(input.fechaProgramada),
     cliente: input.cliente.trim() || "—",
     direccion: input.direccion.trim() || "—",
     material: input.material.trim() || "—",
+    zocalo: textoZocaloRotulo(input.piezas),
     bachaTitulo: bacha.titulo,
     bachaDetalle: bacha.detalle,
     piezas: input.piezas.map((p) => ({
@@ -142,6 +191,7 @@ export async function fetchRotuloOt(
       direccion: item.direccionObra,
       material: item.materialLabel,
       bachaRequerida: Boolean(item.orden.bacha_requerida),
+      bachaAsignada: Boolean(item.orden.bacha_id),
       bachaTipo: item.orden.bacha_tipo,
       bachaOrigen: item.orden.bacha_origen,
       bachaColocacion: item.orden.bacha_colocacion,

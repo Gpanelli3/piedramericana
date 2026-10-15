@@ -6,11 +6,26 @@ type Props = {
   className?: string;
 };
 
-function Linea({ label, value }: { label: string; value: string }) {
+function Linea({
+  label,
+  value,
+  wrap = false,
+}: {
+  label: string;
+  value: string;
+  wrap?: boolean;
+}) {
   return (
     <p className="flex min-w-0 items-baseline gap-2 border-b border-neutral-400 pb-0.5 text-[15px] leading-snug">
       <span className="shrink-0 font-semibold text-neutral-900">{label}:</span>
-      <span className="min-w-0 truncate text-neutral-900">{value}</span>
+      <span
+        className={cn(
+          "min-w-0 text-neutral-900",
+          wrap ? "whitespace-normal break-words" : "truncate",
+        )}
+      >
+        {value}
+      </span>
     </p>
   );
 }
@@ -39,7 +54,9 @@ export function RotuloOtDocumento({ datos, className }: Props) {
           <Linea label="Material" value={datos.material} />
           <Linea label="Entrega" value={datos.fechaEntrega} />
           <Linea label="Dirección" value={datos.direccion} />
-          <Linea label="Bacha" value={bacha} />
+          <Linea label="Ambiente" value={datos.ambiente} />
+          <Linea label="Zócalo" value={datos.zocalo} />
+          <Linea label="Bacha" value={bacha} wrap />
         </div>
       </header>
 

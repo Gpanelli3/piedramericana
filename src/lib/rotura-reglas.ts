@@ -34,6 +34,40 @@ export type MatchRetazoPieza = {
   retazo: RetazoMedida;
 };
 
+export type MedidaCm = { largoCm: number; anchoCm: number };
+
+/**
+ * Cada retazo tiene que entrar en el pedazo y, juntos, no superar su superficie.
+ * Devuelve el motivo si no se pueden dar de alta.
+ */
+export function validarRetazosEnPedazo(
+  retazos: MedidaCm[],
+  pedazoLargoCm: number,
+  pedazoAnchoCm: number,
+): string | null {
+  if (retazos.length === 0) return "Agregá al menos un retazo.";
+  if (!(pedazoLargoCm > 0) || !(pedazoAnchoCm > 0)) {
+    return "El pedazo bloqueado no tiene medidas.";
+  }
+  const areaPedazo = pedazoLargoCm * pedazoAnchoCm;
+  let area = 0;
+  for (let i = 0; i < retazos.length; i++) {
+    const r = retazos[i]!;
+    const n = i + 1;
+    if (!(r.largoCm > 0) || !(r.anchoCm > 0)) {
+      return `El retazo ${n} necesita largo y ancho.`;
+    }
+    if (!piezaCabeEnRetazo(r.largoCm, r.anchoCm, pedazoLargoCm, pedazoAnchoCm)) {
+      return `El retazo ${n} no entra en el pedazo bloqueado.`;
+    }
+    area += r.largoCm * r.anchoCm;
+  }
+  if (area > areaPedazo + 0.5) {
+    return "La suma de los retazos supera la superficie del pedazo.";
+  }
+  return null;
+}
+
 /** La pieza cabe en el retazo en cualquiera de las dos orientaciones. */
 export function piezaCabeEnRetazo(
   piezaLargoCm: number,
@@ -94,6 +128,15 @@ export function etiquetaRoturaTipo(tipo: RoturaTipo | null | undefined): string 
 
 export function etiquetaRoturaMomento(momento: RoturaMomento | null | undefined): string {
   return ROTURA_MOMENTOS.find((m) => m.value === momento)?.label ?? momento ?? "";
+}
+
+/** El texto guardado repite tipo y momento. Acá queda solo lo que escribieron. */
+export function motivoRoturaVisible(texto: string | null | undefined): string {
+  const t = texto?.trim() ?? "";
+  if (!t.startsWith("Rotura de ")) return t;
+  const partes = t.split(" · ");
+  if (partes.length < 3) return "";
+  return partes.slice(2).join(" · ").trim();
 }
 
 export function formatCm(l: number, a: number): string {

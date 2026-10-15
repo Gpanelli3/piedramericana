@@ -5,6 +5,8 @@ import {
   metrosACm,
   piezaCabeEnRetazo,
   sugerirRetazosParaPiezas,
+  validarRetazosEnPedazo,
+  motivoRoturaVisible,
 } from "./rotura-reglas";
 
 describe("piezaCabeEnRetazo", () => {
@@ -22,6 +24,52 @@ describe("piezaCabeEnRetazo", () => {
 
   it("no cabe si un lado sobra", () => {
     expect(piezaCabeEnRetazo(120, 60, 100, 80)).toBe(false);
+  });
+});
+
+describe("validarRetazosEnPedazo", () => {
+  it("acepta uno o varios retazos que entran y no superan la superficie", () => {
+    expect(
+      validarRetazosEnPedazo(
+        [
+          { largoCm: 200, anchoCm: 80 },
+          { largoCm: 150, anchoCm: 60 },
+        ],
+        300,
+        150,
+      ),
+    ).toBeNull();
+  });
+
+  it("rechaza un retazo que no entra en el pedazo", () => {
+    expect(
+      validarRetazosEnPedazo([{ largoCm: 400, anchoCm: 80 }], 300, 150),
+    ).toMatch(/no entra/);
+  });
+
+  it("rechaza si la suma supera la superficie aunque cada uno entre", () => {
+    expect(
+      validarRetazosEnPedazo(
+        [
+          { largoCm: 280, anchoCm: 140 },
+          { largoCm: 280, anchoCm: 140 },
+        ],
+        300,
+        150,
+      ),
+    ).toMatch(/supera la superficie/);
+  });
+});
+
+describe("motivoRoturaVisible", () => {
+  it("deja solo el motivo y no repite tipo ni momento", () => {
+    expect(motivoRoturaVisible("Rotura de pieza · corte · quebrada al cortar")).toBe(
+      "quebrada al cortar",
+    );
+  });
+
+  it("conserva un texto que no sigue el formato", () => {
+    expect(motivoRoturaVisible("Se partió en el viaje")).toBe("Se partió en el viaje");
   });
 });
 

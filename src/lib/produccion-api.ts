@@ -301,11 +301,49 @@ function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
   return grupos;
 }
 
+/**
+ * Una rotura no abre otra OT. Si quedó una reposición abierta, su placa vuelve
+ * a la orden original y la reposición se cancela.
+ */
+async function consolidarReposicionesAbiertas(): Promise<void> {
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .select("id, ot_origen_id")
+    .eq("tipo", "reposicion")
+    .neq("estado", "cancelled")
+    .neq("estado", "done")
+    .not("ot_origen_id", "is", null);
+  if (error || !data?.length) return;
+
+  const now = new Date().toISOString();
+  for (const hija of data) {
+    const origenId = hija.ot_origen_id;
+    if (!origenId) continue;
+    await supabase
+      .from("chapas_inventario")
+      .update({ ot_reserva_id: origenId, updated_at: now })
+      .eq("ot_reserva_id", hija.id)
+      .eq("estado", "Reservada");
+    await supabase
+      .from("ordenes_trabajo")
+      .update({ estado: "cancelled", actualizado_en: now })
+      .eq("id", hija.id);
+    const reservadas = await listChapasPorOt(origenId, ["Reservada"]);
+    if (!reservadas.error && reservadas.data.length > 0) {
+      await supabase
+        .from("ordenes_trabajo")
+        .update({ pausada: false, requiere_reserva_stock: false, actualizado_en: now })
+        .eq("id", origenId);
+    }
+  }
+}
+
 /** Vista General: todas las OTs de venta (incluye entregadas; excluye canceladas). */
 export async function getOtsAgrupadas(): Promise<{
   data: VentaGrupoOt[];
   error: Error | null;
 }> {
+  await consolidarReposicionesAbiertas();
   const { data, error } = await supabase
     .from("ordenes_trabajo")
     .select("*")
@@ -325,6 +363,7 @@ type FiltroTab = Exclude<ProduccionOtFiltro, "general">;
 export async function getOtsPorFiltro(
   filtro: FiltroTab,
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
+  await consolidarReposicionesAbiertas();
   let q = supabase.from("ordenes_trabajo").select("*").not("venta_id", "is", null);
 
   if (filtro === "entregadas") {
@@ -816,8 +855,12 @@ export async function crearOtReposicionDesdeOrigen(opts: {
 
 export async function bajaPedazoBloqueadoYReponer(opts: {
   chapaId: string;
+  chapaNuevaId: string;
   created_by?: string | null;
 }): Promise<{ otReposicionId: string | null; error: Error | null; materialId?: string | null; materialLabel?: string }> {
+  if (!opts.chapaNuevaId) {
+    return { otReposicionId: null, error: new Error("Elegí la placa que reemplaza a la rota.") };
+  }
   const { data: chapa, error: selErr } = await supabase
     .from("chapas_inventario")
     .select("*")
@@ -832,6 +875,17 @@ export async function bajaPedazoBloqueadoYReponer(opts: {
   if (!otId) {
     return { otReposicionId: null, error: new Error("Ese pedazo no está ligado a una OT.") };
   }
+  if (opts.chapaNuevaId === opts.chapaId) {
+    return { otReposicionId: null, error: new Error("La placa de reemplazo tiene que ser otra.") };
+  }
+
+  const reserva = await reservarChapasAOt({
+    otId,
+    chapaIds: [opts.chapaNuevaId],
+    permitirMezclaLotes: true,
+    created_by: opts.created_by ?? null,
+  });
+  if (reserva.error) return { otReposicionId: otId, error: reserva.error };
 
   const baja = await bajaChapaPorRotura({
     chapaId: opts.chapaId,
@@ -839,16 +893,18 @@ export async function bajaPedazoBloqueadoYReponer(opts: {
     motivo: chapa.motivo_estado || "Reposición",
     created_by: opts.created_by ?? null,
   });
-  if (baja.error) return { otReposicionId: null, error: baja.error };
+  if (baja.error) return { otReposicionId: otId, error: baja.error };
 
-  const repo = await crearOtReposicionDesdeOrigen({
-    otOrigenId: otId,
-    motivo: chapa.motivo_estado || "Reposición",
-    created_by: opts.created_by ?? null,
-  });
+  const now = new Date().toISOString();
+  await supabase
+    .from("ordenes_trabajo")
+    .update({ pausada: false, requiere_reserva_stock: false, actualizado_en: now })
+    .eq("id", otId);
+  await consolidarReposicionesAbiertas();
+
   return {
-    otReposicionId: repo.otReposicionId,
-    error: repo.error,
+    otReposicionId: otId,
+    error: null,
     materialId: baja.materialId,
     materialLabel: baja.materialLabel,
   };

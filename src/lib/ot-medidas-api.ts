@@ -23,6 +23,7 @@ export type MedidaItemEditable = {
   ordenKey: string;
   ordenTitulo: string;
   articuloId: string;
+  articuloCodigo: string;
   articuloLabel: string;
   unidad: string;
   modoIngreso: "dimensiones" | "manual";
@@ -113,6 +114,7 @@ function itemsDesdePayload(
         ordenKey: orden.key,
         ordenTitulo: (orden.titulo ?? "").trim() || "OT",
         articuloId: line.articuloId,
+        articuloCodigo: art?.codigo?.trim() || "",
         articuloLabel: art?.descripcion?.trim() || art?.codigo || "Artículo",
         unidad,
         modoIngreso: modo,

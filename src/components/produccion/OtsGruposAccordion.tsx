@@ -8,8 +8,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
-import { etiquetaVentaEstado, resumenMetrosGrupo } from "@/components/produccion/ot-ui";
+import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import type { OtProduccionItem, VentaGrupoOt } from "@/lib/produccion-api";
+import type { JobStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 
@@ -54,6 +55,13 @@ export function OtsGruposAccordion({
         {grupos.map((g) => {
           const open = openIds.has(g.ventaId);
           const cant = `${g.ots.length} ${g.ots.length === 1 ? "OT" : "OTs"}`;
+          const etapas = [
+            ...new Set(
+              g.ots.map((item) =>
+                etiquetaEtapaOt(String(item.orden.etapa), item.orden.estado as JobStatus),
+              ),
+            ),
+          ].join(", ");
           return (
             <Collapsible
               key={g.ventaId}
@@ -86,9 +94,7 @@ export function OtsGruposAccordion({
                         {g.cliente}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {etiquetaVentaEstado(g.ventaEstado)} · {cant}
-                        <span className="mx-1.5 text-border">·</span>
-                        <span className="tabular-nums">{resumenMetrosGrupo(g.m2Venta, g.m2Obra)}</span>
+                        {etapas} · {cant}
                       </p>
                     </div>
                     <Badge variant="secondary" className="shrink-0 tabular-nums">
