@@ -24,7 +24,8 @@ import { Separator } from "@/components/ui/separator";
 import { fetchRemitosList, fetchRemitoLines, type RemitoLineDetail, type RemitoListRow } from "@/lib/stock-api";
 import { exportRemitosCsv, exportRemitosDetalleCsv } from "@/lib/reportes-export-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { ClipboardList, Download } from "lucide-react";
+import { ClipboardList, Download, Printer } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 function formatM2Stock(n: number): string {
@@ -69,6 +70,7 @@ type HistorialProps = {
 };
 
 export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<RemitoListRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [filtro, setFiltro] = useState("");
@@ -276,6 +278,18 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
               <p className="text-sm">
                 <span className="font-medium">Obs.:</span> {detalle.notes}
               </p>
+            ) : null}
+            {detalle ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => navigate(`/remitos/${detalle.id}/rotulos`)}
+              >
+                <Printer className="mr-1 h-4 w-4" />
+                Imprimir rótulos
+              </Button>
             ) : null}
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Líneas</p>
             <ul className="space-y-2">

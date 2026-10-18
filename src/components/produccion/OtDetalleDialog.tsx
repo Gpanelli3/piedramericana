@@ -32,6 +32,7 @@ import {
   setOtBloqueada,
   setOtDesbloqueada,
   setOtFechaProgramada,
+  setOtNafe,
   setOtNotas,
   setOtPausada,
   siguienteEtapaOt,
@@ -40,6 +41,8 @@ import {
   type OtSaldoVenta,
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
+import { avisoBachaPendiente, frenaAvancePorBacha } from "@/lib/bacha-reglas";
+import { NafeCampo } from "@/components/produccion/NafeCampo";
 import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
@@ -191,6 +194,8 @@ export function OtDetalleDialog({
   const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
   const [fechaLocal, setFechaLocal] = useState("");
   const [savingFecha, setSavingFecha] = useState(false);
+  const [nafeLocal, setNafeLocal] = useState("");
+  const [savingNafe, setSavingNafe] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [medidaItems, setMedidaItems] = useState<MedidaItemEditable[]>([]);
@@ -251,6 +256,7 @@ export function OtDetalleDialog({
   useEffect(() => {
     if (!item || !open) return;
     setFechaLocal(fechaProgramadaInputValue(item.orden.fecha_programada));
+    setNafeLocal(item.orden.nafe ?? "");
     setMedidaItems([]);
     setSaldo(null);
     setLoadingExtra(true);
@@ -356,6 +362,15 @@ export function OtDetalleDialog({
   const done = item.orden.estado === "done";
   const puedeMover = !bloqueada && !pausada && !done;
   const nextEtapa = siguienteEtapaOt(etapa);
+  const bachaPendiente = avisoBachaPendiente({
+    bachaRequerida: Boolean(item.orden.bacha_requerida),
+    bachaAsignada: Boolean(item.orden.bacha_id),
+  });
+  const frenaBacha = frenaAvancePorBacha({
+    bachaRequerida: Boolean(item.orden.bacha_requerida),
+    bachaAsignada: Boolean(item.orden.bacha_id),
+    nextEtapa,
+  });
 
   const estadoGuardado: EstadoOtLocal = bloqueada ? "bloqueada" : pausada ? "pausada" : "activa";
   const estadoOtDirty =
@@ -474,6 +489,11 @@ export function OtDetalleDialog({
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {item.orden.motivo_bloqueo}
               </div>
+            ) : bachaPendiente ? (
+              <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {bachaPendiente}. El corte sigue. Para pasar a producción hay que asignar la bacha.
+              </div>
             ) : null}
           </DialogHeader>
 
@@ -491,7 +511,9 @@ export function OtDetalleDialog({
                       ? "OT bloqueada"
                       : pausada
                         ? "OT pausada"
-                        : undefined
+                        : frenaBacha
+                          ? bachaPendiente ?? "Bacha pendiente"
+                          : undefined
                 }
                 onSelect={(e) => void onEtapaSelect(e)}
               />
@@ -536,6 +558,44 @@ export function OtDetalleDialog({
                 <div>
                   <p className="text-muted-foreground">Material</p>
                   <p className="font-medium text-foreground">{item.materialLabel}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">NAFE</p>
+                  {!done ? (
+                    <div className="mt-0.5">
+                      <NafeCampo
+                        id={`ot-nafe-${item.orden.id}`}
+                        compact
+                        value={nafeLocal}
+                        onChange={setNafeLocal}
+                      />
+                      {(nafeLocal.trim() || "") !== (item.orden.nafe ?? "").trim() ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="mt-1 h-7 text-xs"
+                          disabled={savingNafe}
+                          onClick={() => {
+                            setSavingNafe(true);
+                            void setOtNafe(item.orden.id, nafeLocal).then((res) => {
+                              setSavingNafe(false);
+                              if (res.error) {
+                                toast.error(res.error.message);
+                                return;
+                              }
+                              toast.success("NAFE actualizado.");
+                              refresh();
+                            });
+                          }}
+                        >
+                          Guardar
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="font-medium text-foreground">{item.orden.nafe?.trim() || "—"}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-muted-foreground">Ingreso</p>
@@ -643,6 +703,7 @@ export function OtDetalleDialog({
                   requiereReservaStock={Boolean(item.orden.requiere_reserva_stock)}
                   otTitulo={item.orden.titulo}
                   clienteNombre={item.cliente}
+                  clienteId={item.orden.id_cliente}
                   bachaRequerida={Boolean(item.orden.bacha_requerida)}
                   bachaOrigen={item.orden.bacha_origen}
                   bachaTipo={item.orden.bacha_tipo}
@@ -851,7 +912,7 @@ export function OtDetalleDialog({
                 <Button
                   type="button"
                   size="sm"
-                  disabled={!puedeMover || busy}
+                  disabled={!puedeMover || busy || frenaBacha}
                   onClick={() => void onAvanzar()}
                 >
                   Pasar a {etiquetaTabDestino(nextEtapa)}

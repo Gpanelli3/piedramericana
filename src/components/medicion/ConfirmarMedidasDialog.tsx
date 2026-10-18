@@ -15,6 +15,7 @@ type Props = {
   presupuestoId: string | null;
   cliente?: string;
   numero?: string;
+  titulo?: string;
   onSaved: () => void;
 };
 
@@ -24,13 +25,14 @@ export function ConfirmarMedidasDialog({
   presupuestoId,
   cliente,
   numero,
+  titulo = "Confirmar medidas",
   onSaved,
 }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[min(40rem,90vh)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="border-b border-border px-5 py-4">
-          <DialogTitle>Confirmar medidas</DialogTitle>
+          <DialogTitle>{titulo}</DialogTitle>
           <DialogDescription>
             {numero ? `${numero} · ` : ""}
             {cliente ?? "Ajustá las medidas de obra y confirmá."}
@@ -43,8 +45,8 @@ export function ConfirmarMedidasDialog({
               destacado
               confirmarPipeline
               onSaved={() => {
-                onOpenChange(false);
                 onSaved();
+                onOpenChange(false);
               }}
             />
           ) : null}

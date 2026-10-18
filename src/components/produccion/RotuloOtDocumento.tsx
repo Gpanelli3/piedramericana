@@ -56,6 +56,7 @@ export function RotuloOtDocumento({ datos, className }: Props) {
           <Linea label="Dirección" value={datos.direccion} />
           <Linea label="Ambiente" value={datos.ambiente} />
           <Linea label="Zócalo" value={datos.zocalo} />
+          <Linea label="NAFE" value={datos.nafe} />
           <Linea label="Bacha" value={bacha} wrap />
         </div>
       </header>

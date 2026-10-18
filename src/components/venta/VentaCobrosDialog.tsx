@@ -41,6 +41,7 @@ import {
 } from "@/lib/stock-ot-api";
 import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
 
 type VentasPagoRow = Database["public"]["Tables"]["ventas_pagos"]["Row"];
 
@@ -364,6 +365,9 @@ export function VentaCobrosDialog({
       } else {
         toast.success("Pago registrado.");
       }
+      const envio = await enviarAProduccionSiCorresponde(presupuestoId);
+      if (envio.error) toast.error(envio.error.message);
+      else if (envio.enviado) toast.success("Ya tenía medidas: pasó a producción.");
       setMontoDigitado("");
       setPagoNota("");
       setComprobante(null);

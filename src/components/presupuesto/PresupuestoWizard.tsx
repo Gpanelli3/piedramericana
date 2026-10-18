@@ -49,7 +49,9 @@ import {
   importeMecPresupuesto,
   labelUnidad,
   materialPesoEstimadoDesdeOt,
+  monedaDeListaPrecio,
   precioSugeridoLinea,
+  reponerPreciosSugeridosOrdenes,
   todasOtsExcluyenMec,
 } from "@/lib/presupuesto-calculos";
 import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
@@ -204,9 +206,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [direccion, setDireccion] = useState("");
   const [obsCabecera, setObsCabecera] = useState("");
   const [listaPrecioId, setListaPrecioId] = useState<string>("");
-  const [monedaPresupuesto, setMonedaPresupuesto] = useState<"ars" | "usd">(
-    "usd",
-  );
+  const [monedaFallback, setMonedaFallback] = useState<"ars" | "usd">("usd");
 
   // Hook de artículos dinámicos: se recarga cuando cambia la lista de precio
   const {
@@ -369,64 +369,24 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     };
   }, []);
 
+  const listaPrecioActual = useMemo(
+    () => listasPrecios.find((lista) => lista.id === listaPrecioId) ?? null,
+    [listaPrecioId, listasPrecios],
+  );
+  const monedaPresupuesto = monedaDeListaPrecio(listaPrecioActual, monedaFallback);
+
   useEffect(() => {
+    if (editCargando) return;
     if (articulosBd.length === 0) return;
     if (omitirSyncPreciosRef.current) {
+      if (listaPrecioId && preciosMaterialEpoch === 0) return;
       omitirSyncPreciosRef.current = false;
       return;
     }
-
-    setOrdenes((prev) => {
-      let changed = false;
-
-      const next = prev.map((orden) => ({
-        ...orden,
-        items: orden.items.map((linea) => {
-          if (!linea.articuloId) return linea;
-
-          const articulo = articulosBd.find((item) => item.id === linea.articuloId);
-          if (!articulo || esArticuloCobraMaterial(articulo.codigo)) return linea;
-
-          const precioUnitario = precioSugeridoLinea({
-            codigoArticulo: articulo.codigo,
-            precioTrabajo: articulo.precio,
-            precioMaterial: null,
-          });
-          if (linea.precioUnitario === precioUnitario) return linea;
-
-          changed = true;
-          return { ...linea, precioUnitario };
-        }),
-      }));
-
-      return changed ? next : prev;
-    });
-  }, [articulosBd]);
-
-  useEffect(() => {
-    if (preciosMaterialEpoch <= 1) return;
-    if (omitirSyncPreciosRef.current || articulosBd.length === 0) return;
-
-    setOrdenes((prevOrdenes) => {
-      let changed = false;
-      const next = prevOrdenes.map((orden) => ({
-        ...orden,
-        items: orden.items.map((linea) => {
-          const articulo = articulosBd.find((item) => item.id === linea.articuloId);
-          if (!articulo || !esArticuloCobraMaterial(articulo.codigo)) return linea;
-          const precioUnitario = precioSugeridoLinea({
-            codigoArticulo: articulo.codigo,
-            precioTrabajo: articulo.precio,
-            precioMaterial: preciosMaterial[orden.materialId] ?? null,
-          });
-          if (linea.precioUnitario === precioUnitario) return linea;
-          changed = true;
-          return { ...linea, precioUnitario };
-        }),
-      }));
-      return changed ? next : prevOrdenes;
-    });
-  }, [preciosMaterialEpoch, preciosMaterial, articulosBd]);
+    setOrdenes((prev) =>
+      reponerPreciosSugeridosOrdenes(prev, articulosBd, preciosMaterial),
+    );
+  }, [editCargando, articulosBd, preciosMaterial, preciosMaterialEpoch, listaPrecioId]);
 
   useEffect(() => {
     if (!presupuestoId) {
@@ -474,7 +434,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       setDireccion(payload.direccion ?? "");
       setObsCabecera(payload.obsCabecera ?? "");
       setListaPrecioId(payload.listaPrecioId ?? "");
-      setMonedaPresupuesto(payload.monedaPresupuesto === "ars" ? "ars" : "usd");
+      setMonedaFallback(payload.monedaPresupuesto === "ars" ? "ars" : "usd");
       if (payload.dolarHoy > 0) setDolarHoy(payload.dolarHoy);
       if (typeof payload.cotizacionMixtaActiva === "boolean") {
         setCotizacionMixtaActiva(payload.cotizacionMixtaActiva);
@@ -795,7 +755,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       return;
     }
     if (monedaPresupuesto === "usd" && !(dolarHoy > 0)) {
-      setGrabarError("Cargá el dólar del día para unir el producto en dólares y el MEC en pesos.");
+      setGrabarError("Cargá el dólar del día para pasar el MEC en pesos a dólares.");
       return;
     }
     if (!isSupabaseConfigured) {
@@ -928,10 +888,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [totalesItems.porOt],
   );
 
-  const listaPrecioLabel = useMemo(
-    () => listasPrecios.find((lista) => lista.id === listaPrecioId)?.label ?? "—",
-    [listaPrecioId, listasPrecios],
-  );
+  const listaPrecioLabel = listaPrecioActual?.label ?? "—";
 
   const wizardTopRef = useRef<HTMLDivElement>(null);
 
@@ -1214,7 +1171,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               listaPrecioId={listaPrecioId}
               setListaPrecioId={setListaPrecioId}
               monedaPresupuesto={monedaPresupuesto}
-              setMonedaPresupuesto={setMonedaPresupuesto}
               dolarHoy={dolarHoy}
               setDolarHoy={setDolarHoy}
               origenVentas={origenVentas}
@@ -1255,7 +1211,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               monedaPresupuesto={monedaPresupuesto}
               dolarHoy={dolarHoy}
               setDolarHoy={setDolarHoy}
-              totalUsdEquivalente={totalUsdEquivalente}
               totalArsEquivalente={totalArsEquivalente}
               ordenesCount={ordenes.length}
               lineItemsCount={totalLineasOt}

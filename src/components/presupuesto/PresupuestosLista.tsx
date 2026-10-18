@@ -113,7 +113,6 @@ type Props = {
   onRechazar: (id: string) => Promise<void>;
   medicionPorId?: Record<string, MedicionEstado>;
   onListoParaMedir?: (row: PresupuestoRowLista) => void;
-  onSaltarMedicion?: (row: PresupuestoRowLista) => void;
 };
 
 export function PresupuestosLista({
@@ -129,7 +128,6 @@ export function PresupuestosLista({
   onRechazar,
   medicionPorId,
   onListoParaMedir,
-  onSaltarMedicion,
 }: Props) {
   const [q, setQ] = useState("");
   const estadoFiltro = estadoDesdeTab(tab);
@@ -154,7 +152,7 @@ export function PresupuestosLista({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-1 flex-col gap-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="text-lg font-semibold tracking-tight text-foreground">
           {tituloFiltro(tab)}
@@ -172,13 +170,13 @@ export function PresupuestosLista({
       </div>
 
       {loading ? (
-        <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+        <p className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
           Cargando presupuestos…
-        </div>
+        </p>
       ) : visibles.length === 0 ? (
-        <div className="rounded-lg border bg-card px-6 py-10 text-center text-sm text-muted-foreground leading-relaxed max-w-xl">
+        <p className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
           {estadoVacioMsj()}
-        </div>
+        </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border bg-card">
           <Table>
@@ -303,11 +301,6 @@ export function PresupuestosLista({
                             {puedePedirMedicion && onListoParaMedir ? (
                               <DropdownMenuItem onClick={() => onListoParaMedir(r)}>
                                 Listo para medir
-                              </DropdownMenuItem>
-                            ) : null}
-                            {puedePedirMedicion && onSaltarMedicion ? (
-                              <DropdownMenuItem onClick={() => onSaltarMedicion(r)}>
-                                Saltar medición
                               </DropdownMenuItem>
                             ) : null}
                           </DropdownMenuContent>

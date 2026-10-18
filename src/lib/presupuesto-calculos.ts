@@ -134,6 +134,42 @@ export function precioSugeridoLinea(opts: {
     : "";
 }
 
+/** Moneda del presupuesto = moneda de la lista. Sin lista, el fallback. */
+export function monedaDeListaPrecio(
+  lista: { moneda?: string | null } | null | undefined,
+  fallback: "ars" | "usd" = "usd",
+): "ars" | "usd" {
+  if (lista?.moneda === "ars") return "ars";
+  if (lista?.moneda === "usd") return "usd";
+  return fallback;
+}
+
+/** Reemplaza precios de línea por los sugeridos de catálogo / lista de materiales. */
+export function reponerPreciosSugeridosOrdenes(
+  ordenes: OrdenTrabajoWizard[],
+  articulos: ArticuloConPrecio[],
+  preciosMaterial: Record<string, number>,
+): OrdenTrabajoWizard[] {
+  let changed = false;
+  const next = ordenes.map((orden) => ({
+    ...orden,
+    items: orden.items.map((linea) => {
+      if (!linea.articuloId) return linea;
+      const articulo = articulos.find((a) => a.id === linea.articuloId);
+      if (!articulo) return linea;
+      const precioUnitario = precioSugeridoLinea({
+        codigoArticulo: articulo.codigo,
+        precioTrabajo: articulo.precio,
+        precioMaterial: preciosMaterial[orden.materialId] ?? null,
+      });
+      if (linea.precioUnitario === precioUnitario) return linea;
+      changed = true;
+      return { ...linea, precioUnitario };
+    }),
+  }));
+  return changed ? next : ordenes;
+}
+
 /**
  * m² y ml se acumulan por separado. UNI / pieza / kg / t no suman m² ni ml.
  */

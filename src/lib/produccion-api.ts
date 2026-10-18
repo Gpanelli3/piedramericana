@@ -344,6 +344,7 @@ export async function getOtsAgrupadas(): Promise<{
   error: Error | null;
 }> {
   await consolidarReposicionesAbiertas();
+  await liberarBloqueoBachaEnCorte();
   const { data, error } = await supabase
     .from("ordenes_trabajo")
     .select("*")
@@ -364,6 +365,7 @@ export async function getOtsPorFiltro(
   filtro: FiltroTab,
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
   await consolidarReposicionesAbiertas();
+  await liberarBloqueoBachaEnCorte();
   let q = supabase.from("ordenes_trabajo").select("*").not("venta_id", "is", null);
 
   if (filtro === "entregadas") {
@@ -503,6 +505,18 @@ export async function setOtFechaProgramada(
   return { error: error ? new Error(error.message) : null };
 }
 
+export async function setOtNafe(
+  otId: string,
+  nafe: string | null,
+): Promise<{ error: Error | null }> {
+  const value = nafe?.trim() ? nafe.trim() : null;
+  const { error } = await supabase
+    .from("ordenes_trabajo")
+    .update({ nafe: value, actualizado_en: new Date().toISOString() })
+    .eq("id", otId);
+  return { error: error ? new Error(error.message) : null };
+}
+
 async function presupuestoIdDesdeOt(ot: OrdenTrabajoRow): Promise<{
   presupuestoId: string | null;
   error: Error | null;
@@ -551,25 +565,18 @@ async function assertBachaResuelta(
   return null;
 }
 
-async function bloquearPorBachaSiCorte(
-  ot: OrdenTrabajoRow,
-  nextEtapa: EtapaOtId,
-): Promise<void> {
-  if (nextEtapa !== "corte") return;
-  const pendiente = bachaResuelta({
-    bachaRequerida: Boolean(ot.bacha_requerida),
-    bachaAsignada: Boolean(ot.bacha_id),
-  });
-  if (pendiente.ok || ot.bloqueada) return;
-  const now = new Date().toISOString();
+/** OTs que quedaron bloqueadas al entrar a corte: el corte sigue activo. */
+async function liberarBloqueoBachaEnCorte(): Promise<void> {
   await supabase
     .from("ordenes_trabajo")
     .update({
-      bloqueada: true,
-      motivo_bloqueo: MOTIVO_BLOQUEO_BACHA,
-      actualizado_en: now,
+      bloqueada: false,
+      motivo_bloqueo: null,
+      actualizado_en: new Date().toISOString(),
     })
-    .eq("id", ot.id);
+    .eq("bloqueada", true)
+    .eq("motivo_bloqueo", MOTIVO_BLOQUEO_BACHA)
+    .eq("etapa", "corte");
 }
 
 export async function enviarPresupuestoAProduccion(presupuestoId: string): Promise<{
@@ -618,6 +625,19 @@ export async function enviarPresupuestoAProduccion(presupuestoId: string): Promi
   return { error: null, otIds: avanzadas };
 }
 
+/** Si ya hay seña, presupuesto aprobado y medidas confirmadas, avanza a corte. */
+export async function enviarAProduccionSiCorresponde(presupuestoId: string): Promise<{
+  enviado: boolean;
+  error: Error | null;
+}> {
+  const evalRes = await evaluarEnvioAProduccion(presupuestoId);
+  if (evalRes.error) return { enviado: false, error: evalRes.error };
+  if (!evalRes.data?.ok) return { enviado: false, error: null };
+  const res = await enviarPresupuestoAProduccion(presupuestoId);
+  if (res.error) return { enviado: false, error: res.error };
+  return { enviado: true, error: null };
+}
+
 export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | null }> {
   const prev = await supabase.from("ordenes_trabajo").select("*").eq("id", otId).maybeSingle();
   if (prev.error) return { error: new Error(prev.error.message) };
@@ -646,7 +666,6 @@ export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | nul
     patch: { etapa: next, status },
   });
   if (persist.error) return persist;
-  await bloquearPorBachaSiCorte(ot, next);
   return { error: null };
 }
 
@@ -675,7 +694,6 @@ export async function setEtapaOt(
     patch: { etapa: next, status },
   });
   if (persist.error) return persist;
-  await bloquearPorBachaSiCorte(ot, next);
   return { error: null };
 }
 
@@ -833,6 +851,7 @@ export async function crearOtReposicionDesdeOrigen(opts: {
       orden_key: origen.orden_key,
       tipo: "reposicion" as OtTipo,
       ot_origen_id: origen.id,
+      nafe: origen.nafe,
     })
     .select("id")
     .single();

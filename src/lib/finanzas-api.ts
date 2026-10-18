@@ -67,7 +67,12 @@ export const CONCEPTOS_MOVIMIENTO: {
 }[] = [
   { value: "trabajo", label: "Trabajo / cobro", para: "ingreso" },
   { value: "insumos", label: "Insumos", para: "egreso" },
-  { value: "gastos", label: "Gastos", para: "egreso" },
+  { value: "alquiler", label: "Alquiler", para: "egreso" },
+  { value: "luz", label: "Luz", para: "egreso" },
+  { value: "gas", label: "Gas", para: "egreso" },
+  { value: "impuestos", label: "Impuestos", para: "egreso" },
+  { value: "prestadores", label: "No empleados", para: "egreso" },
+  { value: "gastos", label: "Otros gastos", para: "egreso" },
   { value: "sueldos", label: "Sueldos / adelantos", para: "egreso" },
   { value: "otro", label: "Otro", para: "ambos" },
 ];
@@ -78,6 +83,16 @@ export function etiquetaConcepto(c: ConceptoMovimiento | null | undefined): stri
       return "Trabajo";
     case "insumos":
       return "Insumos";
+    case "alquiler":
+      return "Alquiler";
+    case "luz":
+      return "Luz";
+    case "gas":
+      return "Gas";
+    case "impuestos":
+      return "Impuestos";
+    case "prestadores":
+      return "No empleados";
     case "gastos":
       return "Gastos";
     case "sueldos":

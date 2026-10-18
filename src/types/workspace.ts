@@ -49,6 +49,7 @@ export const EQUIPO_SECCIONES = [
   "sueldos",
   "adelantos",
   "incentivos",
+  "prestadores",
 ] as const;
 
 export type EquipoSeccion = (typeof EQUIPO_SECCIONES)[number];
@@ -58,10 +59,27 @@ export const EQUIPO_SECCION_LABELS: Record<EquipoSeccion, string> = {
   sueldos: "Sueldos",
   adelantos: "Adelantos",
   incentivos: "Incentivos",
+  prestadores: "No empleados",
 };
 
 export function equipoSeccionDesdeParam(v: string | null): EquipoSeccion {
   return v && (EQUIPO_SECCIONES as readonly string[]).includes(v)
     ? (v as EquipoSeccion)
     : "empleados";
+}
+
+/** Secciones de Finanzas (`?fn=`). */
+export const FINANZAS_SECCIONES = ["libro", "gastos_fijos"] as const;
+
+export type FinanzasSeccion = (typeof FINANZAS_SECCIONES)[number];
+
+export const FINANZAS_SECCION_LABELS: Record<FinanzasSeccion, string> = {
+  libro: "Libro",
+  gastos_fijos: "Gastos fijos",
+};
+
+export function finanzasSeccionDesdeParam(v: string | null): FinanzasSeccion {
+  return v && (FINANZAS_SECCIONES as readonly string[]).includes(v)
+    ? (v as FinanzasSeccion)
+    : "libro";
 }

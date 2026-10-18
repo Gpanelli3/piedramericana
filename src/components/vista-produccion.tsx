@@ -11,9 +11,11 @@ import {
   coalesceEtapaOt,
   getOtsAgrupadas,
   marcarOtEntregada,
+  siguienteEtapaOt,
   type OtProduccionItem,
   type VentaGrupoOt,
 } from "@/lib/produccion-api";
+import { frenaAvancePorBacha } from "@/lib/bacha-reglas";
 import { Clock } from "lucide-react";
 
 export function VistaProduccion() {
@@ -124,7 +126,12 @@ export function VistaProduccion() {
                         disabled:
                           busyId === item.orden.id ||
                           Boolean(item.orden.bloqueada) ||
-                          Boolean(item.orden.pausada),
+                          Boolean(item.orden.pausada) ||
+                          frenaAvancePorBacha({
+                            bachaRequerida: Boolean(item.orden.bacha_requerida),
+                            bachaAsignada: Boolean(item.orden.bacha_id),
+                            nextEtapa: siguienteEtapaOt(coalesceEtapaOt(item.orden.etapa)),
+                          }),
                         onClick: () => void onAvanzar(item),
                       }
               }

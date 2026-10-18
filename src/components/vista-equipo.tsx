@@ -2,12 +2,13 @@
 
 import { useMemo, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Banknote, Gift, Wallet, Users } from "lucide-react";
+import { Banknote, Gift, Handshake, Wallet, Users } from "lucide-react";
+import { IncentivosCatalogo } from "@/components/equipo/IncentivosCatalogo";
+import { PrestadoresCatalogo } from "@/components/equipo/PrestadoresCatalogo";
 import type { LucideIcon } from "lucide-react";
 import { EmpleadosCatalogo } from "@/components/equipo/EmpleadosCatalogo";
 import { SueldosCatalogo } from "@/components/equipo/SueldosCatalogo";
 import { AdelantosCatalogo } from "@/components/equipo/AdelantosCatalogo";
-import { VistaModuloPendiente } from "@/components/vista-modulo-pendiente";
 import {
   EQUIPO_SECCION_LABELS,
   equipoSeccionDesdeParam,
@@ -32,7 +33,11 @@ const EQUIPO_META: Record<
   },
   incentivos: {
     icono: Gift,
-    resumen: "Comisiones e incentivos (alcance a definir). Todavía sin desarrollar.",
+    resumen: "Comisiones, premios y bonos. Cada alta también sale en Finanzas.",
+  },
+  prestadores: {
+    icono: Handshake,
+    resumen: "Pagos a contador, redes y otros que no están en nómina.",
   },
 };
 
@@ -90,12 +95,17 @@ export function VistaEquipo() {
     );
   }
 
-  const meta = EQUIPO_META[seccion];
+  if (seccion === "incentivos") {
+    return (
+      <EquipoShell seccion="incentivos">
+        <IncentivosCatalogo />
+      </EquipoShell>
+    );
+  }
+
   return (
-    <VistaModuloPendiente
-      titulo={`Equipo · ${EQUIPO_SECCION_LABELS[seccion]}`}
-      resumen={meta.resumen}
-      icono={meta.icono}
-    />
+    <EquipoShell seccion="prestadores">
+      <PrestadoresCatalogo />
+    </EquipoShell>
   );
 }

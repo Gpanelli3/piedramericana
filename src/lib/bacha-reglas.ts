@@ -59,10 +59,54 @@ export function camposRequisitoBacha(input: {
   };
 }
 
-const ETAPAS_EXIGEN_BACHA = new Set(["corte", "produccion", "despacho"]);
+const ETAPAS_EXIGEN_BACHA = new Set(["produccion", "despacho"]);
 
 export function etapaExigeBachaAsignada(etapa: string | null | undefined): boolean {
   return ETAPAS_EXIGEN_BACHA.has((etapa ?? "").trim());
+}
+
+/** Frena el paso a producción/logística. El corte sigue activo. */
+export function frenaAvancePorBacha(input: {
+  bachaRequerida: boolean;
+  bachaAsignada: boolean;
+  nextEtapa: string | null | undefined;
+}): boolean {
+  const next = (input.nextEtapa ?? "").trim();
+  if (!next || next === "medicion" || next === "corte") return false;
+  return !bachaResuelta({
+    bachaRequerida: input.bachaRequerida,
+    bachaAsignada: input.bachaAsignada,
+  }).ok;
+}
+
+export function avisoBachaPendiente(input: {
+  bachaRequerida: boolean;
+  bachaAsignada: boolean;
+}): string | null {
+  return bachaResuelta(input).ok ? null : MOTIVO_BLOQUEO_BACHA;
+}
+
+function normCliente(s: string | null | undefined): string {
+  return (s ?? "").trim().toLowerCase();
+}
+
+/** Una bacha propia sirve en cualquier OT. La del cliente, solo en las de ese cliente. */
+export function bachaCorrespondeACliente(
+  bacha: {
+    origen: BachaOrigen | string;
+    cliente_nombre?: string | null;
+    cliente_id?: string | null;
+  },
+  ot: { clienteNombre?: string | null; clienteId?: string | null },
+): boolean {
+  if (bacha.origen !== "cliente") return true;
+  const bachaId = bacha.cliente_id ?? null;
+  const otId = ot.clienteId ?? null;
+  if (bachaId && otId) return bachaId === otId;
+  const deBacha = normCliente(bacha.cliente_nombre);
+  const esperado = normCliente(ot.clienteNombre);
+  if (!deBacha || !esperado) return false;
+  return deBacha === esperado;
 }
 
 export function ordenBachaParaOt<T extends { key: string }>(

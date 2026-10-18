@@ -8,7 +8,7 @@ import {
 } from "@/lib/finanzas-api";
 import { calcularRetencion } from "@/lib/retencion-reglas";
 import { reservarChapasAOt } from "@/lib/stock-ot-api";
-import { getOrCreateMedicion } from "@/lib/medicion-api";
+import { getOrCreateMedicion, solicitarMedicion } from "@/lib/medicion-api";
 import type {
   Database,
   EtapaOtKanban,
@@ -18,7 +18,6 @@ import type {
 } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
-import { etiquetaModeloBacha } from "@/components/presupuesto/wizard/types";
 import {
   camposRequisitoBacha,
   esBloqueoPorBacha,
@@ -273,7 +272,7 @@ function camposBachaDesdeOrden(orden: PresupuestoPayloadV1["ordenes"][number]) {
   return camposRequisitoBacha({
     llevaBacha,
     origen: orden.bachaOrigen === "cliente" ? "cliente" : "propia",
-    tipoEtiqueta: llevaBacha ? etiquetaModeloBacha(orden.bachaId) : null,
+    tipoEtiqueta: null,
     colocacion: llevaBacha ? (orden.tipoColocacion ?? null) : null,
   });
 }
@@ -289,6 +288,7 @@ type OtBachaSync = {
   bacha_origen: string | null;
   bacha_tipo: string | null;
   bacha_colocacion: string | null;
+  nafe: string | null;
 };
 
 function parcheBloqueoBacha(
@@ -307,7 +307,7 @@ function parcheBloqueoBacha(
   return null;
 }
 
-/** El presupuesto manda el requisito. La pieza asignada (`bacha_id`) no se pisa. */
+/** El presupuesto manda el requisito. No pisa la pieza asignada ni un origen ya definido en la OT. */
 async function sincronizarBachaEnOtsExistentes(
   existentes: OtBachaSync[],
   payload: Json,
@@ -319,15 +319,22 @@ async function sincronizarBachaEnOtsExistentes(
     const orden = ordenBachaParaOt(ot, existentes, ordenes);
     if (!orden) continue;
     const campos = camposBachaDesdeOrden(orden);
+    const origenYaDefinido = ot.bacha_origen === "cliente" || ot.bacha_origen === "propia";
+    const camposSync = origenYaDefinido
+      ? { ...campos, bacha_origen: ot.bacha_origen }
+      : campos;
+    const nafe = orden.nafe.trim() || null;
     const igual =
-      Boolean(ot.bacha_requerida) === campos.bacha_requerida &&
-      (ot.bacha_origen ?? null) === campos.bacha_origen &&
-      (ot.bacha_tipo ?? null) === campos.bacha_tipo &&
-      (ot.bacha_colocacion ?? null) === campos.bacha_colocacion;
+      Boolean(ot.bacha_requerida) === camposSync.bacha_requerida &&
+      (ot.bacha_origen ?? null) === camposSync.bacha_origen &&
+      (ot.bacha_tipo ?? null) === camposSync.bacha_tipo &&
+      (ot.bacha_colocacion ?? null) === camposSync.bacha_colocacion &&
+      (ot.nafe ?? null) === nafe;
     const bloqueo = parcheBloqueoBacha(ot, campos.bacha_requerida);
     if (igual && !bloqueo) continue;
     const patch: Database["public"]["Tables"]["ordenes_trabajo"]["Update"] = {
-      ...campos,
+      ...camposSync,
+      nafe,
       actualizado_en: now,
       ...(bloqueo ?? {}),
     };
@@ -353,7 +360,7 @@ async function crearJobOtSiAusente(opts: {
   const exist = await supabase
     .from("ordenes_trabajo")
     .select(
-      "id,orden_key,tipo,etapa,bloqueada,motivo_bloqueo,bacha_id,bacha_requerida,bacha_origen,bacha_tipo,bacha_colocacion",
+      "id,orden_key,tipo,etapa,bloqueada,motivo_bloqueo,bacha_id,bacha_requerida,bacha_origen,bacha_tipo,bacha_colocacion,nafe",
     )
     .eq("venta_id", opts.ventaId)
     .neq("estado", "cancelled");
@@ -417,6 +424,7 @@ async function crearJobOtSiAusente(opts: {
             tipo: "normal" as const,
             ...camposBachaDesdeOrden(orden),
             bacha_id: null as string | null,
+            nafe: orden.nafe.trim() || null,
           };
         })
       : [
@@ -760,6 +768,16 @@ export async function registrarPagoSena(opts: {
     presupuestoId: opts.presupuestoId,
   });
   if (otRes.error) return { error: otRes.error, otId: otRes.otId };
+
+  const med = await getOrCreateMedicion(opts.presupuestoId);
+  if (med.error) return { error: med.error, otId: otRes.otId };
+  if (med.data?.estado === "sin_solicitar") {
+    const sol = await solicitarMedicion({
+      presupuestoId: opts.presupuestoId,
+      usuarioId: opts.created_by ?? null,
+    });
+    if (sol.error) return { error: sol.error, otId: otRes.otId };
+  }
 
   if (!otRes.otId) return { error: null, otId: null };
 

@@ -5,6 +5,7 @@ import {
   formatoFechaEntregaRotulo,
   textoBachaRotulo,
   textoMedidasPiezaRotulo,
+  textoNafeRotulo,
   textoZocaloRotulo,
 } from "./rotulo-ot-api";
 
@@ -112,7 +113,19 @@ describe("textoBachaRotulo", () => {
         origen: null,
         colocacion: null,
       }),
-    ).toEqual({ titulo: "Sin especificar", detalle: null });
+    ).toEqual({ titulo: "Bacha", detalle: null });
+  });
+
+  it("sin tipo usa colocación y origen", () => {
+    expect(
+      textoBachaRotulo({
+        requerida: true,
+        asignada: true,
+        tipo: null,
+        origen: "propia",
+        colocacion: "bajo",
+      }),
+    ).toEqual({ titulo: "Bajo mesada", detalle: "Nuestra" });
   });
 
   it("pendiente: empieza con Bacha pendiente y sigue tipo, origen y colocación", () => {
@@ -140,7 +153,22 @@ describe("textoBachaRotulo", () => {
       }),
     ).toEqual({
       titulo: "Bacha pendiente",
-      detalle: "Sin especificar",
+      detalle: null,
+    });
+  });
+
+  it("pendiente sin tipo muestra origen y colocación", () => {
+    expect(
+      textoBachaRotulo({
+        requerida: true,
+        asignada: false,
+        tipo: null,
+        origen: "cliente",
+        colocacion: "bajo",
+      }),
+    ).toEqual({
+      titulo: "Bacha pendiente",
+      detalle: "Del cliente · Bajo mesada",
     });
   });
 
@@ -195,6 +223,17 @@ describe("textoZocaloRotulo", () => {
   });
 });
 
+describe("textoNafeRotulo", () => {
+  it("vacío queda en raya", () => {
+    expect(textoNafeRotulo(null)).toBe("—");
+    expect(textoNafeRotulo("  ")).toBe("—");
+  });
+
+  it("muestra el valor cargado", () => {
+    expect(textoNafeRotulo("Pulido")).toBe("Pulido");
+  });
+});
+
 describe("armarRotuloOt", () => {
   it("arma la hoja con título, fecha, bacha y piezas", () => {
     const rotulo = armarRotuloOt({
@@ -226,6 +265,7 @@ describe("armarRotuloOt", () => {
     expect(rotulo.presupuestoNumero).toBe("1842");
     expect(rotulo.fechaEntrega).toBe("18/10/2026");
     expect(rotulo.zocalo).toBe("No");
+    expect(rotulo.nafe).toBe("—");
     expect(rotulo.bachaTitulo).toBe("Johnson — Acero Premium");
     expect(rotulo.bachaDetalle).toBe("Nuestra · Bajo mesada");
     expect(rotulo.piezas).toEqual([
@@ -269,6 +309,7 @@ describe("armarRotuloOt", () => {
       bachaTipo: "Franke — Orion 70",
       bachaOrigen: "cliente",
       bachaColocacion: "bajo",
+      nafe: "Pulido",
       piezas: [
         {
           articuloLabel: "Mesada",
@@ -294,6 +335,7 @@ describe("armarRotuloOt", () => {
     });
     expect(rotulo.ambiente).toBe("Cocina — mesada principal");
     expect(rotulo.zocalo).toBe("Sí");
+    expect(rotulo.nafe).toBe("Pulido");
     expect(rotulo.bachaTitulo).toBe("Bacha pendiente");
     expect(rotulo.bachaDetalle).toBe("Franke — Orion 70 · Del cliente · Bajo mesada");
   });

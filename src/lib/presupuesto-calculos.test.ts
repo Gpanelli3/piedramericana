@@ -9,7 +9,9 @@ import {
   esArticuloCobraMaterial,
   formatMetraje,
   importeMecPresupuesto,
+  monedaDeListaPrecio,
   precioSugeridoLinea,
+  reponerPreciosSugeridosOrdenes,
   trioM2DeOrden,
 } from "@/lib/presupuesto-calculos";
 import {
@@ -248,6 +250,95 @@ describe("equivalentesMonedaMixta", () => {
     expect(r.totalArs).toBeCloseTo(126250, 2);
     expect(r.totalEnMonedaItems).toBeCloseTo(101, 4);
   });
+
+  it("lista en pesos: total principal en ARS", () => {
+    const r = equivalentesMonedaMixta({
+      items: 10000,
+      monedaItems: "ars",
+      mecArs: 2000,
+      dolarHoy: 1250,
+    });
+    expect(r.totalEnMonedaItems).toBe(12000);
+    expect(r.totalArs).toBe(12000);
+  });
+});
+
+describe("monedaDeListaPrecio", () => {
+  it("toma la moneda de la lista", () => {
+    expect(monedaDeListaPrecio({ moneda: "ars" }, "usd")).toBe("ars");
+    expect(monedaDeListaPrecio({ moneda: "usd" }, "ars")).toBe("usd");
+  });
+
+  it("si no hay lista usa el fallback", () => {
+    expect(monedaDeListaPrecio(null, "ars")).toBe("ars");
+    expect(monedaDeListaPrecio({ moneda: "otra" }, "usd")).toBe("usd");
+  });
+});
+
+describe("reponerPreciosSugeridosOrdenes", () => {
+  it("reemplaza precios de pieza y trabajo al cambiar de lista", () => {
+    const articulos: ArticuloConPrecio[] = [
+      art({ id: "pieza", codigo: "PIEZA", descripcion: "Pieza", unidad: "M2", precio: 10 }),
+      art({ id: "mo", codigo: "BACH-MO", descripcion: "MO", unidad: "UNI", calcula_material: false, precio: 40 }),
+    ];
+    const ordenes: OrdenTrabajoWizard[] = [
+      {
+        key: "ot1",
+        titulo: "Cocina",
+        fecha: "",
+        tecnicoId: "",
+        fechaMedicion: "",
+        fechaEntrega: "",
+        materialId: "mat-1",
+        chapaSugeridaId: null,
+        chapaSugeridaBulto: "",
+        chapaSugeridaLabel: "",
+        tipoColocacion: "bajo",
+        bachaId: "",
+        llevaBacha: false,
+        bachaOrigen: "propia",
+        nafe: "",
+        items: [
+          {
+            key: "l1",
+            articuloId: "pieza",
+            modoIngreso: "manual",
+            cantidad: "1",
+            precioUnitario: "90",
+            altoM: "",
+            anchoM: "",
+            desperdicioPct: "",
+          },
+          {
+            key: "l2",
+            articuloId: "mo",
+            modoIngreso: "dimensiones",
+            cantidad: "1",
+            precioUnitario: "15",
+            altoM: "",
+            anchoM: "",
+            desperdicioPct: "",
+          },
+        ],
+        direccionObra: "",
+        obraLat: null,
+        obraLng: null,
+        obraFormattedAddress: "",
+        referenciaObra: "",
+        planoAdjunto: null,
+        mMedicion: false,
+        mEntrega: false,
+        mColocacion: false,
+        totalMec: "",
+        excluirMec: false,
+        obsMec: "",
+        panelExpandido: true,
+      },
+    ];
+    const next = reponerPreciosSugeridosOrdenes(ordenes, articulos, { "mat-1": 220 });
+    expect(next[0]?.items[0]?.precioUnitario).toBe("220");
+    expect(next[0]?.items[1]?.precioUnitario).toBe("40");
+  });
 });
 
 describe("computePresupuestoTotalM2", () => {
@@ -272,6 +363,7 @@ describe("computePresupuestoTotalM2", () => {
         bachaId: "sin",
         llevaBacha: false,
         bachaOrigen: "propia",
+        nafe: "",
         items: [
           {
             key: "l1",
@@ -313,6 +405,7 @@ describe("computePresupuestoTotalM2", () => {
         bachaId: "sin",
         llevaBacha: false,
         bachaOrigen: "propia",
+        nafe: "",
         items: [
           {
             key: "l2",
@@ -376,6 +469,7 @@ describe("trioM2DeOrden", () => {
       bachaId: "",
       llevaBacha: false,
       bachaOrigen: "propia",
+      nafe: "",
       items: [
         {
           key: "l1",
@@ -482,6 +576,7 @@ describe("computePresupuestoComercial", () => {
       bachaId: "sin",
       llevaBacha: false,
       bachaOrigen: "propia",
+      nafe: "",
       items: [
         {
           key: "l1",

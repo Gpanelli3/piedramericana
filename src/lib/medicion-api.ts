@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import {
+  enColaParaMedir,
   esMedicionEstado,
   motivoBloqueoEnvio,
   puedeEnviarAProduccion,
@@ -145,38 +146,6 @@ export async function solicitarMedicion(opts: {
   return { data: data ? mapMedicion(data) : null, error: null };
 }
 
-export async function saltarMedicion(opts: {
-  presupuestoId: string;
-  motivo: string;
-  usuarioId?: string | null;
-}): Promise<{ data: PresupuestoMedicionRow | null; error: Error | null }> {
-  const motivo = opts.motivo.trim();
-  if (!motivo) return { data: null, error: new Error("Indicá por qué se salta la medición.") };
-
-  const cur = await getOrCreateMedicion(opts.presupuestoId);
-  if (cur.error) return cur;
-  if (!cur.data) return { data: null, error: new Error("No se pudo crear la medición.") };
-  if (cur.data.estado === "medido") {
-    return { data: cur.data, error: new Error("La medición ya está confirmada.") };
-  }
-
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("presupuesto_mediciones")
-    .update({
-      estado: "no_requiere",
-      motivo_salto: motivo,
-      solicitado_por: opts.usuarioId ?? cur.data.solicitado_por,
-      solicitado_en: cur.data.solicitado_en ?? now,
-      updated_at: now,
-    })
-    .eq("id", cur.data.id)
-    .select("*")
-    .maybeSingle();
-  if (error) return { data: null, error: new Error(error.message) };
-  return { data: data ? mapMedicion(data) : null, error: null };
-}
-
 async function marcarOtsMedidasConfirmadas(presupuestoId: string, now: string) {
   const venta = await supabase
     .from("ventas")
@@ -221,7 +190,11 @@ export async function confirmarMedicion(opts: {
   if (cur.data.estado === "no_requiere") {
     return { ...empty, error: new Error("Esta obra se marcó como sin medición.") };
   }
-  if (cur.data.estado !== "listo_para_medir" && cur.data.estado !== "medido") {
+  if (
+    cur.data.estado !== "listo_para_medir" &&
+    cur.data.estado !== "medido" &&
+    cur.data.estado !== "sin_solicitar"
+  ) {
     return { ...empty, error: new Error("Pedí la medición antes de confirmar las medidas.") };
   }
 
@@ -318,19 +291,48 @@ export type MedicionColaItem = {
   bloqueoEnvio: string | null;
   otsPendientesDeCorte: number;
   yaEnProduccion: boolean;
+  medidoPorNombre: string | null;
+  /** Órdenes de la venta, para imprimir el rótulo y abrir el plano. */
+  ots: Array<{ id: string; ordenKey: string }>;
 };
 
 export async function listarColaMedicion(): Promise<{
   data: MedicionColaItem[];
   error: Error | null;
 }> {
-  const medRes = await supabase
-    .from("presupuesto_mediciones")
-    .select("*")
-    .in("estado", ["listo_para_medir", "medido", "no_requiere"])
-    .order("fecha_programada", { ascending: true, nullsFirst: false });
+  const [medRes, ventasColaRes] = await Promise.all([
+    supabase
+      .from("presupuesto_mediciones")
+      .select("*")
+      .in("estado", ["listo_para_medir", "medido"])
+      .order("fecha_programada", { ascending: true, nullsFirst: false }),
+    supabase.from("ventas").select("presupuesto_id").in("estado", ["en_medicion", "senado"]),
+  ]);
   if (medRes.error) return { data: [], error: new Error(medRes.error.message) };
-  const mediciones = (medRes.data ?? []).map(mapMedicion);
+  if (ventasColaRes.error) return { data: [], error: new Error(ventasColaRes.error.message) };
+
+  const extraIds = [
+    ...new Set(
+      (ventasColaRes.data ?? [])
+        .map((v) => v.presupuesto_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  const extraMedRes =
+    extraIds.length > 0
+      ? await supabase
+          .from("presupuesto_mediciones")
+          .select("*")
+          .in("presupuesto_id", extraIds)
+          .eq("estado", "sin_solicitar")
+      : { data: [] as typeof medRes.data, error: null };
+  if (extraMedRes.error) return { data: [], error: new Error(extraMedRes.error.message) };
+
+  const byPres = new Map<string, ReturnType<typeof mapMedicion>>();
+  for (const row of [...(medRes.data ?? []), ...(extraMedRes.data ?? [])]) {
+    byPres.set(row.presupuesto_id, mapMedicion(row));
+  }
+  const mediciones = [...byPres.values()];
   if (mediciones.length === 0) return { data: [], error: null };
 
   const presIds = mediciones.map((m) => m.presupuesto_id);
@@ -351,13 +353,16 @@ export async function listarColaMedicion(): Promise<{
   const ventaIds = [...new Set((ventasRes.data ?? []).map((v) => v.id))];
 
   const pagosCount = new Map<string, number>();
-  const otsByVenta = new Map<string, Array<{ etapa: string; estado: string }>>();
+  const otsByVenta = new Map<
+    string,
+    Array<{ id: string; ordenKey: string; etapa: string; estado: string }>
+  >();
   if (ventaIds.length > 0) {
     const [pagosRes, otsRes] = await Promise.all([
       supabase.from("ventas_pagos").select("venta_id").in("venta_id", ventaIds),
       supabase
         .from("ordenes_trabajo")
-        .select("venta_id,etapa,estado")
+        .select("id,orden_key,venta_id,etapa,estado")
         .in("venta_id", ventaIds)
         .neq("estado", "cancelled"),
     ]);
@@ -369,7 +374,12 @@ export async function listarColaMedicion(): Promise<{
     for (const ot of otsRes.data ?? []) {
       if (!ot.venta_id) continue;
       const list = otsByVenta.get(ot.venta_id) ?? [];
-      list.push({ etapa: String(ot.etapa), estado: String(ot.estado) });
+      list.push({
+        id: ot.id,
+        ordenKey: ot.orden_key?.trim() ?? "",
+        etapa: String(ot.etapa),
+        estado: String(ot.estado),
+      });
       otsByVenta.set(ot.venta_id, list);
     }
   }
@@ -381,6 +391,7 @@ export async function listarColaMedicion(): Promise<{
     if (pres.status === "rechazado") continue;
     const venta = ventaByPres.get(pres.id) ?? null;
     const tieneSena = venta ? (pagosCount.get(venta.id) ?? 0) > 0 : false;
+    if (medicion.estado === "sin_solicitar" && !tieneSena) continue;
     const ots = venta ? (otsByVenta.get(venta.id) ?? []) : [];
     const otsPendientesDeCorte = ots.filter(
       (ot) => ot.etapa === "medicion" && ot.estado !== "done",
@@ -407,7 +418,27 @@ export async function listarColaMedicion(): Promise<{
       bloqueoEnvio: motivoBloqueoEnvio(puedeEnviar),
       otsPendientesDeCorte,
       yaEnProduccion,
+      medidoPorNombre: null,
+      ots: ots.map((ot) => ({ id: ot.id, ordenKey: ot.ordenKey })),
     });
+  }
+
+  const medidorIds = [
+    ...new Set(items.map((i) => i.medicion.medido_por).filter((id): id is string => Boolean(id))),
+  ];
+  if (medidorIds.length > 0) {
+    const usuarios = await supabase.from("usuarios").select("id, full_name").in("id", medidorIds);
+    if (!usuarios.error) {
+      const nombrePorId = new Map<string, string>();
+      for (const u of usuarios.data ?? []) {
+        const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
+        if (u.id && name) nombrePorId.set(u.id, name);
+      }
+      for (const item of items) {
+        const id = item.medicion.medido_por;
+        if (id) item.medidoPorNombre = nombrePorId.get(id) ?? null;
+      }
+    }
   }
 
   return { data: items, error: null };

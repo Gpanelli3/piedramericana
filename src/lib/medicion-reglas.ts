@@ -12,7 +12,13 @@ export function esMedicionEstado(v: unknown): v is MedicionEstado {
 }
 
 export function medicionResuelta(estado: MedicionEstado): boolean {
-  return estado === "medido" || estado === "no_requiere";
+  return estado === "medido";
+}
+
+/** Seña o pedido explícito: tiene que verse en Medición → Para medir. */
+export function enColaParaMedir(estado: MedicionEstado, tieneSena: boolean): boolean {
+  if (estado === "listo_para_medir") return true;
+  return estado === "sin_solicitar" && tieneSena;
 }
 
 export type PuedeEnviarAProduccionInput = {
@@ -41,7 +47,7 @@ export function puedeEnviarAProduccion(
     if (input.medicionEstado === "listo_para_medir") {
       faltantes.push("La medición todavía no se confirmó.");
     } else {
-      faltantes.push("Falta resolver la medición (medir o saltar).");
+      faltantes.push("Falta confirmar las medidas.");
     }
   }
   return { ok: faltantes.length === 0, faltantes };
@@ -57,7 +63,7 @@ export function etiquetaMedicionEstado(estado: MedicionEstado): string {
     case "sin_solicitar":
       return "Sin solicitar";
     case "listo_para_medir":
-      return "Listo para medir";
+      return "Para medir";
     case "medido":
       return "Medido";
     case "no_requiere":

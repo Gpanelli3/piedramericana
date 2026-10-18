@@ -36,10 +36,10 @@ import {
 } from "@/lib/presupuestos-api";
 import { listMaterials } from "@/lib/materials-api";
 import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
+import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
 import { listarMedicionesPorPresupuestos } from "@/lib/medicion-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { SolicitarMedicionDialog } from "@/components/medicion/SolicitarMedicionDialog";
-import { SaltarMedicionDialog } from "@/components/medicion/SaltarMedicionDialog";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
   hydratePresupuestoPayloadV1,
@@ -80,7 +80,6 @@ export function VistaVentas() {
   const [medicionPorId, setMedicionPorId] = useState<Record<string, MedicionEstado>>({});
   const [medicionTarget, setMedicionTarget] = useState<PresupuestoRowLista | null>(null);
   const [solicitarOpen, setSolicitarOpen] = useState(false);
-  const [saltarOpen, setSaltarOpen] = useState(false);
 
   const [resumenAbierto, setResumenAbierto] = useState(false);
   const [resumenCargando, setResumenCargando] = useState(false);
@@ -407,6 +406,11 @@ export function VistaVentas() {
             : "Aprobado. Podés registrar la primera seña cuando quieras desde Ventas.",
         );
       }
+      if (payload.montoSenia > 0) {
+        const envio = await enviarAProduccionSiCorresponde(aprobDialogRow.id);
+        if (envio.error) toast.error(envio.error.message);
+        else if (envio.enviado) toast.success("Ya tenía medidas: pasó a producción.");
+      }
       await refreshLista();
     },
     [aprobDialogRow, refreshLista],
@@ -437,14 +441,14 @@ export function VistaVentas() {
   );
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-white">
         <div className="px-8 pt-5 pb-5">
           <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
         </div>
       </header>
 
-      <main className="p-8 [scrollbar-gutter:stable]">
+      <main className="flex flex-1 flex-col p-8 [scrollbar-gutter:stable]">
         {vista === "wizard" ? (
           <PresupuestoWizard
             key={editPresupuestoId ?? "nuevo"}
@@ -467,10 +471,6 @@ export function VistaVentas() {
             onListoParaMedir={(row) => {
               setMedicionTarget(row);
               setSolicitarOpen(true);
-            }}
-            onSaltarMedicion={(row) => {
-              setMedicionTarget(row);
-              setSaltarOpen(true);
             }}
           />
         )}
@@ -670,14 +670,6 @@ export function VistaVentas() {
       <SolicitarMedicionDialog
         open={solicitarOpen}
         onOpenChange={setSolicitarOpen}
-        presupuestoId={medicionTarget?.id ?? null}
-        cliente={medicionTarget?.cliente}
-        numero={medicionTarget?.numero}
-        onDone={() => void refreshLista()}
-      />
-      <SaltarMedicionDialog
-        open={saltarOpen}
-        onOpenChange={setSaltarOpen}
         presupuestoId={medicionTarget?.id ?? null}
         cliente={medicionTarget?.cliente}
         numero={medicionTarget?.numero}

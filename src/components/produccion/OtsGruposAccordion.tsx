@@ -8,11 +8,34 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
+import { TallerOtActionsProvider } from "@/components/produccion/useAccionesRotuloOt";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import type { OtProduccionItem, VentaGrupoOt } from "@/lib/produccion-api";
 import type { JobStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
+
+const ETAPA_CHIP: Record<string, string> = {
+  medicion:
+    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200",
+  corte:
+    "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200",
+  produccion:
+    "border-accent/50 bg-accent/20 text-foreground",
+  despacho:
+    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+  done: "border-border bg-muted text-foreground",
+  cancelled:
+    "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
+  sin: "border-border bg-muted text-muted-foreground",
+};
+
+function chipEtapa(etapa: string | null, estado: JobStatus | null) {
+  if (estado === "done") return { key: "done", className: ETAPA_CHIP.done };
+  if (estado === "cancelled") return { key: "cancelled", className: ETAPA_CHIP.cancelled };
+  const key = etapa && etapa in ETAPA_CHIP ? etapa : "sin";
+  return { key, className: ETAPA_CHIP[key] ?? ETAPA_CHIP.sin };
+}
 
 type Props = {
   grupos: VentaGrupoOt[];
@@ -21,7 +44,6 @@ type Props = {
   renderRow: (item: OtProduccionItem, ctx: { onVer: () => void }) => ReactNode;
   onChanged: () => void;
   permitirEntregar?: boolean;
-  mostrarRotulo?: boolean;
 };
 
 export function OtsGruposAccordion({
@@ -31,7 +53,6 @@ export function OtsGruposAccordion({
   renderRow,
   onChanged,
   permitirEntregar = true,
-  mostrarRotulo = false,
 }: Props) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [detalleOpen, setDetalleOpen] = useState(false);
@@ -50,18 +71,21 @@ export function OtsGruposAccordion({
   }
 
   return (
-    <>
+    <TallerOtActionsProvider>
       <div className="space-y-3">
         {grupos.map((g) => {
           const open = openIds.has(g.ventaId);
           const cant = `${g.ots.length} ${g.ots.length === 1 ? "OT" : "OTs"}`;
           const etapas = [
-            ...new Set(
-              g.ots.map((item) =>
-                etiquetaEtapaOt(String(item.orden.etapa), item.orden.estado as JobStatus),
-              ),
-            ),
-          ].join(", ");
+            ...new Map(
+              g.ots.map((item) => {
+                const estado = item.orden.estado as JobStatus;
+                const label = etiquetaEtapaOt(String(item.orden.etapa), estado);
+                const chip = chipEtapa(item.orden.etapa, estado);
+                return [chip.key, { key: chip.key, label, className: chip.className }] as const;
+              }),
+            ).values(),
+          ];
           return (
             <Collapsible
               key={g.ventaId}
@@ -93,8 +117,20 @@ export function OtsGruposAccordion({
                         <span className="mx-1.5 font-normal text-muted-foreground">·</span>
                         {g.cliente}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {etapas} · {cant}
+                      <p className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {etapas.map((etapa) => (
+                          <Badge
+                            key={etapa.key}
+                            variant="outline"
+                            className={cn(
+                              "h-5 px-2 text-[11px] font-semibold",
+                              etapa.className,
+                            )}
+                          >
+                            {etapa.label}
+                          </Badge>
+                        ))}
+                        <span className="text-xs text-muted-foreground">{cant}</span>
                       </p>
                     </div>
                     <Badge variant="secondary" className="shrink-0 tabular-nums">
@@ -126,11 +162,11 @@ export function OtsGruposAccordion({
         onOpenChange={setDetalleOpen}
         onChanged={onChanged}
         permitirEntregar={permitirEntregar}
-        mostrarRotulo={mostrarRotulo}
+        mostrarRotulo
         navItems={allOts}
         navIndex={navIndex}
         onNavChange={setNavIndex}
       />
-    </>
+    </TallerOtActionsProvider>
   );
 }

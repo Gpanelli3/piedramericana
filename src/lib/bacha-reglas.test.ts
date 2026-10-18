@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   MOTIVO_BLOQUEO_BACHA,
+  bachaCorrespondeACliente,
   bachaResuelta,
   camposRequisitoBacha,
   esBloqueoPorBacha,
   etapaExigeBachaAsignada,
+  frenaAvancePorBacha,
   motivoBloqueoBacha,
   ordenBachaParaOt,
 } from "./bacha-reglas";
@@ -64,12 +66,44 @@ describe("camposRequisitoBacha", () => {
 });
 
 describe("etapaExigeBachaAsignada", () => {
-  it("exige desde corte en adelante", () => {
+  it("exige desde producción, no en corte", () => {
     expect(etapaExigeBachaAsignada("medicion")).toBe(false);
-    expect(etapaExigeBachaAsignada("corte")).toBe(true);
+    expect(etapaExigeBachaAsignada("corte")).toBe(false);
     expect(etapaExigeBachaAsignada("produccion")).toBe(true);
     expect(etapaExigeBachaAsignada("despacho")).toBe(true);
     expect(etapaExigeBachaAsignada(null)).toBe(false);
+  });
+});
+
+describe("frenaAvancePorBacha", () => {
+  it("deja cortar aunque falte la bacha", () => {
+    expect(
+      frenaAvancePorBacha({
+        bachaRequerida: true,
+        bachaAsignada: false,
+        nextEtapa: "corte",
+      }),
+    ).toBe(false);
+  });
+
+  it("frena el paso a producción si esa OT lleva bacha y no está asignada", () => {
+    expect(
+      frenaAvancePorBacha({
+        bachaRequerida: true,
+        bachaAsignada: false,
+        nextEtapa: "produccion",
+      }),
+    ).toBe(true);
+  });
+
+  it("no frena si la OT no lleva bacha", () => {
+    expect(
+      frenaAvancePorBacha({
+        bachaRequerida: false,
+        bachaAsignada: false,
+        nextEtapa: "produccion",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -95,6 +129,50 @@ describe("ordenBachaParaOt", () => {
   it("no adivina si hay varias OT sin clave", () => {
     const ots = [{ orden_key: null }, { orden_key: null }];
     expect(ordenBachaParaOt(ots[0], ots, [ordenes[0]])).toBeNull();
+  });
+});
+
+describe("bachaCorrespondeACliente", () => {
+  it("la propia entra en cualquier OT", () => {
+    expect(
+      bachaCorrespondeACliente(
+        { origen: "propia", cliente_nombre: null },
+        { clienteNombre: "García" },
+      ),
+    ).toBe(true);
+  });
+
+  it("la del cliente entra si el id coincide", () => {
+    expect(
+      bachaCorrespondeACliente(
+        { origen: "cliente", cliente_id: "c1", cliente_nombre: "Otro" },
+        { clienteId: "c1", clienteNombre: "García" },
+      ),
+    ).toBe(true);
+  });
+
+  it("la del cliente no entra en la OT de otro cliente", () => {
+    expect(
+      bachaCorrespondeACliente(
+        { origen: "cliente", cliente_id: "c1", cliente_nombre: "García" },
+        { clienteId: "c2", clienteNombre: "García" },
+      ),
+    ).toBe(false);
+  });
+
+  it("sin id, compara el nombre", () => {
+    expect(
+      bachaCorrespondeACliente(
+        { origen: "cliente", cliente_nombre: "García" },
+        { clienteNombre: "garcía" },
+      ),
+    ).toBe(true);
+    expect(
+      bachaCorrespondeACliente(
+        { origen: "cliente", cliente_nombre: "García" },
+        { clienteNombre: "López" },
+      ),
+    ).toBe(false);
   });
 });
 

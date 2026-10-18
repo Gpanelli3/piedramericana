@@ -25,7 +25,7 @@ export function ListaPrecioSelector({
 }: ListaPrecioSelectorProps) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs font-medium">Lista de precio</Label>
+      <Label>Lista de precio</Label>
       <Select
         value={listaPrecioId}
         onValueChange={onChange}
@@ -37,7 +37,7 @@ export function ListaPrecioSelector({
         <SelectContent>
           {listasPrecios.map((lista) => (
             <SelectItem key={lista.id} value={lista.id}>
-              {lista.label}
+              {lista.label} · {lista.moneda.toUpperCase()}
             </SelectItem>
           ))}
         </SelectContent>

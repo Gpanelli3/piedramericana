@@ -1,6 +1,11 @@
 import type { Database, InventorySlabEstado } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
-import { esBloqueoPorBacha, etapaExigeBachaAsignada, MOTIVO_BLOQUEO_BACHA } from "@/lib/bacha-reglas";
+import {
+  bachaCorrespondeACliente,
+  esBloqueoPorBacha,
+  etapaExigeBachaAsignada,
+  MOTIVO_BLOQUEO_BACHA,
+} from "@/lib/bacha-reglas";
 
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type ModoMedidasRemito = "iguales" | "distintas";
@@ -518,24 +523,38 @@ export async function fetchStockAgregadoPorMaterial(): Promise<MaterialStockAgre
 }
 
 export type BachaInventarioRow = Database["public"]["Tables"]["bachas_inventario"]["Row"];
+export type BachaInventarioLista = BachaInventarioRow & {
+  ot_titulo: string | null;
+  ot_estado: "pending" | "in_progress" | "done" | "cancelled" | null;
+};
 type BachaInventarioInsert = Database["public"]["Tables"]["bachas_inventario"]["Insert"];
 
-function normNombre(s: string | null | undefined): string {
-  return (s ?? "").trim().toLowerCase();
-}
-
-export async function fetchBachasInventario(): Promise<BachaInventarioRow[]> {
+export async function fetchBachasInventario(): Promise<BachaInventarioLista[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from("bachas_inventario")
-    .select("*")
+    .select("*, ot:ordenes_trabajo!bachas_inventario_ot_id_fkey(titulo,estado)")
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BachaInventarioRow[];
+  return (data ?? []).map((row) => {
+    const joined = row as BachaInventarioRow & {
+      ot?: { titulo?: string | null; estado?: BachaInventarioLista["ot_estado"] } | null;
+    };
+    const { ot, ...bacha } = joined;
+    const otEstado = ot?.estado ?? null;
+    return {
+      ...bacha,
+      ot_titulo: ot?.titulo?.trim() || null,
+      ot_estado: otEstado === "pending" || otEstado === "in_progress" || otEstado === "done" || otEstado === "cancelled"
+        ? otEstado
+        : null,
+    };
+  });
 }
 
 export async function fetchBachasDisponiblesParaOt(opts?: {
   clienteNombre?: string | null;
+  clienteId?: string | null;
 }): Promise<BachaInventarioRow[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
@@ -545,12 +564,12 @@ export async function fetchBachasDisponiblesParaOt(opts?: {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data ?? []) as BachaInventarioRow[];
-  const cliente = normNombre(opts?.clienteNombre);
-  return rows.filter((b) => {
-    if (b.origen === "propia") return true;
-    if (!cliente) return false;
-    return normNombre(b.cliente_nombre) === cliente;
-  });
+  return rows.filter((b) =>
+    bachaCorrespondeACliente(b, {
+      clienteNombre: opts?.clienteNombre,
+      clienteId: opts?.clienteId,
+    }),
+  );
 }
 
 export async function createBachaInventario(
@@ -562,14 +581,16 @@ export async function createBachaInventario(
   const origen = input.origen === "cliente" ? "cliente" : "propia";
   const clienteNombre =
     origen === "cliente" ? (input.cliente_nombre ?? "").trim() : null;
+  const clienteId = origen === "cliente" ? input.cliente_id ?? null : null;
   if (origen === "cliente" && !clienteNombre) {
-    throw new Error("Indicá el nombre del cliente.");
+    throw new Error("Elegí el cliente.");
   }
   const { data, error } = await supabase
     .from("bachas_inventario")
     .insert({
       origen,
       cliente_nombre: clienteNombre,
+      cliente_id: clienteId,
       modelo: input.modelo?.trim() || null,
       medidas: input.medidas?.trim() || null,
       ubicacion: input.ubicacion?.trim() || null,
@@ -596,6 +617,7 @@ export async function asignarBachaAOt(opts: {
   bachaId: string;
   otId: string;
   clienteNombre?: string | null;
+  clienteId?: string | null;
 }): Promise<{ error: Error | null }> {
   if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
 
@@ -616,12 +638,14 @@ export async function asignarBachaAOt(opts: {
   if (bacha.estado !== "disponible" && bacha.ot_id !== opts.otId) {
     return { error: new Error("Esa bacha no está disponible.") };
   }
-  if (bacha.origen === "cliente") {
-    const esperado = normNombre(opts.clienteNombre);
-    const deBacha = normNombre(bacha.cliente_nombre);
-    if (!deBacha || (esperado && deBacha !== esperado)) {
-      return { error: new Error("La bacha del cliente no corresponde a esta OT.") };
-    }
+  if (
+    bacha.origen === "cliente" &&
+    !bachaCorrespondeACliente(bacha, {
+      clienteNombre: opts.clienteNombre,
+      clienteId: opts.clienteId,
+    })
+  ) {
+    return { error: new Error("La bacha del cliente no corresponde a esta OT.") };
   }
 
   if (ot.bacha_id && ot.bacha_id !== opts.bachaId) {
@@ -685,6 +709,22 @@ export async function liberarBachaDeOt(opts: {
     .eq("id", opts.otId);
   if (upOt.error) return { error: new Error(upOt.error.message) };
   return { error: null };
+}
+
+export async function actualizarOrigenBachaOt(opts: {
+  otId: string;
+  origen: "propia" | "cliente";
+}): Promise<{ error: Error | null }> {
+  if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
+  const origen = opts.origen === "cliente" ? "cliente" : "propia";
+  const { error } = await supabase
+    .from("ordenes_trabajo")
+    .update({
+      bacha_origen: origen,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", opts.otId);
+  return { error: error ? new Error(error.message) : null };
 }
 
 export async function marcarBachaUsada(bachaId: string): Promise<{ error: Error | null }> {

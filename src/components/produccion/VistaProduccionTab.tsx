@@ -15,13 +15,12 @@ import {
   type VentaGrupoOt,
 } from "@/lib/produccion-api";
 import { etiquetaAvanceEtapa, etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
-import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
+import { frenaAvancePorBacha } from "@/lib/bacha-reglas";
 
 export function VistaProduccionTab() {
   const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -81,10 +80,14 @@ export function VistaProduccionTab() {
           loading={loading}
           emptyText="No hay OTs en corte ni producción."
           onChanged={() => void refresh()}
-          mostrarRotulo
           renderRow={(item, { onVer }) => {
             const etapa = coalesceEtapaOt(item.orden.etapa);
             const next = siguienteEtapaOt(etapa);
+            const frenaBacha = frenaAvancePorBacha({
+              bachaRequerida: Boolean(item.orden.bacha_requerida),
+              bachaAsignada: Boolean(item.orden.bacha_id),
+              nextEtapa: next,
+            });
             return (
               <OtListRow
                 key={item.orden.id}
@@ -95,13 +98,9 @@ export function VistaProduccionTab() {
                   disabled:
                     busyId === item.orden.id ||
                     Boolean(item.orden.bloqueada) ||
-                    Boolean(item.orden.pausada),
+                    Boolean(item.orden.pausada) ||
+                    frenaBacha,
                   onClick: () => void onAvanzar(item),
-                }}
-                tallerActions={{
-                  onRotulo: () => irARotulo(item.orden.id),
-                  onPlano: () => void abrirPlano(item),
-                  planoBusy: busyPlanoId === item.orden.id,
                 }}
                 extra={
                   item.orden.requiere_reserva_stock ? (

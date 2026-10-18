@@ -30,12 +30,12 @@ import { AvisoRetazoPiezas } from "@/components/stock/AvisoRetazoPiezas";
 import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
 import {
-  MODELOS_BACHA,
   TIPOS_COLOCACION,
   type LineaItemOT,
   type OrdenTrabajoWizard,
 } from "./types";
 import { Switch } from "@/components/ui/switch";
+import { NafeCampo } from "@/components/produccion/NafeCampo";
 import {
   Select,
   SelectContent,
@@ -258,7 +258,7 @@ export function StepOrdenes({
                             <div className="min-w-0">
                               <p className="text-xs font-medium text-foreground">Bacha</p>
                               <p className="text-[11px] text-muted-foreground">
-                                Tipo, colocación y si es nuestra o del cliente.
+                                Colocación y si es nuestra o la trae el cliente. El origen se puede cambiar después.
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -278,25 +278,7 @@ export function StepOrdenes({
                             </div>
                           </div>
                           {ot.llevaBacha ? (
-                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                              <div className="min-w-0 space-y-1.5">
-                                <Label className="text-xs font-medium">Tipo</Label>
-                                <Select
-                                  value={ot.bachaId}
-                                  onValueChange={(v) => patchOrden(ot.key, { bachaId: v })}
-                                >
-                                  <SelectTrigger className="h-9 w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {MODELOS_BACHA.map((m) => (
-                                      <SelectItem key={m.value} value={m.value}>
-                                        {m.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                               <div className="min-w-0 space-y-1.5">
                                 <Label className="text-xs font-medium">Colocación</Label>
                                 <Select
@@ -340,6 +322,19 @@ export function StepOrdenes({
                               </div>
                             </div>
                           ) : null}
+                        </div>
+
+                        <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80 sm:p-4">
+                          <p className="text-xs font-medium text-foreground">NAFE</p>
+                          <p className="mb-2 text-[11px] text-muted-foreground">
+                            Lo preguntan en el taller. Escribí el valor; queda en el rótulo.
+                          </p>
+                          <NafeCampo
+                            id={`${ot.key}-nafe`}
+                            compact
+                            value={ot.nafe}
+                            onChange={(v) => patchOrden(ot.key, { nafe: v })}
+                          />
                         </div>
 
                         <div className="rounded-md border border-border/55 bg-background/90 p-3 shadow-sm dark:bg-background/80">

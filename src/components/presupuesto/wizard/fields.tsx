@@ -178,11 +178,7 @@ export function PickCliente({
             e.preventDefault();
           }
         }}
-        className={cn(
-          "h-9 w-full border-cyan-600 bg-background pl-8 pr-2.5 text-sm shadow-sm md:text-sm",
-          "text-foreground placeholder:text-muted-foreground",
-          "focus-visible:border-cyan-600 focus-visible:ring-[3px] focus-visible:ring-cyan-500/40",
-        )}
+        className="pl-8"
       />
 
       {panelOpen ? (
@@ -202,8 +198,7 @@ export function PickCliente({
                     className={cn(
                       "flex w-full items-start gap-2 px-3 py-2 text-left text-sm",
                       "hover:bg-accent hover:text-accent-foreground",
-                      value === c.id &&
-                        "bg-cyan-600 text-primary-foreground hover:bg-cyan-700 hover:text-primary-foreground",
+                      value === c.id && "bg-accent text-accent-foreground",
                     )}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
@@ -221,7 +216,12 @@ export function PickCliente({
                     />
                     <div className="flex min-w-0 flex-col gap-0">
                       <span className="truncate font-medium">{c.nombre}</span>
-                      <span className="truncate text-[10px] opacity-80">
+                      <span
+                        className={cn(
+                          "truncate text-xs",
+                          value === c.id ? "opacity-80" : "text-muted-foreground",
+                        )}
+                      >
                         {[c.contacto !== c.nombre ? c.contacto : null, c.tel]
                           .filter(Boolean)
                           .join(" · ") || "Sin contacto"}
@@ -245,7 +245,7 @@ export function PickCliente({
               <Button
                 type="button"
                 size="sm"
-                className="w-full gap-1.5 bg-sky-600 text-white hover:bg-sky-700"
+                className="w-full gap-1.5"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={handleAbrirAlta}
               >

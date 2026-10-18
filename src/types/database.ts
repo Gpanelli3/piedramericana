@@ -87,6 +87,21 @@ export type LiquidacionConceptoTipo =
   | "carga_social"
   | "otro";
 export type AdelantoMetodo = "efectivo" | "transferencia";
+export type ConceptoMovimientoDb =
+  | "trabajo"
+  | "insumos"
+  | "gastos"
+  | "sueldos"
+  | "otro"
+  | "transferencia"
+  | "alquiler"
+  | "luz"
+  | "gas"
+  | "impuestos"
+  | "prestadores";
+export type IncentivoTipo = "comision" | "premio" | "bono";
+export type PrestadorRubro = "contador" | "redes" | "otro";
+export type GastoFijoConcepto = "alquiler" | "luz" | "gas" | "impuestos";
 
 export interface Database {
   public: {
@@ -170,6 +185,206 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      nafe_opciones: {
+        Row: {
+          id: string;
+          etiqueta: string;
+          activo: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          etiqueta: string;
+          activo?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          etiqueta?: string;
+          activo?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      incentivos: {
+        Row: {
+          id: string;
+          empleado_id: string;
+          fecha: string;
+          tipo: IncentivoTipo;
+          descripcion: string | null;
+          monto: number;
+          moneda: "ars" | "usd";
+          metodo: "efectivo" | "transferencia" | "cheque";
+          movimiento_id: string | null;
+          notas: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          empleado_id: string;
+          fecha?: string;
+          tipo?: IncentivoTipo;
+          descripcion?: string | null;
+          monto: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque";
+          movimiento_id?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          empleado_id?: string;
+          fecha?: string;
+          tipo?: IncentivoTipo;
+          descripcion?: string | null;
+          monto?: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque";
+          movimiento_id?: string | null;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "incentivos_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "incentivos_movimiento_id_fkey";
+            columns: ["movimiento_id"];
+            isOneToOne: false;
+            referencedRelation: "movimientos_caja";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      prestadores: {
+        Row: {
+          id: string;
+          nombre: string;
+          rubro: PrestadorRubro;
+          cuit: string | null;
+          telefono: string | null;
+          email: string | null;
+          activo: boolean;
+          notas: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          nombre: string;
+          rubro?: PrestadorRubro;
+          cuit?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          activo?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          nombre?: string;
+          rubro?: PrestadorRubro;
+          cuit?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          activo?: boolean;
+          notas?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      pagos_prestadores: {
+        Row: {
+          id: string;
+          prestador_id: string;
+          fecha: string;
+          monto: number;
+          moneda: "ars" | "usd";
+          metodo: "efectivo" | "transferencia" | "cheque";
+          descripcion: string | null;
+          movimiento_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          prestador_id: string;
+          fecha?: string;
+          monto: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque";
+          descripcion?: string | null;
+          movimiento_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          prestador_id?: string;
+          fecha?: string;
+          monto?: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque";
+          descripcion?: string | null;
+          movimiento_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pagos_prestadores_prestador_id_fkey";
+            columns: ["prestador_id"];
+            isOneToOne: false;
+            referencedRelation: "prestadores";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      gastos_fijos: {
+        Row: {
+          id: string;
+          concepto: GastoFijoConcepto;
+          descripcion: string;
+          monto: number;
+          moneda: "ars" | "usd";
+          metodo: "efectivo" | "transferencia" | "cheque" | "tarjeta";
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          concepto: GastoFijoConcepto;
+          descripcion: string;
+          monto: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque" | "tarjeta";
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          concepto?: GastoFijoConcepto;
+          descripcion?: string;
+          monto?: number;
+          moneda?: "ars" | "usd";
+          metodo?: "efectivo" | "transferencia" | "cheque" | "tarjeta";
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       adelantos_empleado: {
         Row: {
@@ -510,6 +725,7 @@ export interface Database {
           bacha_tipo: string | null;
           bacha_colocacion: string | null;
           bacha_id: string | null;
+          nafe: string | null;
         };
         Insert: {
           id?: string;
@@ -537,6 +753,7 @@ export interface Database {
           bacha_tipo?: string | null;
           bacha_colocacion?: string | null;
           bacha_id?: string | null;
+          nafe?: string | null;
         };
         Update: {
           id?: string;
@@ -564,6 +781,7 @@ export interface Database {
           bacha_tipo?: string | null;
           bacha_colocacion?: string | null;
           bacha_id?: string | null;
+          nafe?: string | null;
         };
         Relationships: [
           {
@@ -1599,6 +1817,7 @@ export interface Database {
           id: string;
           origen: BachaOrigen;
           cliente_nombre: string | null;
+          cliente_id: string | null;
           modelo: string | null;
           medidas: string | null;
           ubicacion: string | null;
@@ -1611,6 +1830,7 @@ export interface Database {
           id?: string;
           origen: BachaOrigen;
           cliente_nombre?: string | null;
+          cliente_id?: string | null;
           modelo?: string | null;
           medidas?: string | null;
           ubicacion?: string | null;
@@ -1623,6 +1843,7 @@ export interface Database {
           id?: string;
           origen?: BachaOrigen;
           cliente_nombre?: string | null;
+          cliente_id?: string | null;
           modelo?: string | null;
           medidas?: string | null;
           ubicacion?: string | null;
@@ -1637,6 +1858,13 @@ export interface Database {
             columns: ["ot_id"];
             isOneToOne: false;
             referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "bachas_inventario_cliente_id_fkey";
+            columns: ["cliente_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
             referencedColumns: ["id"];
           },
         ];
@@ -1895,7 +2123,7 @@ export interface Database {
           moneda: "ars" | "usd";
           fecha: string;
           descripcion: string | null;
-          concepto: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          concepto: ConceptoMovimientoDb;
           metodo: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo: string | null;
           referencia_id: string | null;
@@ -1918,7 +2146,7 @@ export interface Database {
           moneda: "ars" | "usd";
           fecha: string;
           descripcion?: string | null;
-          concepto?: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          concepto?: ConceptoMovimientoDb;
           metodo: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo?: string | null;
           referencia_id?: string | null;
@@ -1941,7 +2169,7 @@ export interface Database {
           moneda?: "ars" | "usd";
           fecha?: string;
           descripcion?: string | null;
-          concepto?: "trabajo" | "insumos" | "gastos" | "sueldos" | "otro" | "transferencia";
+          concepto?: ConceptoMovimientoDb;
           metodo?: "efectivo" | "transferencia" | "cheque" | "tarjeta";
           referencia_tipo?: string | null;
           referencia_id?: string | null;

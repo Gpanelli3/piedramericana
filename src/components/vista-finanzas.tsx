@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, FileText, Paperclip, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GastosFijosPanel } from "@/components/finanzas/GastosFijosPanel";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -35,6 +37,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  FINANZAS_SECCION_LABELS,
+  finanzasSeccionDesdeParam,
+  type FinanzasSeccion,
+} from "@/types/workspace";
 import {
   CONCEPTOS_MOVIMIENTO,
   METODOS_PAGO,
@@ -133,6 +140,57 @@ function emptyTransfForm(hoy: string) {
 }
 
 export function VistaFinanzas() {
+  const [searchParams] = useSearchParams();
+  const seccion = useMemo(
+    () => finanzasSeccionDesdeParam(searchParams.get("fn")),
+    [searchParams],
+  );
+
+  if (seccion === "gastos_fijos") {
+    return <VistaGastosFijos />;
+  }
+
+  return <VistaFinanzasLibro />;
+}
+
+function FinanzasShell({
+  seccion,
+  children,
+}: {
+  seccion: FinanzasSeccion;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-background">
+      <header className="border-b border-border bg-white">
+        <div className="px-8 pt-5 pb-5">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            Finanzas · {FINANZAS_SECCION_LABELS[seccion]}
+          </h1>
+        </div>
+      </header>
+      <main className="p-8 [scrollbar-gutter:stable]">{children}</main>
+    </div>
+  );
+}
+
+function VistaGastosFijos() {
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+        Finanzas requiere Supabase configurado y la migración M15 aplicada.
+      </div>
+    );
+  }
+
+  return (
+    <FinanzasShell seccion="gastos_fijos">
+      <GastosFijosPanel />
+    </FinanzasShell>
+  );
+}
+
+function VistaFinanzasLibro() {
   const [saldos, setSaldos] = useState<SaldoCuentaRow[]>([]);
   const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoCajaRow[]>([]);
@@ -399,10 +457,7 @@ export function VistaFinanzas() {
       <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Finanzas</h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Acá ves cuánta plata hay en cada cajón (efectivo, banco, cheques, tarjeta). Los cobros de clientes se cargan en Ventas.
-            </p>
+            <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Finanzas · Libro</h1>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button
@@ -482,11 +537,8 @@ export function VistaFinanzas() {
 
           <TabsContent value="cuentas" className="mt-4">
             <Card>
-              <CardHeader className="border-b space-y-1">
+              <CardHeader className="border-b">
                 <CardTitle className="text-base">Saldos por forma de pago</CardTitle>
-                <p className="text-sm font-normal text-muted-foreground">
-                  Cajones del libro según cómo se pagó o cobró. No son cuentas bancarias conectadas.
-                </p>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>

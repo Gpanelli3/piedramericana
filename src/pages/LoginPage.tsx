@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { LayoutDashboard } from "lucide-react";
+import { MarmoGestMark } from "@/components/marmogest-mark";
 import { useAuth } from "../contexts/AuthContext";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { ConfigWarning } from "../components/ConfigWarning";
@@ -49,7 +49,7 @@ export function LoginPage() {
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-[var(--shadow-card)]">
         <div className="flex items-center gap-3 mb-6">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent">
-            <LayoutDashboard className="h-5 w-5 text-accent-foreground" />
+            <MarmoGestMark className="h-6 w-6 text-accent-foreground" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-foreground">MarmoGest</h1>

@@ -6,18 +6,6 @@ export const TIPOS_COLOCACION = [
   { value: "ras", label: "Al ras" },
 ] as const;
 
-export const MODELOS_BACHA = [
-  { value: "johnson-ss", label: "Johnson — Acero Premium" },
-  { value: "mi-pileta", label: "Mi Pileta — Linea Cocina" },
-  { value: "franke", label: "Franke — Orion 70" },
-  { value: "rohe", label: "Rohé — Oval 60" },
-  { value: "sin", label: "Sin especificar / a definir" },
-] as const;
-
-export function etiquetaModeloBacha(id: string): string {
-  return MODELOS_BACHA.find((m) => m.value === id)?.label ?? id;
-}
-
 export function etiquetaTipoColocacion(v: string): string {
   return TIPOS_COLOCACION.find((t) => t.value === v)?.label ?? v;
 }
@@ -65,10 +53,13 @@ export type OrdenTrabajoWizard = {
   chapaSugeridaBulto: string;
   chapaSugeridaLabel: string;
   tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
+  /** Quedó en presupuestos viejos. El modelo real está en el stock de bachas. */
   bachaId: string;
-  /** Si esta OT lleva bacha. Independiente de `bachaId` (que existía con default). */
+  /** Si esta OT lleva bacha. */
   llevaBacha: boolean;
   bachaOrigen: "propia" | "cliente";
+  /** Terminación / código de taller que ellos cargan. */
+  nafe: string;
   items: LineaItemOT[];
   /** Dirección de obra (texto ingresado / buscado). */
   direccionObra: string;
@@ -116,9 +107,10 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     chapaSugeridaBulto: "",
     chapaSugeridaLabel: "",
     tipoColocacion: "bajo",
-    bachaId: MODELOS_BACHA[0]!.value,
+    bachaId: "",
     llevaBacha: false,
     bachaOrigen: "propia",
+    nafe: "",
     items: [],
     direccionObra: "",
     obraLat: null,

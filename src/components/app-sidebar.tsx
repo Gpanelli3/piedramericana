@@ -22,17 +22,22 @@ import {
   Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarmoGestMark } from "@/components/marmogest-mark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRol } from "@/hooks/useRol";
 import {
   EQUIPO_SECCION_LABELS,
   EQUIPO_SECCIONES,
+  FINANZAS_SECCION_LABELS,
+  FINANZAS_SECCIONES,
   PRODUCCION_OT_FILTROS,
   PRODUCCION_OT_LABELS,
   WORKSPACE_TABS,
   equipoSeccionDesdeParam,
+  finanzasSeccionDesdeParam,
   produccionOtDesdeParam,
   type EquipoSeccion,
+  type FinanzasSeccion,
   type ProduccionOtFiltro,
   type WorkspaceTab,
 } from "@/types/workspace";
@@ -176,6 +181,7 @@ function limpiarParamsDeOtrosModulos(n: URLSearchParams, tab: WorkspaceTab) {
   }
   if (tab !== "produccion") n.delete("ot");
   if (tab !== "equipo") n.delete("eq");
+  if (tab !== "finanzas") n.delete("fn");
   if (tab !== "clientes") n.delete("cid");
   if (tab !== "administracion") n.delete("pid");
 }
@@ -263,6 +269,7 @@ export function AppSidebar() {
   const [presupuestosMenuAbierto, setPresupuestosMenuAbierto] = useState(false);
   const [produccionMenuAbierto, setProduccionMenuAbierto] = useState(false);
   const [equipoMenuAbierto, setEquipoMenuAbierto] = useState(false);
+  const [finanzasMenuAbierto, setFinanzasMenuAbierto] = useState(false);
 
   const activeTab = useMemo(() => wsDesdeParam(searchParams.get("ws")), [searchParams]);
   const pv = searchParams.get("pv") ?? "";
@@ -273,6 +280,10 @@ export function AppSidebar() {
   );
   const eqSeccion = useMemo(
     () => equipoSeccionDesdeParam(searchParams.get("eq")),
+    [searchParams],
+  );
+  const fnSeccion = useMemo(
+    () => finanzasSeccionDesdeParam(searchParams.get("fn")),
     [searchParams],
   );
 
@@ -293,6 +304,7 @@ export function AppSidebar() {
           limpiarParamsDeOtrosModulos(n, tab);
           if (tab === "produccion") n.set("ot", "general");
           if (tab === "equipo") n.set("eq", "empleados");
+          if (tab === "finanzas") n.set("fn", "libro");
           return n;
         },
         { replace: true },
@@ -365,10 +377,27 @@ export function AppSidebar() {
     [setSearchParams],
   );
 
+  const gotoFinanzasSeccion = useCallback(
+    (seccion: FinanzasSeccion) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("ws", "finanzas");
+          limpiarParamsDeOtrosModulos(n, "finanzas");
+          n.set("fn", seccion);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   useEffect(() => {
     if (activeTab !== "ventas") setPresupuestosMenuAbierto(false);
     if (activeTab !== "produccion") setProduccionMenuAbierto(false);
     if (activeTab !== "equipo") setEquipoMenuAbierto(false);
+    if (activeTab !== "finanzas") setFinanzasMenuAbierto(false);
   }, [activeTab]);
 
   const onPresupuestosEncabezado = useCallback(() => {
@@ -398,6 +427,15 @@ export function AppSidebar() {
     setEquipoMenuAbierto((prev) => !prev);
   }, [activeTab, gotoEquipoSeccion]);
 
+  const onFinanzasEncabezado = useCallback(() => {
+    if (activeTab !== "finanzas") {
+      gotoFinanzasSeccion("libro");
+      setFinanzasMenuAbierto(true);
+      return;
+    }
+    setFinanzasMenuAbierto((prev) => !prev);
+  }, [activeTab, gotoFinanzasSeccion]);
+
   const meta = user?.user_metadata as { full_name?: string } | undefined;
   const displayName = meta?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
   const initials = initialsFromUser(user?.email, meta?.full_name);
@@ -416,7 +454,7 @@ export function AppSidebar() {
       <div className="px-5 py-5">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
-            <LayoutDashboard className="h-5 w-5 text-accent-foreground" />
+            <MarmoGestMark className="h-5 w-5 text-accent-foreground" />
           </div>
           <span className="text-lg font-bold tracking-tight text-sidebar-foreground">MarmoGest</span>
         </div>
@@ -536,6 +574,30 @@ export function AppSidebar() {
                     className={submenuLinkCn(eqSeccion === seccion)}
                   >
                     {EQUIPO_SECCION_LABELS[seccion]}
+                  </button>
+                ))}
+              </ExpandableNavItem>
+            );
+          }
+
+          if (item.id === "finanzas") {
+            return (
+              <ExpandableNavItem
+                key={item.id}
+                item={item}
+                active={activeTab === item.id}
+                menuAbierto={finanzasMenuAbierto}
+                onToggleEncabezado={onFinanzasEncabezado}
+                submenuId="sidebar-finanzas-submenu"
+              >
+                {FINANZAS_SECCIONES.map((seccion) => (
+                  <button
+                    key={seccion}
+                    type="button"
+                    onClick={() => gotoFinanzasSeccion(seccion)}
+                    className={submenuLinkCn(fnSeccion === seccion)}
+                  >
+                    {FINANZAS_SECCION_LABELS[seccion]}
                   </button>
                 ))}
               </ExpandableNavItem>

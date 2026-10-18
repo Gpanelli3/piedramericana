@@ -14,10 +14,7 @@ import { cn } from "@/lib/utils";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import type { OrdenTrabajoWizard } from "@/components/presupuesto/wizard/types";
-import {
-  etiquetaModeloBacha,
-  etiquetaTipoColocacion,
-} from "@/components/presupuesto/wizard/types";
+import { etiquetaTipoColocacion } from "@/components/presupuesto/wizard/types";
 import { mecAlgunoActivo } from "@/components/presupuesto/wizard/validacion";
 
 export type PresupuestoDocumentoProps = {
@@ -204,7 +201,6 @@ export function PresupuestoDocumento({
       const planoNombre = ot.planoAdjunto?.name.trim() || undefined;
       const bachaTexto = ot.llevaBacha
         ? [
-            etiquetaModeloBacha(ot.bachaId),
             etiquetaTipoColocacion(ot.tipoColocacion),
             ot.bachaOrigen === "cliente" ? "del cliente" : "nuestra",
           ].join(" · ")
@@ -448,7 +444,7 @@ export function PresupuestoDocumento({
               </span>
             </div>
           ) : null}
-          {dolarHoy > 0 ? (
+          {moneda === "usd" && dolarHoy > 0 ? (
             <div className="flex justify-between gap-4 px-3 py-1.5 border-b border-neutral-300 text-neutral-600">
               <span>Dólar del día</span>
               <span className="tabular-nums">{formatMoney(dolarHoy, "usd")}</span>
@@ -460,13 +456,11 @@ export function PresupuestoDocumento({
               {formatMoney(totalGeneral, moneda)}
             </span>
           </div>
-          {dolarHoy > 0 ? (
+          {moneda === "usd" && dolarHoy > 0 ? (
             <div className="flex justify-between gap-4 px-3 py-1.5 text-neutral-600">
-              <span>Equivalente {moneda === "usd" ? "$" : "u$s"}:</span>
+              <span>Equivalente $:</span>
               <span className="tabular-nums">
-                {moneda === "usd"
-                  ? formatMoney(eq.totalArs, "ars")
-                  : formatMoney(eq.totalUsd, "usd")}
+                {formatMoney(eq.totalArs, "ars")}
               </span>
             </div>
           ) : null}
@@ -477,8 +471,11 @@ export function PresupuestoDocumento({
       <footer className="mt-5 border border-neutral-400 px-3 py-2 text-[10px] text-neutral-600 space-y-1 leading-relaxed">
         <p>A los precios indicados se les debe adicionar el IVA correspondiente.</p>
         <p>
-          Presupuesto sujeto a medición final en obra y a variación del tipo de cambio
-          {dolarHoy > 0 ? ` (dólar del día ${formatMoney(dolarHoy, "usd")})` : ""}.
+          Presupuesto sujeto a medición final en obra
+          {moneda === "usd" && dolarHoy > 0
+            ? ` y a variación del tipo de cambio (dólar del día ${formatMoney(dolarHoy, "usd")})`
+            : ""}
+          .
         </p>
         <p>
           No incluye otros artículos de stock salvo que figuren como ítem en alguna OT.

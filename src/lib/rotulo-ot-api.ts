@@ -24,6 +24,7 @@ export type RotuloOtDatos = {
   direccion: string;
   material: string;
   zocalo: string;
+  nafe: string;
   bachaTitulo: string;
   bachaDetalle: string | null;
   piezas: RotuloPieza[];
@@ -52,6 +53,7 @@ export type RotuloOtInput = {
   bachaTipo: string | null | undefined;
   bachaOrigen: string | null | undefined;
   bachaColocacion: string | null | undefined;
+  nafe?: string | null | undefined;
   piezas: RotuloPiezaInput[];
 };
 
@@ -101,6 +103,11 @@ export function esPiezaZocaloRotulo(input: {
   return textoIncluyeZocalo(input.articuloLabel ?? "");
 }
 
+export function textoNafeRotulo(nafe: string | null | undefined): string {
+  const t = nafe?.trim() ?? "";
+  return t || "—";
+}
+
 /** «Sí» si alguna pieza es zócalo; si no, «No». */
 export function textoZocaloRotulo(
   piezas: Array<{ articuloCodigo?: string | null; articuloLabel?: string | null }>,
@@ -130,15 +137,25 @@ export function textoBachaRotulo(input: {
   if (!input.requerida) {
     return { titulo: "Sin bacha", detalle: null };
   }
-  const tipo = input.tipo?.trim() || "Sin especificar";
+  const tipo = input.tipo?.trim() ?? "";
   const extras = extrasBachaRotulo(input);
   if (!input.asignada) {
+    const detallePartes = tipo ? [tipo, ...extras] : extras;
     return {
       titulo: "Bacha pendiente",
-      detalle: [tipo, ...extras].join(" · "),
+      detalle: detallePartes.length > 0 ? detallePartes.join(" · ") : null,
     };
   }
-  return { titulo: tipo, detalle: extras.length > 0 ? extras.join(" · ") : null };
+  if (tipo) {
+    return { titulo: tipo, detalle: extras.length > 0 ? extras.join(" · ") : null };
+  }
+  const coloc = input.colocacion?.trim();
+  const titulo = coloc ? etiquetaTipoColocacion(coloc) : "Bacha";
+  const origenPartes = extras.filter((p) => !coloc || p !== etiquetaTipoColocacion(coloc));
+  return {
+    titulo,
+    detalle: origenPartes.length > 0 ? origenPartes.join(" · ") : null,
+  };
 }
 
 export function armarRotuloOt(input: RotuloOtInput): RotuloOtDatos {
@@ -161,6 +178,7 @@ export function armarRotuloOt(input: RotuloOtInput): RotuloOtDatos {
     direccion: input.direccion.trim() || "—",
     material: input.material.trim() || "—",
     zocalo: textoZocaloRotulo(input.piezas),
+    nafe: textoNafeRotulo(input.nafe),
     bachaTitulo: bacha.titulo,
     bachaDetalle: bacha.detalle,
     piezas: input.piezas.map((p) => ({
@@ -195,6 +213,7 @@ export async function fetchRotuloOt(
       bachaTipo: item.orden.bacha_tipo,
       bachaOrigen: item.orden.bacha_origen,
       bachaColocacion: item.orden.bacha_colocacion,
+      nafe: item.orden.nafe,
       piezas: medRes.data?.items ?? [],
     }),
     error: null,

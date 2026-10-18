@@ -83,9 +83,10 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
         ot.tipoColocacion === "sobre" || ot.tipoColocacion === "ras" || ot.tipoColocacion === "bajo"
           ? ot.tipoColocacion
           : "bajo",
-      bachaId: typeof ot.bachaId === "string" ? ot.bachaId : "johnson-ss",
+      bachaId: typeof ot.bachaId === "string" ? ot.bachaId : "",
       llevaBacha: ot.llevaBacha === true,
       bachaOrigen: ot.bachaOrigen === "cliente" ? "cliente" : "propia",
+      nafe: typeof ot.nafe === "string" ? ot.nafe : "",
       items: itemsRaw.map(normalizeLineaItemFromPayload),
       direccionObra: typeof ot.direccionObra === "string" ? ot.direccionObra : "",
       obraLat: normalizeCoord(ot.obraLat),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  enColaParaMedir,
   etiquetaMedicionEstado,
   medicionResuelta,
   motivoBloqueoEnvio,
@@ -18,13 +19,14 @@ describe("puedeEnviarAProduccion", () => {
     expect(motivoBloqueoEnvio(r)).toBeNull();
   });
 
-  it("permite enviar si se saltó la medición", () => {
+  it("bloquea si se saltó la medición: hay que confirmar medidas", () => {
     const r = puedeEnviarAProduccion({
       presupuestoAprobado: true,
       tieneSena: true,
       medicionEstado: "no_requiere",
     });
-    expect(r.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.faltantes).toContain("Falta confirmar las medidas.");
   });
 
   it("bloquea sin seña", () => {
@@ -65,7 +67,7 @@ describe("puedeEnviarAProduccion", () => {
       medicionEstado: "sin_solicitar",
     });
     expect(r.ok).toBe(false);
-    expect(r.faltantes[0]).toMatch(/medir o saltar/);
+    expect(r.faltantes[0]).toMatch(/confirmar las medidas/);
   });
 
   it("junta varios faltantes", () => {
@@ -79,10 +81,19 @@ describe("puedeEnviarAProduccion", () => {
   });
 });
 
+describe("enColaParaMedir", () => {
+  it("la seña sin pedir medición entra a la cola", () => {
+    expect(enColaParaMedir("sin_solicitar", true)).toBe(true);
+    expect(enColaParaMedir("sin_solicitar", false)).toBe(false);
+    expect(enColaParaMedir("listo_para_medir", false)).toBe(true);
+    expect(enColaParaMedir("medido", true)).toBe(false);
+  });
+});
+
 describe("medicionResuelta", () => {
-  it("medido y no_requiere están resueltos", () => {
+  it("solo medido está resuelto", () => {
     expect(medicionResuelta("medido")).toBe(true);
-    expect(medicionResuelta("no_requiere")).toBe(true);
+    expect(medicionResuelta("no_requiere")).toBe(false);
     expect(medicionResuelta("listo_para_medir")).toBe(false);
     expect(medicionResuelta("sin_solicitar")).toBe(false);
   });
@@ -90,7 +101,7 @@ describe("medicionResuelta", () => {
 
 describe("etiquetaMedicionEstado", () => {
   it("etiquetas en español", () => {
-    expect(etiquetaMedicionEstado("listo_para_medir")).toBe("Listo para medir");
+    expect(etiquetaMedicionEstado("listo_para_medir")).toBe("Para medir");
     expect(etiquetaMedicionEstado("no_requiere")).toBe("Sin medición");
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,13 @@ import {
   listarColaMedicion,
   type MedicionColaItem,
 } from "@/lib/medicion-api";
-import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
-import { enviarPresupuestoAProduccion } from "@/lib/produccion-api";
+import { enColaParaMedir, etiquetaMedicionEstado } from "@/lib/medicion-reglas";
+import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
+import { abrirPlanoOt } from "@/lib/rotulo-ot-api";
 import { eliminarPresupuestoPendiente } from "@/lib/presupuestos-api";
-import { formatFechaCorta } from "@/components/produccion/ot-ui";
-import { SaltarMedicionDialog } from "@/components/medicion/SaltarMedicionDialog";
+import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
 import { ConfirmarMedidasDialog } from "@/components/medicion/ConfirmarMedidasDialog";
-import { ArrowRight, CalendarClock, Ruler, SkipForward } from "lucide-react";
+import { ArrowRight, CalendarClock, Eye, FileImage, Printer, Ruler } from "lucide-react";
 
 function hoyLocalIso(): string {
   const d = new Date();
@@ -77,6 +78,7 @@ function agruparParaMedir(items: MedicionColaItem[]): GrupoSemana[] {
 }
 
 export function VistaMedicion() {
+  const navigate = useNavigate();
   const { tieneAlgunRol, esAdmin, roles } = useRol();
   /** Igual que el sidebar: sin roles cargados se muestran todas las acciones. */
   const sinRoles = roles.length === 0;
@@ -86,9 +88,12 @@ export function VistaMedicion() {
   const [items, setItems] = useState<MedicionColaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyPlanoId, setBusyPlanoId] = useState<string | null>(null);
 
-  const [saltar, setSaltar] = useState<MedicionColaItem | null>(null);
-  const [confirmar, setConfirmar] = useState<MedicionColaItem | null>(null);
+  const [confirmar, setConfirmar] = useState<{
+    item: MedicionColaItem;
+    autoEnviar: boolean;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -111,25 +116,20 @@ export function VistaMedicion() {
   }, [refresh]);
 
   const paraMedir = useMemo(
-    () => items.filter((i) => i.medicion.estado === "listo_para_medir"),
+    () => items.filter((i) => enColaParaMedir(i.medicion.estado, i.tieneSena)),
     [items],
   );
   const gruposSemana = useMemo(() => agruparParaMedir(paraMedir), [paraMedir]);
-  const esperandoEnvio = useMemo(
-    () =>
-      items.filter(
-        (i) => i.medicion.estado === "medido" && !i.yaEnProduccion,
-      ),
-    [items],
-  );
-  const saltadas = useMemo(
-    () =>
-      items.filter(
-        (i) => i.medicion.estado === "no_requiere" && !i.yaEnProduccion,
-      ),
-    [items],
-  );
-
+  const confirmadas = useMemo(() => {
+    return items
+      .filter((i) => i.medicion.estado === "medido")
+      .sort((a, b) => {
+        const fa = a.medicion.medido_en ?? "";
+        const fb = b.medicion.medido_en ?? "";
+        if (fa === fb) return b.numero.localeCompare(a.numero);
+        return fb.localeCompare(fa);
+      });
+  }, [items]);
   const onRechazar = async (item: MedicionColaItem) => {
     if (item.presupuestoStatus !== "pendiente") return;
     if (
@@ -150,15 +150,53 @@ export function VistaMedicion() {
     await refresh();
   };
 
-  const onEnviar = async (item: MedicionColaItem) => {
-    setBusyId(item.presupuestoId);
-    const res = await enviarPresupuestoAProduccion(item.presupuestoId);
-    setBusyId(null);
-    if (res.error) {
-      toast.error(res.error.message);
+  const onRotulo = (item: MedicionColaItem) => {
+    const ots = item.ots.filter((ot) => ot.id);
+    if (ots.length === 0) {
+      toast.message("Esta medición todavía no tiene orden de trabajo.");
       return;
     }
-    toast.success("Enviado a producción.");
+    if (ots.length === 1) {
+      navigate(`/ordenes-trabajo/${ots[0]!.id}/rotulo`);
+      return;
+    }
+    for (const ot of ots) {
+      window.open(`/ordenes-trabajo/${ot.id}/rotulo`, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const onPlano = async (item: MedicionColaItem) => {
+    const ots = item.ots.filter((ot) => ot.id && ot.ordenKey);
+    if (ots.length === 0) {
+      toast.message(
+        item.ots.length === 0
+          ? "Esta medición todavía no tiene orden de trabajo."
+          : "Esta OT no tiene plano adjunto.",
+      );
+      return;
+    }
+    setBusyPlanoId(item.presupuestoId);
+    let abrio = false;
+    let sinPlano = 0;
+    try {
+      for (const ot of ots) {
+        const res = await abrirPlanoOt(item.presupuestoId, ot.ordenKey);
+        if (res.sinPlano) sinPlano += 1;
+        else if (res.error) toast.error(res.error.message);
+        else abrio = true;
+      }
+      if (!abrio && sinPlano > 0) toast.message("Esta OT no tiene plano adjunto.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo abrir el plano.");
+    } finally {
+      setBusyPlanoId(null);
+    }
+  };
+
+  const onMedidasConfirmadas = async (presupuestoId: string) => {
+    const envio = await enviarAProduccionSiCorresponde(presupuestoId);
+    if (envio.error) toast.error(envio.error.message);
+    else if (envio.enviado) toast.success("Pasó a producción.");
     await refresh();
   };
 
@@ -169,7 +207,7 @@ export function VistaMedicion() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Medición</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Visitas de la semana, medidas confirmadas y envío a producción
+              Confirmá las medidas de cada visita. Después pasa a producción.
             </p>
           </div>
           <Badge variant="outline" className="w-fit text-sm font-medium">
@@ -183,7 +221,7 @@ export function VistaMedicion() {
           <p className="text-sm text-muted-foreground">Cargando medición…</p>
         ) : (
           <>
-            <Seccion titulo="Para medir esta semana" icono={<CalendarClock className="h-4 w-4" />}>
+            <Seccion titulo="Para medir" icono={<CalendarClock className="h-4 w-4" />}>
               {gruposSemana.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No hay visitas pendientes.</p>
               ) : (
@@ -199,40 +237,29 @@ export function VistaMedicion() {
                             key={item.presupuestoId}
                             item={item}
                             busy={busyId === item.presupuestoId}
+                            planoBusy={busyPlanoId === item.presupuestoId}
+                            onRotulo={() => onRotulo(item)}
+                            onPlano={() => void onPlano(item)}
                             accionPrincipal={
                               puedeMedidor
                                 ? {
                                     label: "Confirmar medidas",
-                                    onClick: () => setConfirmar(item),
+                                    onClick: () => setConfirmar({ item, autoEnviar: true }),
                                   }
                                 : undefined
                             }
                             extra={
-                              puedeVendedor ? (
-                                <>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-8 text-xs"
-                                    onClick={() => setSaltar(item)}
-                                  >
-                                    <SkipForward className="mr-1 h-3.5 w-3.5" />
-                                    Saltar
-                                  </Button>
-                                  {item.presupuestoStatus === "pendiente" ? (
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-8 text-xs text-destructive hover:text-destructive"
-                                      disabled={busyId === item.presupuestoId}
-                                      onClick={() => void onRechazar(item)}
-                                    >
-                                      Rechazar
-                                    </Button>
-                                  ) : null}
-                                </>
+                              puedeVendedor && item.presupuestoStatus === "pendiente" ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 text-xs text-destructive hover:text-destructive"
+                                  disabled={busyId === item.presupuestoId}
+                                  onClick={() => void onRechazar(item)}
+                                >
+                                  Rechazar
+                                </Button>
                               ) : null
                             }
                           />
@@ -244,83 +271,24 @@ export function VistaMedicion() {
               )}
             </Seccion>
 
-            <Seccion
-              titulo="Medidas confirmadas · esperar envío"
-              icono={<Ruler className="h-4 w-4" />}
-            >
-              {esperandoEnvio.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No hay obras medidas esperando producción.
-                </p>
+            <Seccion titulo="Confirmadas" icono={<Ruler className="h-4 w-4" />}>
+              {confirmadas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Todavía no hay medidas confirmadas.</p>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border bg-card">
-                  {esperandoEnvio.map((item) => (
+                  {confirmadas.map((item) => (
                     <FilaMedicion
                       key={item.presupuestoId}
                       item={item}
-                      busy={busyId === item.presupuestoId}
-                      extra={
-                        puedeVendedor && item.presupuestoStatus === "pendiente" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-xs text-destructive hover:text-destructive"
-                            disabled={busyId === item.presupuestoId}
-                            onClick={() => void onRechazar(item)}
-                          >
-                            Rechazar
-                          </Button>
-                        ) : null
-                      }
-                      accionPrincipal={
-                        puedeVendedor
-                          ? {
-                              label: "Enviar a producción",
-                              disabled: !item.puedeEnviar.ok,
-                              onClick: () => void onEnviar(item),
-                            }
-                          : undefined
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </Seccion>
-
-            <Seccion titulo="Sin medición" icono={<SkipForward className="h-4 w-4" />}>
-              {saltadas.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay obras con medición saltada.</p>
-              ) : (
-                <div className="overflow-hidden rounded-lg border border-border bg-card">
-                  {saltadas.map((item) => (
-                    <FilaMedicion
-                      key={item.presupuestoId}
-                      item={item}
-                      busy={busyId === item.presupuestoId}
-                      extra={
-                        puedeVendedor && item.presupuestoStatus === "pendiente" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-xs text-destructive hover:text-destructive"
-                            disabled={busyId === item.presupuestoId}
-                            onClick={() => void onRechazar(item)}
-                          >
-                            Rechazar
-                          </Button>
-                        ) : null
-                      }
-                      accionPrincipal={
-                        puedeVendedor
-                          ? {
-                              label: "Enviar a producción",
-                              disabled: !item.puedeEnviar.ok,
-                              onClick: () => void onEnviar(item),
-                            }
-                          : undefined
-                      }
+                      busy={false}
+                      planoBusy={busyPlanoId === item.presupuestoId}
+                      onRotulo={() => onRotulo(item)}
+                      onPlano={() => void onPlano(item)}
+                      historial
+                      accionPrincipal={{
+                        label: "Ver",
+                        onClick: () => setConfirmar({ item, autoEnviar: false }),
+                      }}
                     />
                   ))}
                 </div>
@@ -330,25 +298,20 @@ export function VistaMedicion() {
         )}
       </main>
 
-      <SaltarMedicionDialog
-        open={Boolean(saltar)}
-        onOpenChange={(o) => {
-          if (!o) setSaltar(null);
-        }}
-        presupuestoId={saltar?.presupuestoId ?? null}
-        cliente={saltar?.cliente}
-        numero={saltar?.numero}
-        onDone={() => void refresh()}
-      />
       <ConfirmarMedidasDialog
         open={Boolean(confirmar)}
         onOpenChange={(o) => {
           if (!o) setConfirmar(null);
         }}
-        presupuestoId={confirmar?.presupuestoId ?? null}
-        cliente={confirmar?.cliente}
-        numero={confirmar?.numero}
-        onSaved={() => void refresh()}
+        presupuestoId={confirmar?.item.presupuestoId ?? null}
+        cliente={confirmar?.item.cliente}
+        numero={confirmar?.item.numero}
+        titulo={confirmar?.autoEnviar ? "Confirmar medidas" : "Medidas confirmadas"}
+        onSaved={() => {
+          const id = confirmar?.item.presupuestoId;
+          if (id && confirmar?.autoEnviar) void onMedidasConfirmadas(id);
+          else void refresh();
+        }}
       />
     </div>
   );
@@ -379,12 +342,21 @@ function FilaMedicion({
   busy,
   accionPrincipal,
   extra,
+  historial = false,
+  onRotulo,
+  onPlano,
+  planoBusy = false,
 }: {
   item: MedicionColaItem;
   busy: boolean;
   accionPrincipal?: { label: string; onClick: () => void; disabled?: boolean };
   extra?: ReactNode;
+  historial?: boolean;
+  onRotulo?: () => void;
+  onPlano?: () => void;
+  planoBusy?: boolean;
 }) {
+  const fechaConfirmada = formatFechaCorta(item.medicion.medido_en);
   return (
     <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1 space-y-1">
@@ -392,9 +364,15 @@ function FilaMedicion({
           <p className="truncate text-sm font-medium text-foreground">
             {item.numero} · {item.cliente}
           </p>
-          <Badge variant="outline" className="text-[10px]">
-            {etiquetaMedicionEstado(item.medicion.estado)}
-          </Badge>
+          {historial ? (
+            <Badge variant="outline" className="text-[10px]">
+              {etiquetaVentaEstado(item.ventaEstado)}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">
+              {etiquetaMedicionEstado(item.medicion.estado)}
+            </Badge>
+          )}
           {item.presupuestoStatus === "pendiente" ? (
             <Badge
               variant="outline"
@@ -405,32 +383,58 @@ function FilaMedicion({
           ) : null}
         </div>
         <p className="truncate text-xs text-muted-foreground">
-          {item.direccionObra}
-          {item.medicion.fecha_programada ? (
+          {historial ? (
             <>
-              <span className="mx-1.5 text-border">·</span>
-              {formatFechaCorta(item.medicion.fecha_programada)}
+              {fechaConfirmada !== "—" ? `Confirmó el ${fechaConfirmada}` : "Confirmado"}
+              {item.medidoPorNombre ? ` · ${item.medidoPorNombre}` : null}
+              {item.direccionObra && item.direccionObra !== "—" ? (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  {item.direccionObra}
+                </>
+              ) : null}
             </>
-          ) : null}
+          ) : (
+            <>
+              {item.direccionObra}
+              {item.medicion.fecha_programada ? (
+                <>
+                  <span className="mx-1.5 text-border">·</span>
+                  {formatFechaCorta(item.medicion.fecha_programada)}
+                </>
+              ) : null}
+            </>
+          )}
         </p>
-        {item.medicion.motivo_salto ? (
-          <p className="text-[11px] text-muted-foreground">Motivo: {item.medicion.motivo_salto}</p>
-        ) : null}
-        {item.bloqueoEnvio && item.medicion.estado !== "listo_para_medir" ? (
+        {!historial && item.bloqueoEnvio && item.medicion.estado !== "listo_para_medir" ? (
           <p className="text-[11px] text-amber-800 dark:text-amber-200">{item.bloqueoEnvio}</p>
         ) : null}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {extra}
+        {onRotulo ? (
+          <Button type="button" size="sm" variant="outline" onClick={onRotulo}>
+            <Printer className="mr-1 h-3.5 w-3.5" />
+            Rótulo
+          </Button>
+        ) : null}
+        {onPlano ? (
+          <Button type="button" size="sm" variant="outline" disabled={planoBusy} onClick={onPlano}>
+            <FileImage className="mr-1 h-3.5 w-3.5" />
+            Plano
+          </Button>
+        ) : null}
         {accionPrincipal ? (
           <Button
             type="button"
             size="sm"
+            variant={historial ? "outline" : "default"}
             disabled={busy || accionPrincipal.disabled}
             onClick={accionPrincipal.onClick}
           >
+            {historial ? <Eye className="mr-1 h-3.5 w-3.5" /> : null}
             {accionPrincipal.label}
-            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            {historial ? null : <ArrowRight className="ml-1 h-3.5 w-3.5" />}
           </Button>
         ) : null}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -151,6 +152,7 @@ export function CrearRemitoDialog({
   importacionId,
   onSaved,
 }: CrearRemitoDialogProps) {
+  const navigate = useNavigate();
   const [proveedorDialog, setProveedorDialog] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [supplierId, setSupplierId] = useState<string>("");
@@ -359,7 +361,7 @@ export function CrearRemitoDialog({
 
       setSaving(true);
       try {
-        await createRemitoWithSlabsViaRpc({
+        const remitoId = await createRemitoWithSlabsViaRpc({
           supplier_id: supplierId,
           branch_code: branchCode,
           serial_code: serialCode,
@@ -375,6 +377,7 @@ export function CrearRemitoDialog({
         await refreshRemitos();
         onSaved?.();
         onOpenChange(false);
+        if (remitoId) navigate(`/remitos/${remitoId}/rotulos`);
       } catch (err) {
         toast.error(
           err instanceof Error

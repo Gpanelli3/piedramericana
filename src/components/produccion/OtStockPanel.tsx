@@ -28,6 +28,7 @@ import {
   type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
 import {
+  actualizarOrigenBachaOt,
   asignarBachaAOt,
   createBachaInventario,
   fetchBachasDisponiblesParaOt,
@@ -59,6 +60,7 @@ type Props = {
   requiereReservaStock?: boolean;
   otTitulo?: string;
   clienteNombre?: string | null;
+  clienteId?: string | null;
   bachaRequerida?: boolean;
   bachaOrigen?: "propia" | "cliente" | null;
   bachaTipo?: string | null;
@@ -97,6 +99,7 @@ export function OtStockPanel({
   piezas = [],
   requiereReservaStock = false,
   clienteNombre,
+  clienteId = null,
   bachaRequerida = false,
   bachaOrigen = null,
   bachaTipo = null,
@@ -125,6 +128,9 @@ export function OtStockPanel({
   const [registrarClienteOpen, setRegistrarClienteOpen] = useState(false);
   const [registrarModelo, setRegistrarModelo] = useState("");
   const [registrarUbicacion, setRegistrarUbicacion] = useState("");
+  const [origen, setOrigen] = useState<"propia" | "cliente">(
+    bachaOrigen === "cliente" ? "cliente" : "propia",
+  );
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -144,7 +150,7 @@ export function OtStockPanel({
     setBloqueadas(rot.data);
     setMovimientos(mov.data);
     try {
-      const bachas = await fetchBachasDisponiblesParaOt({ clienteNombre });
+      const bachas = await fetchBachasDisponiblesParaOt({ clienteNombre, clienteId });
       setBachasDisponibles(bachas);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron cargar las bachas");
@@ -161,11 +167,31 @@ export function OtStockPanel({
       setBachaAsignada(null);
     }
     setLoading(false);
-  }, [otId, bachaId, clienteNombre]);
+  }, [otId, bachaId, clienteNombre, clienteId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    setOrigen(bachaOrigen === "cliente" ? "cliente" : "propia");
+  }, [bachaOrigen]);
+
+  const onCambiarOrigen = async (value: string) => {
+    const next = value === "cliente" ? "cliente" : "propia";
+    if (next === origen) return;
+    const previo = origen;
+    setOrigen(next);
+    setBusy(true);
+    const res = await actualizarOrigenBachaOt({ otId, origen: next });
+    setBusy(false);
+    if (res.error) {
+      setOrigen(previo);
+      toast.error(res.error.message);
+      return;
+    }
+    onChanged?.();
+  };
 
   const reservaPendiente = requiereReservaStock && reservadas.length === 0;
   const esperaReponer = bloqueadas.length > 0 && reservadas.length === 0;
@@ -264,6 +290,7 @@ export function OtStockPanel({
       bachaId: id,
       otId,
       clienteNombre,
+      clienteId,
     });
     setBusy(false);
     if (res.error) {
@@ -300,6 +327,7 @@ export function OtStockPanel({
       const created = await createBachaInventario({
         origen: "cliente",
         cliente_nombre: nombre,
+        cliente_id: clienteId,
         modelo: registrarModelo.trim() || bachaTipo || null,
         ubicacion: registrarUbicacion.trim() || null,
         estado: "disponible",
@@ -308,6 +336,7 @@ export function OtStockPanel({
         bachaId: created.id,
         otId,
         clienteNombre: nombre,
+        clienteId,
       });
       if (asg.error) throw asg.error;
       toast.success("Bacha del cliente registrada y asignada.");
@@ -337,15 +366,24 @@ export function OtStockPanel({
             <Package className="h-3.5 w-3.5" />
             Bacha
           </p>
-          <p className="text-xs text-muted-foreground">
-            {bachaTipo?.trim() || "Sin tipo"}
-            {bachaColocacion ? ` · ${etiquetaTipoColocacion(bachaColocacion)}` : ""}
-            {bachaOrigen === "cliente"
-              ? " · del cliente"
-              : bachaOrigen === "propia"
-                ? " · nuestra"
-                : ""}
-          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              {bachaColocacion ? etiquetaTipoColocacion(bachaColocacion) : "Colocación sin definir"}
+            </p>
+            <Select
+              value={origen}
+              disabled={busy}
+              onValueChange={(v) => void onCambiarOrigen(v)}
+            >
+              <SelectTrigger className="h-8 w-full text-xs sm:w-40" aria-label="Origen de la bacha">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="propia">Nuestra</SelectItem>
+                <SelectItem value="cliente">Del cliente</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {bachaAsignada ? (
             <div className="flex items-center justify-between gap-2">
               <p className="min-w-0 text-xs">
@@ -410,10 +448,10 @@ export function OtStockPanel({
               ) : (
                 <p className="text-xs text-muted-foreground">
                   No hay bachas disponibles
-                  {bachaOrigen === "cliente" ? " de este cliente" : " en stock"}.
+                  {origen === "cliente" ? " de este cliente" : " en stock"}.
                 </p>
               )}
-              {bachaOrigen === "cliente" ? (
+              {origen === "cliente" ? (
                 <Button
                   type="button"
                   size="sm"

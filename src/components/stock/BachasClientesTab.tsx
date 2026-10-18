@@ -28,33 +28,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
 import {
   createBachaInventario,
   fetchBachasInventario,
-  updateBachaInventarioEstado,
-  type BachaInventarioRow,
+  type BachaInventarioLista,
 } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import type { BachaInventarioEstado, BachaOrigen } from "@/types/database";
+import type { BachaOrigen } from "@/types/database";
 
-const ESTADO_LABEL: Record<BachaInventarioEstado, string> = {
-  disponible: "Disponible",
-  asignada: "Asignada",
-  usada: "Usada",
-  baja: "Baja",
-};
+function etiquetaEstadoBacha(row: BachaInventarioLista): string {
+  if (row.ot_id) return row.ot_estado === "done" ? "Usada" : "Ocupada";
+  if (row.estado === "usada") return "Usada";
+  if (row.estado === "baja") return "Baja";
+  return "Disponible";
+}
 
 const ORIGEN_TODOS = "__all__";
 
 export function BachasInventarioTab() {
-  const [rows, setRows] = useState<BachaInventarioRow[]>([]);
+  const [rows, setRows] = useState<BachaInventarioLista[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtroOrigen, setFiltroOrigen] = useState<string>(ORIGEN_TODOS);
+  const [clientes, setClientes] = useState<ClientePresupuesto[]>([]);
+  const [clientesCargando, setClientesCargando] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [draft, setDraft] = useState({
     origen: "propia" as BachaOrigen,
+    cliente_id: "",
     cliente_nombre: "",
     modelo: "",
     medidas: "",
@@ -82,6 +95,21 @@ export function BachasInventarioTab() {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancel = false;
+    setClientesCargando(true);
+    void listClients().then(({ data, error }) => {
+      if (cancel) return;
+      if (error) toast.error(error.message);
+      setClientes(data);
+      setClientesCargando(false);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [open]);
+
   const visibles = useMemo(() => {
     if (filtroOrigen === ORIGEN_TODOS) return rows;
     return rows.filter((r) => r.origen === filtroOrigen);
@@ -90,6 +118,7 @@ export function BachasInventarioTab() {
   const resetDraft = () =>
     setDraft({
       origen: "propia",
+      cliente_id: "",
       cliente_nombre: "",
       modelo: "",
       medidas: "",
@@ -98,19 +127,30 @@ export function BachasInventarioTab() {
     });
 
   const handleOpenChange = (next: boolean) => {
-    if (!next) resetDraft();
+    if (!next) {
+      resetDraft();
+      setPickerOpen(false);
+    }
     setOpen(next);
   };
 
+  const elegirCliente = (c: ClientePresupuesto) => {
+    setDraft((d) => ({ ...d, cliente_id: c.id, cliente_nombre: c.nombre }));
+    // Cerrar en el próximo turno: si el popup se va en el mismo clic, el evento
+    // cae sobre el botón de abajo y lo vuelve a abrir.
+    window.setTimeout(() => setPickerOpen(false), 0);
+  };
+
   const handleSave = async () => {
-    if (draft.origen === "cliente" && !draft.cliente_nombre.trim()) {
-      toast.error("Indicá el nombre del cliente.");
+    if (draft.origen === "cliente" && !draft.cliente_id) {
+      toast.error("Elegí el cliente.");
       return;
     }
     setSaving(true);
     try {
       await createBachaInventario({
         origen: draft.origen,
+        cliente_id: draft.origen === "cliente" ? draft.cliente_id : null,
         cliente_nombre: draft.origen === "cliente" ? draft.cliente_nombre.trim() : null,
         modelo: draft.modelo.trim() || null,
         medidas: draft.medidas.trim() || null,
@@ -125,15 +165,6 @@ export function BachasInventarioTab() {
       toast.error(e instanceof Error ? e.message : "No se pudo registrar");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleEstado = async (id: string, estado: BachaInventarioEstado) => {
-    try {
-      await updateBachaInventarioEstado(id, estado);
-      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, estado } : r)));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo actualizar");
     }
   };
 
@@ -220,20 +251,18 @@ export function BachasInventarioTab() {
                     <TableCell className="text-sm text-muted-foreground">
                       {r.ubicacion?.trim() || "—"}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      <select
-                        className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                        value={r.estado}
-                        onChange={(e) =>
-                          void handleEstado(r.id, e.target.value as BachaInventarioEstado)
-                        }
-                      >
-                        {(Object.keys(ESTADO_LABEL) as BachaInventarioEstado[]).map((k) => (
-                          <option key={k} value={k}>
-                            {ESTADO_LABEL[k]}
-                          </option>
-                        ))}
-                      </select>
+                    <TableCell className="text-sm whitespace-normal">
+                      <div className="flex flex-col">
+                        <span>{etiquetaEstadoBacha(r)}</span>
+                        {r.ot_id ? (
+                          <span
+                            className="max-w-[12rem] truncate text-[11px] text-muted-foreground"
+                            title={r.ot_titulo ?? undefined}
+                          >
+                            {r.ot_titulo?.trim() || "Orden de trabajo"}
+                          </span>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="pr-4 text-sm text-muted-foreground">
                       {r.notas?.trim() || "—"}
@@ -263,11 +292,12 @@ export function BachasInventarioTab() {
                   setDraft((d) => ({
                     ...d,
                     origen: v === "cliente" ? "cliente" : "propia",
+                    cliente_id: v === "cliente" ? d.cliente_id : "",
                     cliente_nombre: v === "cliente" ? d.cliente_nombre : "",
                   }))
                 }
               >
-                <SelectTrigger className="h-10">
+                <SelectTrigger className="h-10 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -279,12 +309,26 @@ export function BachasInventarioTab() {
             {draft.origen === "cliente" ? (
               <div className="space-y-1.5">
                 <Label className="text-sm">Cliente</Label>
-                <Input
-                  className="h-10"
-                  value={draft.cliente_nombre}
-                  onChange={(e) => setDraft((d) => ({ ...d, cliente_nombre: e.target.value }))}
-                  placeholder="Nombre del cliente"
-                />
+                <button
+                  type="button"
+                  disabled={clientesCargando || clientes.length === 0}
+                  onClick={() => setPickerOpen(true)}
+                  className="border-input flex h-10 w-full items-center justify-between gap-2 rounded-lg border bg-card px-3 text-left text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span
+                    className={cn(
+                      "truncate",
+                      !draft.cliente_nombre && "text-muted-foreground",
+                    )}
+                  >
+                    {clientesCargando
+                      ? "Cargando clientes…"
+                      : clientes.length === 0
+                        ? "No hay clientes cargados"
+                        : draft.cliente_nombre || "Elegí un cliente"}
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
+                </button>
               </div>
             ) : null}
             <div className="space-y-1.5">
@@ -331,12 +375,56 @@ export function BachasInventarioTab() {
             </DialogClose>
             <Button
               type="button"
-              disabled={saving || (draft.origen === "cliente" && !draft.cliente_nombre.trim())}
+              disabled={saving || (draft.origen === "cliente" && !draft.cliente_id)}
               onClick={() => void handleSave()}
             >
               {saving ? "Guardando…" : "Guardar"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md" showCloseButton>
+          <DialogHeader className="px-4 pt-4 pr-12 pb-2">
+            <DialogTitle>Elegir cliente</DialogTitle>
+          </DialogHeader>
+          <Command>
+            <CommandInput autoFocus placeholder="Buscar por nombre, teléfono o mail…" />
+            <CommandList className="max-h-80">
+              <CommandEmpty>Ningún cliente coincide.</CommandEmpty>
+              <CommandGroup>
+                {clientes.map((c) => {
+                  const detalle = [c.contacto !== c.nombre ? c.contacto : null, c.tel, c.email]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return (
+                    <CommandItem
+                      key={c.id}
+                      value={`${c.nombre} ${c.contacto} ${c.tel} ${c.email}`}
+                      onSelect={() => elegirCliente(c)}
+                    >
+                      <Check
+                        className={cn(
+                          "size-4",
+                          draft.cliente_id === c.id ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate">{c.nombre}</span>
+                        {detalle ? (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {detalle}
+                          </span>
+                        ) : null}
+                      </span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         </DialogContent>
       </Dialog>
     </div>
