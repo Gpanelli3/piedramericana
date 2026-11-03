@@ -123,7 +123,7 @@ export function VistaCantera() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <header className="flex flex-col gap-3 px-4 pt-6 pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:pt-8 sm:pb-3">
+      <header className="flex flex-col gap-3 px-5 pt-6 pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:pt-6 sm:pb-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Stock Cantera
@@ -144,7 +144,7 @@ export function VistaCantera() {
         </div>
       </header>
 
-      <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
         {!isSupabaseConfigured ? (
           <div className="flex items-center gap-3 rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning-strong">
             <Package className="h-4 w-4 shrink-0" />

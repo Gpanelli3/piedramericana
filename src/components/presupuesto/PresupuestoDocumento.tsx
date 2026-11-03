@@ -158,10 +158,9 @@ export function PresupuestoDocumento({
 
   for (const ot of ordenes) {
     const material = materials.find((m) => m.id === ot.materialId);
+    const materialNombre = material?.name || ot.materialLibre?.trim() || "";
     const tituloBase = ot.titulo.trim() || "Sin título";
-    const titulo = material?.name
-      ? `${tituloBase} — ${material.name}`
-      : tituloBase;
+    const titulo = materialNombre ? `${tituloBase} — ${materialNombre}` : tituloBase;
 
     const filas: FilaDoc[] = [];
     let subOt = 0;

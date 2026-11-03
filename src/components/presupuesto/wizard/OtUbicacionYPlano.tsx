@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { geocodeObra, mapsUrlForCoords } from "@/lib/geocode-obra";
 import {
@@ -13,12 +12,13 @@ import {
   uploadPlano,
 } from "@/lib/presupuesto-planos-storage";
 import type { OrdenTrabajoWizard } from "./types";
-import { CheckCircle2, FileUp, Loader2, MapPin, Paperclip, Trash2 } from "lucide-react";
+import { CheckCircle2, FileUp, Loader2, MapPin, Paperclip, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type OtUbicacionYPlanoProps = {
   ot: OrdenTrabajoWizard;
   patchOrden: (key: string, patch: Partial<OrdenTrabajoWizard>) => void;
+  variant?: "ot" | "cabecera";
 };
 
 function formatBytes(n: number): string {
@@ -27,7 +27,12 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
+export function OtUbicacionYPlano({
+  ot,
+  patchOrden,
+  variant = "ot",
+}: OtUbicacionYPlanoProps) {
+  const cabecera = variant === "cabecera";
   const [geocoding, setGeocoding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,16 +112,27 @@ export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
   };
 
   return (
-    <div className="space-y-4 rounded-md border border-border/55 bg-background/90 p-3 shadow-sm sm:p-4 dark:bg-background/80">
+    <div
+      className={cn(
+        "space-y-4",
+        !cabecera &&
+          "rounded-md border border-border/55 bg-background/90 p-3 shadow-sm sm:p-4 dark:bg-background/80",
+      )}
+    >
       <div className="space-y-1.5">
         <Label htmlFor={`${ot.key}-direccion-obra`} className="text-xs font-medium">
-          Dirección de obra
+          Dirección de obra{" "}
+          {cabecera ? <span className="text-destructive">*</span> : null}
         </Label>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
           <Input
             id={`${ot.key}-direccion-obra`}
             className="h-9 flex-1 text-sm"
-            placeholder="Calle, ciudad… o pegá un link de Google Maps"
+            placeholder={
+              cabecera
+                ? "Dirección, coordenadas o link de Google Maps"
+                : "Calle, ciudad… o pegá un link de Google Maps"
+            }
             value={ot.direccionObra}
             onChange={(e) => onDireccionChange(e.target.value)}
             onKeyDown={(e) => {
@@ -143,7 +159,9 @@ export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Escribí una dirección o pegá un link de Google Maps para obtener el punto en el mapa.
+          {cabecera
+            ? "Tipéá la dirección o pegá un link de Google Maps. Si el arquitecto te pasa la ubicación de la obra, pegá el link acá y queda marcada en el presupuesto."
+            : "Escribí una dirección o pegá un link de Google Maps para obtener el punto en el mapa."}
         </p>
         {hasCoords ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-emerald-700 dark:text-emerald-300">
@@ -171,13 +189,13 @@ export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
 
       <div className="space-y-1.5">
         <Label htmlFor={`${ot.key}-referencia-obra`} className="text-xs font-medium">
-          Referencia de obra{" "}
+          Referencia{" "}
           <span className="font-normal text-muted-foreground">(lote, manzana — va al PDF)</span>
         </Label>
-        <Textarea
+        <Input
           id={`${ot.key}-referencia-obra`}
-          className="min-h-[64px] resize-y text-sm"
-          placeholder="Ej: Lote 42, Mz B — casa portón negro"
+          className="h-9 text-sm"
+          placeholder="Ej: Lote 42, Mz B · familia Gómez"
           value={ot.referenciaObra}
           onChange={(e) => patchOrden(ot.key, { referenciaObra: e.target.value })}
         />
@@ -188,10 +206,6 @@ export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
           ¿Con qué cotizaste?{" "}
           <span className="font-normal text-muted-foreground">(opcional)</span>
         </Label>
-        <p className="text-[11px] text-muted-foreground">
-          Planos, PDF o capturas (p. ej. WhatsApp) que usaste para armar el presupuesto.
-        </p>
-
         {ot.planoAdjunto ? (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
             <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -217,6 +231,28 @@ export function OtUbicacionYPlano({ ot, patchOrden }: OtUbicacionYPlanoProps) {
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
+        ) : cabecera ? (
+          <label
+            className={cn(
+              "inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-amber-800 hover:underline",
+              uploading && "pointer-events-none opacity-70",
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="sr-only"
+              accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+              disabled={uploading}
+              onChange={(e) => void onPickFile(e.target.files?.[0])}
+            />
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden />
+            )}
+            {uploading ? "Subiendo…" : "Agregar archivo"}
+          </label>
         ) : (
           <label
             className={cn(

@@ -177,7 +177,7 @@ export function VistaStock() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+      <header className="border-b border-border bg-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
@@ -232,7 +232,7 @@ export function VistaStock() {
         </div>
       </header>
 
-      <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
         <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
           <TabsList>
             <TabsTrigger value="inventario">Inventario</TabsTrigger>

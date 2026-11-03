@@ -130,14 +130,14 @@ export function VistaDashboard() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="px-4 pt-6 pb-2 sm:px-8 sm:pt-8 sm:pb-3">
+      <header className="px-5 pt-6 pb-2 sm:px-6 sm:pt-6 sm:pb-3">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           {saludoSegunHora()}
         </h1>
         <p className="mt-1 text-sm capitalize text-muted-foreground">{fechaHoy}</p>
       </header>
 
-      <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
         {!isSupabaseConfigured ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">

@@ -32,8 +32,6 @@ import {
   Trash2,
   Save,
   Printer,
-  ChevronRight,
-  ChevronLeft,
 } from "lucide-react";
 import { useArticulos } from "@/hooks/useArticulos";
 import { fetchPreciosMaterialesPorLista } from "@/lib/articulos-api";
@@ -45,7 +43,6 @@ import {
   equivalentesMonedaMixta,
   esArticuloCobraMaterial,
   formatMetraje,
-  formatToneladas,
   importeMecPresupuesto,
   labelUnidad,
   materialPesoEstimadoDesdeOt,
@@ -60,14 +57,15 @@ import { listMaterials } from "@/lib/materials-api";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
-import { PresupuestoStepper } from "@/components/presupuesto/PresupuestoStepper";
-import { StepCliente } from "@/components/presupuesto/wizard/StepCliente";
 import { StepOrdenes } from "@/components/presupuesto/wizard/StepOrdenes";
-import { StepConfirmacion } from "@/components/presupuesto/wizard/StepConfirmacion";
+import { BloqueClienteObra } from "@/components/presupuesto/wizard/BloqueClienteObra";
+import { TarjetaResumen } from "@/components/presupuesto/wizard/TarjetaResumen";
 import { PickArticulo } from "@/components/presupuesto/wizard/fields";
 import {
   newEmptyLineaItem,
   newOrdenTrabajo,
+  otsCompartenUbicacion,
+  snapshotUbicacionOt,
   type LogisticaPresupuesto,
   type LineaItemOT,
   type OrdenTrabajoWizard,
@@ -75,9 +73,6 @@ import {
 import {
   parseMoneyInput,
   validarPresupuestoCompleto,
-  validateCliente,
-  validateMaterialesOt,
-  validateOrdenesItems,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 
@@ -527,8 +522,24 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   };
 
   const addOrdenTrabajo = () => {
-    setOrdenes((rows) => [...rows, newOrdenTrabajo("")]);
+    setOrdenes((rows) => {
+      const nueva = newOrdenTrabajo("");
+      const first = rows[0];
+      if (first && otsCompartenUbicacion(rows)) {
+        Object.assign(nueva, snapshotUbicacionOt(first));
+      }
+      return [...rows, nueva];
+    });
   };
+
+  const patchUbicacionCompartida = (
+    _key: string,
+    patch: Partial<OrdenTrabajoWizard>,
+  ) => {
+    setOrdenes((rows) => rows.map((r) => ({ ...r, ...patch })));
+  };
+
+  const compartenUbicacion = useMemo(() => otsCompartenUbicacion(ordenes), [ordenes]);
 
   const removeOrdenTrabajo = (key: string) => {
     setOrdenes((rows) =>
@@ -873,9 +884,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     setResumenAbierto(true);
   };
 
-  const [wizardStep, setWizardStep] = useState(0);
-  const wizardLastIndex = 2;
-
   const origenLabelDisplay = useMemo(
     () =>
       ORIGEN_VENTA_OPCIONES.find((o) => o.value === origenVentas)?.label ??
@@ -883,55 +891,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [origenVentas],
   );
 
-  const totalLineasOt = useMemo(
-    () => totalesItems.porOt.reduce((acc, p) => acc + p.cantLineas, 0),
-    [totalesItems.porOt],
-  );
-
   const listaPrecioLabel = listaPrecioActual?.label ?? "—";
-
-  const wizardTopRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = wizardTopRef.current;
-    if (!el) return;
-    let parent: HTMLElement | null = el.parentElement;
-    while (parent) {
-      const overflowY = getComputedStyle(parent).overflowY;
-      if (overflowY === "auto" || overflowY === "scroll") {
-        parent.scrollTo({ top: 0, behavior: "auto" });
-        return;
-      }
-      parent = parent.parentElement;
-    }
-    window.scrollTo({ top: 0, behavior: "auto" });
-  }, [wizardStep]);
-
-  const handleWizardSiguiente = () => {
-    const errCliente =
-      wizardStep === 0
-        ? validateCliente(clienteSeleccionadoId)
-        : null;
-    if (errCliente) {
-      setGrabarError(errCliente);
-      return;
-    }
-    if (wizardStep === 1) {
-      const errMat = validateMaterialesOt(ordenes);
-      if (errMat) {
-        setGrabarError(errMat);
-        return;
-      }
-      const errItems = validateOrdenesItems(ordenes, articulosBd);
-      if (errItems) {
-        setGrabarError(errItems);
-        return;
-      }
-    }
-    if (wizardStep < wizardLastIndex) setWizardStep((s) => s + 1);
-  };
-
-  const handleWizardAnterior = () => setWizardStep((s) => Math.max(0, s - 1));
+  const mecExcluidoTodasOts = todasOtsExcluyenMec(ordenes);
 
   const renderLineaCells = (
     ot: OrdenTrabajoWizard,
@@ -990,7 +951,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         <TableCell className="px-2.5 py-2 align-middle text-xs tabular-nums text-muted-foreground whitespace-nowrap first:pl-3">
           {index + 1}
         </TableCell>
-        <TableCell className="px-2.5 py-2 align-middle min-w-[9rem]">
+        <TableCell className="px-2.5 py-2 align-middle w-72 min-w-72">
           <PickArticulo
             compact
             value={line.articuloId}
@@ -1130,7 +1091,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
   if (editCargando) {
     return (
-      <div className="mx-auto max-w-6xl px-3 py-16 text-center text-sm text-muted-foreground sm:px-4">
+      <div className="px-4 py-16 text-center text-sm text-muted-foreground sm:px-6">
         Cargando presupuesto para editar…
       </div>
     );
@@ -1147,32 +1108,50 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     );
   }
 
-  return (
-    <div ref={wizardTopRef} className="w-full max-w-none pb-44">
-      <div className="mx-auto max-w-6xl space-y-6 px-3 sm:px-4 lg:px-0 pb-8">
-        {editando && editNumero ? (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950">
-            Editando <span className="font-semibold tabular-nums">{editNumero}</span>
-            {" — "}se conserva el mismo número al guardar.
-          </div>
-        ) : null}
-        <PresupuestoStepper step={wizardStep} />
+  const tarjetaResumen = (
+    <TarjetaResumen
+      monedaPresupuesto={monedaPresupuesto}
+      dolarHoy={dolarHoy}
+      subtotalItems={totalesItems.subtotal}
+      descuentoGlobalPct={descuentoGlobalPct}
+      setDescuentoGlobalPct={setDescuentoGlobalPct}
+      netoItems={totalesItems.totalConDesc}
+      totalMecImporte={totalMecImporte}
+      totalMecGlobal={totalMecGlobal}
+      setTotalMecGlobal={setTotalMecGlobal}
+      mMedicionGlobal={mMedicionGlobal}
+      mEntregaGlobal={mEntregaGlobal}
+      mColocacionGlobal={mColocacionGlobal}
+      mecExcluidoTodasOts={mecExcluidoTodasOts}
+      totalPresupuesto={totalPresupuesto}
+      totalArsEquivalente={totalArsEquivalente}
+      faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
+    />
+  );
 
-        <div className="min-h-[260px]">
-          {wizardStep === 0 ? (
-            <StepCliente
+  return (
+    <div className="w-full max-w-none pb-44">
+      <div className="flex w-full flex-col gap-6 pb-8">
+        <header className="space-y-1">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            {editando && editNumero ? `Editando ${editNumero}` : "Nuevo presupuesto"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {editando
+              ? "Se conserva el mismo número al guardar."
+              : "Cargá los datos y los ítems. El presupuesto puede convertirse en N órdenes de trabajo cuando se apruebe."}
+          </p>
+        </header>
+
+        <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
+          <div className="order-3 space-y-6 md:order-none md:col-start-1 md:row-start-1">
+            <BloqueClienteObra
               clientesLocales={clientesLocales}
               clientesCargando={clientesCargando}
               clienteSeleccionadoId={clienteSeleccionadoId}
               aplicarCliente={aplicarCliente}
               limpiarCliente={limpiarCliente}
               abrirNuevoCliente={abrirNuevoCliente}
-              listasPrecios={listasPrecios}
-              listaPrecioId={listaPrecioId}
-              setListaPrecioId={setListaPrecioId}
-              monedaPresupuesto={monedaPresupuesto}
-              dolarHoy={dolarHoy}
-              setDolarHoy={setDolarHoy}
               origenVentas={origenVentas}
               setOrigenVentas={setOrigenVentas}
               contacto={contacto}
@@ -1181,41 +1160,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               setTel={setTel}
               email={email}
               setEmail={setEmail}
-              direccion={direccion}
-              setDireccion={setDireccion}
               obsCabecera={obsCabecera}
               setObsCabecera={setObsCabecera}
-            />
-          ) : null}
-
-          {wizardStep === 1 ? (
-            <StepOrdenes
-              catalogoCargando={catalogoCargando}
-              ordenes={ordenes}
-              materials={materials}
-              materialesCargando={materialesCargando}
-              totalesItems={totalesItems}
-              patchOrden={patchOrden}
-              addOrdenTrabajo={addOrdenTrabajo}
-              removeOrdenTrabajo={removeOrdenTrabajo}
-              addItem={addItem}
-              renderLineaCells={renderLineaCells}
-            />
-          ) : null}
-
-          {wizardStep === 2 ? (
-            <StepConfirmacion
-              clienteNombre={clienteSeleccionado?.nombre ?? "—"}
-              listaPrecioLabel={listaPrecioLabel}
-              origenLabel={origenLabelDisplay}
-              monedaPresupuesto={monedaPresupuesto}
-              dolarHoy={dolarHoy}
-              setDolarHoy={setDolarHoy}
-              totalArsEquivalente={totalArsEquivalente}
-              ordenesCount={ordenes.length}
-              lineItemsCount={totalLineasOt}
-              faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
-              totalesPorOt={totalesItems.porOt}
               mMedicionGlobal={mMedicionGlobal}
               setMMedicionGlobal={setMMedicionGlobal}
               mEntregaGlobal={mEntregaGlobal}
@@ -1226,18 +1172,31 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               setTotalMecGlobal={setTotalMecGlobal}
               obsServiciosMec={obsServiciosMec}
               setObsServiciosMec={setObsServiciosMec}
-              totalesItemsSubtotal={totalesItems.subtotal}
-              descuentoGlobalPct={descuentoGlobalPct}
-              setDescuentoGlobalPct={setDescuentoGlobalPct}
-              totalesItemsTotalConDesc={totalesItems.totalConDesc}
-              totalMecImporte={totalMecImporte}
-              totalPresupuesto={totalPresupuesto}
-              totalesTotalM2={totalesItems.totalM2}
-              totalesTotalMl={totalesItems.totalMl}
-              totalesTotalTon={totalesItems.totalTon}
-              mecExcluidoTodasOts={todasOtsExcluyenMec(ordenes)}
+              mecExcluidoTodasOts={mecExcluidoTodasOts}
+              monedaPresupuesto={monedaPresupuesto}
+              otUbicacion={ordenes[0] ?? null}
+              patchUbicacion={patchUbicacionCompartida}
+              mostrarUbicacionCompartida={compartenUbicacion}
             />
-          ) : null}
+            <StepOrdenes
+              catalogoCargando={catalogoCargando}
+              ordenes={ordenes}
+              materials={materials}
+              materialesCargando={materialesCargando}
+              preciosMaterial={preciosMaterial}
+              monedaMaterial={monedaPresupuesto}
+              totalesItems={totalesItems}
+              patchOrden={patchOrden}
+              addOrdenTrabajo={addOrdenTrabajo}
+              removeOrdenTrabajo={removeOrdenTrabajo}
+              addItem={addItem}
+              renderLineaCells={renderLineaCells}
+              ocultarUbicacion={compartenUbicacion}
+            />
+          </div>
+          <div className="order-2 md:order-none md:col-start-2 md:row-start-1 md:sticky md:top-4">
+            {tarjetaResumen}
+          </div>
         </div>
       </div>
 
@@ -1325,118 +1284,38 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
 
       <div
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:left-60",
+          "fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 sm:left-16",
         )}
       >
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 sm:px-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="text-xs sm:text-sm min-w-0 flex-1 tabular-nums flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground">
-            {totalMecImporte > 0 ? (
-              <>
-                <span>
-                  MEC{" "}
-                  <strong className="text-foreground">
-                    {formatMontoFooter(totalMecImporte, "ars")}
-                  </strong>
-                </span>
-                <span className="text-border">|</span>
-              </>
-            ) : null}
-            <span>
-              m²{" "}
-              <strong className="text-foreground">
-                {formatMetraje(totalesItems.totalM2)}
-              </strong>
-            </span>
-            <span className="text-border">|</span>
-            <span>
-              ml{" "}
-              <strong className="text-foreground">
-                {formatMetraje(totalesItems.totalMl)}
-              </strong>
-            </span>
-            {totalesItems.totalTon > 0 ? (
-              <>
-                <span className="text-border">|</span>
-                <span>
-                  ton{" "}
-                  <strong className="text-foreground">
-                    {formatToneladas(totalesItems.totalTon)}
-                  </strong>
-                </span>
-              </>
-            ) : null}
-            <span className="text-border">|</span>
-            <span>
-              Total{" "}
-              <strong className="text-foreground">
-                {formatMontoFooter(totalPresupuesto, monedaPresupuesto)}
-              </strong>
-            </span>
-            {monedaPresupuesto === "usd" && dolarHoy > 0 ? (
-              <>
-                <span className="text-border">|</span>
-                <span>
-                  TC{" "}
-                  <strong className="text-foreground">{formatUsd(dolarHoy)}</strong>
-                </span>
-                <span className="text-border">|</span>
-                <span>
-                  ≈{" "}
-                  <strong className="text-foreground">
-                    {formatMontoFooter(totalArsEquivalente, "ars")}
-                  </strong>
-                </span>
-              </>
-            ) : null}
+        <div className="flex w-full flex-col gap-2 px-4 py-3 sm:px-6 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="text-sm min-w-0 flex-1 tabular-nums text-muted-foreground">
+            Total{" "}
+            <strong className="text-foreground">
+              {formatMontoFooter(totalPresupuesto, monedaPresupuesto)}
+            </strong>
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
-            {wizardStep > 0 ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="gap-1"
-                onClick={handleWizardAnterior}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Atrás
-              </Button>
-            ) : null}
-            {wizardStep < 2 ? (
-              <Button
-                type="button"
-                size="sm"
-                className="gap-1"
-                onClick={handleWizardSiguiente}
-              >
-                Siguiente
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="gap-1"
-                  onClick={handleImprimir}
-                >
-                  <Printer className="h-4 w-4" />
-                  Imprimir
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="accent"
-                  className="gap-1"
-                  disabled={guardando}
-                  onClick={() => void handleGrabar()}
-                >
-                  <Save className="h-4 w-4" />
-                  {editando ? "Guardar cambios" : "Guardar"}
-                </Button>
-              </>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              onClick={handleImprimir}
+            >
+              <Printer className="h-4 w-4" />
+              Imprimir
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="accent"
+              className="gap-1"
+              disabled={guardando}
+              onClick={() => void handleGrabar()}
+            >
+              <Save className="h-4 w-4" />
+              {editando ? "Guardar cambios" : "Guardar borrador"}
+            </Button>
           </div>
         </div>
       </div>

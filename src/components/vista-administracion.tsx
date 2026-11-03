@@ -241,7 +241,7 @@ export function VistaAdministracion() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+      <header className="border-b border-border bg-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
             Ventas — Caja y cuentas corrientes
@@ -290,7 +290,7 @@ export function VistaAdministracion() {
         </div>
       </header>
 
-      <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card className="border-border shadow-sm">
             <CardContent className="flex gap-4 p-4 sm:p-5">

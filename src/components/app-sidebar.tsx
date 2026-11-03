@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useCallback, useState, useEffect } from "react";
-import type { ReactNode } from "react";
+import { useMemo, useCallback, useState, useEffect, useRef } from "react";
+import type { FocusEvent, ReactNode } from "react";
 import {
   BarChart3,
   ChevronRight,
@@ -190,6 +190,7 @@ type ExpandableNavProps = {
   item: NavItemDef;
   active: boolean;
   menuAbierto: boolean;
+  expandido: boolean;
   onToggleEncabezado: () => void;
   submenuId: string;
   children: ReactNode;
@@ -199,6 +200,7 @@ function ExpandableNavItem({
   item,
   active,
   menuAbierto,
+  expandido,
   onToggleEncabezado,
   submenuId,
   children,
@@ -211,46 +213,49 @@ function ExpandableNavItem({
           active ? "bg-accent text-accent-foreground" : "text-sidebar-foreground",
         )}
       >
-        <button
-          type="button"
-          className={cn(
-            "shrink-0 flex items-center justify-center rounded-xl px-1 py-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-            active
-              ? "text-accent-foreground hover:bg-accent/80"
-              : "text-sidebar-foreground/70 hover:bg-muted hover:text-sidebar-foreground",
-          )}
-          aria-expanded={active ? menuAbierto : false}
-          aria-controls={submenuId}
-          aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleEncabezado();
-          }}
-        >
-          <ChevronRight
-            aria-hidden
+        {expandido ? (
+          <button
+            type="button"
             className={cn(
-              "h-4 w-4 shrink-0 transition-transform duration-200",
-              menuAbierto && active && "rotate-90",
+              "shrink-0 flex items-center justify-center rounded-xl px-1 py-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+              active
+                ? "text-accent-foreground hover:bg-accent/80"
+                : "text-sidebar-foreground/70 hover:bg-muted hover:text-sidebar-foreground",
             )}
-          />
-        </button>
+            aria-expanded={active ? menuAbierto : false}
+            aria-controls={submenuId}
+            aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleEncabezado();
+            }}
+          >
+            <ChevronRight
+              aria-hidden
+              className={cn(
+                "h-4 w-4 shrink-0 transition-transform duration-200",
+                menuAbierto && active && "rotate-90",
+              )}
+            />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onToggleEncabezado}
           className={cn(
-            "flex flex-1 min-w-0 items-center gap-2.5 px-1 py-2.5 rounded-xl text-sm font-medium transition-colors text-left",
+            "flex min-w-0 items-center rounded-xl text-sm font-medium transition-colors text-left",
+            expandido ? "flex-1 gap-2.5 px-1 py-2.5" : "w-full justify-center px-2 py-2.5",
             active
               ? "text-accent-foreground"
               : "text-sidebar-foreground hover:bg-muted",
           )}
         >
-          <span>{item.icon}</span>
-          <span className="truncate flex-1">{item.label}</span>
+          <span className="shrink-0">{item.icon}</span>
+          <span className={cn("truncate", expandido ? "flex-1" : "sr-only")}>{item.label}</span>
         </button>
       </div>
 
-      {menuAbierto && active ? (
+      {expandido && menuAbierto && active ? (
         <div
           id={submenuId}
           className="border-l-2 border-accent/40 ml-5 pl-2 space-y-0.5 mt-1"
@@ -270,6 +275,42 @@ export function AppSidebar() {
   const [produccionMenuAbierto, setProduccionMenuAbierto] = useState(false);
   const [equipoMenuAbierto, setEquipoMenuAbierto] = useState(false);
   const [finanzasMenuAbierto, setFinanzasMenuAbierto] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [foco, setFoco] = useState(false);
+  const cierreRef = useRef<number | null>(null);
+  const expandido = hover || foco;
+
+  const cancelarCierre = useCallback(() => {
+    if (cierreRef.current != null) {
+      window.clearTimeout(cierreRef.current);
+      cierreRef.current = null;
+    }
+  }, []);
+
+  const abrirPorHover = useCallback(() => {
+    cancelarCierre();
+    setHover(true);
+  }, [cancelarCierre]);
+
+  const programarCierre = useCallback(() => {
+    cancelarCierre();
+    cierreRef.current = window.setTimeout(() => {
+      setHover(false);
+      setFoco(false);
+    }, 160);
+  }, [cancelarCierre]);
+
+  const alEnfocar = useCallback(() => {
+    setFoco(true);
+  }, []);
+
+  const alDesenfocar = useCallback((e: FocusEvent<HTMLElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setFoco(false);
+    }
+  }, []);
+
+  useEffect(() => cancelarCierre, [cancelarCierre]);
 
   const activeTab = useMemo(() => wsDesdeParam(searchParams.get("ws")), [searchParams]);
   const pv = searchParams.get("pv") ?? "";
@@ -449,24 +490,38 @@ export function AppSidebar() {
     );
 
   return (
-    <aside className="flex h-full min-h-0 w-60 shrink-0 flex-col self-stretch bg-sidebar border-r border-sidebar-border overflow-y-auto [scrollbar-gutter:stable]">
+    <div className="relative h-full w-16 shrink-0 self-stretch">
+    <aside
+      className={cn(
+        "absolute inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col bg-sidebar border-r border-sidebar-border overflow-x-hidden transition-[width] duration-200 ease-out",
+        expandido
+          ? "w-60 overflow-y-auto shadow-xl [scrollbar-gutter:stable]"
+          : "w-16 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+      )}
+      onMouseEnter={abrirPorHover}
+      onMouseLeave={programarCierre}
+      onFocusCapture={alEnfocar}
+      onBlurCapture={alDesenfocar}
+    >
       {/* Brand */}
-      <div className="px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
+      <div className={cn("py-5", expandido ? "px-5" : "px-2")}>
+        <div className={cn("flex items-center", expandido ? "gap-3" : "justify-center")}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent">
             <MarmoGestMark className="h-5 w-5 text-accent-foreground" />
           </div>
-          <span className="text-lg font-bold tracking-tight text-sidebar-foreground">MarmoGest</span>
+          <span className={cn("whitespace-nowrap text-lg font-bold tracking-tight text-sidebar-foreground", !expandido && "sr-only")}>
+            MarmoGest
+          </span>
         </div>
       </div>
 
       {/* User */}
-      <div className="border-y border-sidebar-border px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
+      <div className={cn("border-y border-sidebar-border py-4", expandido ? "px-5" : "px-2")}>
+        <div className={cn("flex items-center", expandido ? "gap-3" : "justify-center")}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
             {initials}
           </div>
-          <div className="min-w-0 flex-1">
+          <div className={cn("min-w-0 flex-1", !expandido && "sr-only")}>
             <p className="truncate text-sm font-medium text-sidebar-foreground">{displayName}</p>
             {roles.length > 0 ? (
               <p className="truncate text-xs text-sidebar-foreground/50">
@@ -485,8 +540,13 @@ export function AppSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 px-3 py-4">
-        <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+      <nav className={cn("flex-1 space-y-0.5 py-4", expandido ? "px-3" : "px-2")}>
+        <p
+          className={cn(
+            "px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40",
+            expandido ? "mb-2" : "sr-only",
+          )}
+        >
           Navegación
         </p>
         {navItems.map((item) => {
@@ -497,6 +557,7 @@ export function AppSidebar() {
                 item={item}
                 active={activeTab === item.id}
                 menuAbierto={presupuestosMenuAbierto}
+                expandido={expandido}
                 onToggleEncabezado={onPresupuestosEncabezado}
                 submenuId="sidebar-presupuestos-submenu"
               >
@@ -539,6 +600,7 @@ export function AppSidebar() {
                 item={item}
                 active={activeTab === item.id}
                 menuAbierto={produccionMenuAbierto}
+                expandido={expandido}
                 onToggleEncabezado={onProduccionEncabezado}
                 submenuId="sidebar-produccion-submenu"
               >
@@ -563,6 +625,7 @@ export function AppSidebar() {
                 item={item}
                 active={activeTab === item.id}
                 menuAbierto={equipoMenuAbierto}
+                expandido={expandido}
                 onToggleEncabezado={onEquipoEncabezado}
                 submenuId="sidebar-equipo-submenu"
               >
@@ -587,6 +650,7 @@ export function AppSidebar() {
                 item={item}
                 active={activeTab === item.id}
                 menuAbierto={finanzasMenuAbierto}
+                expandido={expandido}
                 onToggleEncabezado={onFinanzasEncabezado}
                 submenuId="sidebar-finanzas-submenu"
               >
@@ -610,31 +674,38 @@ export function AppSidebar() {
               type="button"
               onClick={() => gotoWorkspace(item.id)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                "flex w-full items-center rounded-xl py-2.5 text-sm font-medium transition-colors",
+                expandido ? "gap-2.5 px-3" : "justify-center px-2",
                 activeTab === item.id
                   ? "bg-accent text-accent-foreground"
                   : "text-sidebar-foreground hover:bg-muted",
               )}
             >
-              <span>{item.icon}</span>
-              {item.label}
+              <span className="shrink-0">{item.icon}</span>
+              <span className={cn("truncate", !expandido && "sr-only")}>{item.label}</span>
             </button>
           );
         })}
       </nav>
 
       {/* Footer */}
-      <div className="space-y-2 border-t border-sidebar-border px-4 py-4">
+      <div className={cn("space-y-2 border-t border-sidebar-border py-4", expandido ? "px-4" : "px-2")}>
         <button
           type="button"
           onClick={() => void signOut()}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-sidebar-foreground/60 hover:bg-muted hover:text-sidebar-foreground transition-colors"
+          className={cn(
+            "flex w-full items-center rounded-lg py-2 text-left text-sm text-sidebar-foreground/60 hover:bg-muted hover:text-sidebar-foreground transition-colors",
+            expandido ? "gap-2 px-3" : "justify-center px-2",
+          )}
         >
-          <LogOut className="h-4 w-4" />
-          Cerrar sesión
+          <LogOut className="h-4 w-4 shrink-0" />
+          <span className={cn("whitespace-nowrap", !expandido && "sr-only")}>Cerrar sesión</span>
         </button>
-        <p className="px-3 text-[11px] text-sidebar-foreground/30">Piedra Americana · escritorio</p>
+        <p className={cn("px-3 text-[11px] text-sidebar-foreground/30", !expandido && "sr-only")}>
+          Piedra Americana · escritorio
+        </p>
       </div>
     </aside>
+    </div>
   );
 }

@@ -163,13 +163,13 @@ function FinanzasShell({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="border-b border-border bg-white">
-        <div className="px-8 pt-5 pb-5">
+        <div className="px-5 pt-5 pb-5 sm:px-6">
           <h1 className="text-xl font-bold tracking-tight text-foreground">
             Finanzas · {FINANZAS_SECCION_LABELS[seccion]}
           </h1>
         </div>
       </header>
-      <main className="p-8 [scrollbar-gutter:stable]">{children}</main>
+      <main className="p-4 sm:p-6 [scrollbar-gutter:stable]">{children}</main>
     </div>
   );
 }
@@ -454,7 +454,7 @@ function VistaFinanzasLibro() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="border-b border-border bg-card px-4 py-4 sm:px-8 sm:py-5">
+      <header className="border-b border-border bg-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight sm:text-xl">Finanzas · Libro</h1>
@@ -489,7 +489,7 @@ function VistaFinanzasLibro() {
         </div>
       </header>
 
-      <div className="space-y-6 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardContent className="p-4">

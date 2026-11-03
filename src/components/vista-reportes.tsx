@@ -122,7 +122,7 @@ export function VistaReportes() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#FBF7F2]">
       <header className="sticky top-0 z-10 border-b border-border/60 bg-white/95 backdrop-blur">
-        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-8 sm:py-3.5">
+        <div className="flex flex-col gap-3 px-5 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-6 sm:py-3.5">
           <p className="shrink-0 text-sm font-medium capitalize text-foreground/80">
             {fechaLargaHoy()}
           </p>
@@ -170,7 +170,7 @@ export function VistaReportes() {
         </div>
       </header>
 
-      <div className="space-y-7 px-4 py-5 sm:px-8 sm:py-6">
+      <div className="space-y-7 px-5 py-5 sm:px-6 sm:py-6">
         {!isSupabaseConfigured ? (
           <p className="rounded-xl border border-dashed border-border bg-white p-8 text-center text-sm text-muted-foreground">
             Configurá Supabase para ver el reporte en vivo.

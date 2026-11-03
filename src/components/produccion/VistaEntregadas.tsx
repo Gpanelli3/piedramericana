@@ -37,7 +37,7 @@ export function VistaEntregadas() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <header className="border-b border-border bg-white px-6 py-4 sm:px-8 dark:bg-background">
+      <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Producción · Entregadas</h1>

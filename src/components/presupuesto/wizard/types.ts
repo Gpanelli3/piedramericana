@@ -45,6 +45,8 @@ export type OrdenTrabajoWizard = {
   fechaMedicion: string;
   fechaEntrega: string;
   materialId: string;
+  /** Piedra escrita a mano cuando no se elige una del catálogo. */
+  materialLibre?: string;
   /**
    * Chapa señalada del inventario (sigue Disponible hasta la seña).
    * Al señar se intenta reservar; si ya no está, se pide otra del mismo material.
@@ -103,6 +105,7 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     fechaMedicion: "",
     fechaEntrega: "",
     materialId: materialIdDefault,
+    materialLibre: "",
     chapaSugeridaId: null,
     chapaSugeridaBulto: "",
     chapaSugeridaLabel: "",
@@ -111,7 +114,7 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     llevaBacha: false,
     bachaOrigen: "propia",
     nafe: "",
-    items: [],
+    items: [newEmptyLineaItem()],
     direccionObra: "",
     obraLat: null,
     obraLng: null,
@@ -126,4 +129,45 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     obsMec: "",
     panelExpandido: true,
   };
+}
+
+function planoPath(plano: PlanoAdjuntoOt | null): string {
+  return plano?.storagePath ?? "";
+}
+
+export function snapshotUbicacionOt(
+  ot: OrdenTrabajoWizard,
+): Pick<
+  OrdenTrabajoWizard,
+  | "direccionObra"
+  | "obraLat"
+  | "obraLng"
+  | "obraFormattedAddress"
+  | "referenciaObra"
+  | "planoAdjunto"
+> {
+  return {
+    direccionObra: ot.direccionObra,
+    obraLat: ot.obraLat,
+    obraLng: ot.obraLng,
+    obraFormattedAddress: ot.obraFormattedAddress,
+    referenciaObra: ot.referenciaObra,
+    planoAdjunto: ot.planoAdjunto,
+  };
+}
+
+/** True si todas las OT comparten dirección, coords, referencia y plano. */
+export function otsCompartenUbicacion(ordenes: OrdenTrabajoWizard[]): boolean {
+  if (ordenes.length <= 1) return true;
+  const a = ordenes[0];
+  if (!a) return true;
+  return ordenes.every(
+    (ot) =>
+      ot.direccionObra === a.direccionObra &&
+      ot.obraLat === a.obraLat &&
+      ot.obraLng === a.obraLng &&
+      ot.obraFormattedAddress === a.obraFormattedAddress &&
+      ot.referenciaObra === a.referenciaObra &&
+      planoPath(ot.planoAdjunto) === planoPath(a.planoAdjunto),
+  );
 }

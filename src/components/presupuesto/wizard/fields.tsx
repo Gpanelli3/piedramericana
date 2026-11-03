@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -71,6 +72,7 @@ export function PickCliente({
   onClear,
   onNuevoCliente,
   loading = false,
+  placeholder,
 }: {
   clientes: ClientePresupuesto[];
   value: string | null;
@@ -79,6 +81,7 @@ export function PickCliente({
   onClear?: () => void;
   onNuevoCliente: (textoBuscado: string) => void;
   loading?: boolean;
+  placeholder?: string;
 }) {
   const [search, setSearch] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -151,7 +154,9 @@ export function PickCliente({
         aria-haspopup="listbox"
         aria-autocomplete="list"
         aria-label="Buscar cliente o profesional"
-        placeholder={loading ? "Cargando clientes…" : "Nombre o firma…"}
+        placeholder={
+          loading ? "Cargando clientes…" : placeholder ?? "Nombre o firma…"
+        }
         disabled={loading}
         value={search}
         onChange={(e) => {
@@ -268,6 +273,7 @@ export function PickMaterial({
   loading,
   triggerClassName,
   ariaLabel,
+  placeholder = "Elegir material…",
 }: {
   materials: { id: string; name: string; unit: string }[];
   value: string;
@@ -277,6 +283,7 @@ export function PickMaterial({
   triggerClassName?: string;
   /** Accesibilidad cuando no hay etiqueta visible */
   ariaLabel?: string;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const selected = materials.find((m) => m.id === value);
@@ -295,17 +302,20 @@ export function PickMaterial({
             triggerClassName,
           )}
         >
-          <span className="truncate">
+          <span className={cn("truncate", !selected && !loading && "text-muted-foreground")}>
             {loading
               ? "Cargando materiales…"
               : selected
                 ? `${selected.name}${selected.unit ? ` (${selected.unit})` : ""}`
-                : "Elegir material…"}
+                : placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,26rem)] p-0" align="start">
+      <PopoverContent
+        className="w-(--radix-popover-trigger-width) p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder="Buscar material…" />
           <CommandList>
@@ -341,6 +351,298 @@ export function PickMaterial({
     </Popover>
   );
 }
+
+function textoBusqueda(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function formatPrecioMaterial(n: number): string {
+  return n.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Campo de texto que filtra el catálogo y permite un material escrito a mano. */
+export function BuscadorMaterial({
+  materials,
+  value,
+  textoLibre = "",
+  onChange,
+  precios,
+  moneda = "usd",
+  loading,
+}: {
+  materials: MaterialWizardRowLite[];
+  value: string;
+  textoLibre?: string;
+  onChange: (next: { materialId: string; materialLibre: string }) => void;
+  precios?: Record<string, number>;
+  moneda?: "ars" | "usd";
+  loading?: boolean;
+}) {
+  const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const selected = materials.find((m) => m.id === value);
+  const etiqueta = selected?.name ?? textoLibre;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(etiqueta);
+  const [editado, setEditado] = useState(false);
+  const [active, setActive] = useState(0);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 320 });
+  const queryRef = useRef(query);
+  const editadoRef = useRef(editado);
+  queryRef.current = query;
+  editadoRef.current = editado;
+
+  useEffect(() => {
+    if (!open) setQuery(etiqueta);
+  }, [etiqueta, open]);
+
+  const filtrados = useMemo(() => {
+    const q = textoBusqueda(query);
+    if (!q) return materials;
+    return materials.filter((m) => {
+      const blob = textoBusqueda(
+        `${m.name} ${m.codigo ?? ""} ${m.familia ?? ""} ${m.unit ?? ""}`,
+      );
+      return blob.includes(q);
+    });
+  }, [materials, query]);
+
+  const qTrim = query.trim();
+  const coincideExacto = materials.some(
+    (m) => textoBusqueda(m.name) === textoBusqueda(qTrim),
+  );
+  const ofreceLibre = qTrim.length > 0 && !coincideExacto;
+  const totalOpciones = filtrados.length + (ofreceLibre ? 1 : 0);
+
+  useEffect(() => {
+    setActive(0);
+  }, [query, open]);
+
+  function aplicarTexto(texto: string) {
+    const q = texto.trim();
+    const exact = materials.find((m) => textoBusqueda(m.name) === textoBusqueda(q));
+    if (exact) {
+      onChange({ materialId: exact.id, materialLibre: "" });
+      return;
+    }
+    onChange({ materialId: "", materialLibre: q });
+  }
+
+  function elegirCatalogo(id: string) {
+    onChange({ materialId: id, materialLibre: "" });
+    setEditado(false);
+    setOpen(false);
+  }
+
+  function elegirLibre() {
+    aplicarTexto(queryRef.current);
+    setEditado(false);
+    setOpen(false);
+  }
+
+  function colocarLista() {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.min(512, window.innerWidth - 16);
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+    setPos({ top: rect.bottom + 6, left, width });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    colocarLista();
+    const cerrarAfuera = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (inputRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      if (editadoRef.current) aplicarTexto(queryRef.current);
+      setEditado(false);
+      setOpen(false);
+    };
+    const mover = () => colocarLista();
+    document.addEventListener("mousedown", cerrarAfuera);
+    window.addEventListener("resize", mover);
+    window.addEventListener("scroll", mover, true);
+    return () => {
+      document.removeEventListener("mousedown", cerrarAfuera);
+      window.removeEventListener("resize", mover);
+      window.removeEventListener("scroll", mover, true);
+    };
+  }, [open]);
+
+  function elegirIndice(index: number) {
+    if (index < filtrados.length) {
+      const item = filtrados[index];
+      if (item) elegirCatalogo(item.id);
+      return;
+    }
+    if (ofreceLibre) elegirLibre();
+  }
+
+  const prefijo = moneda === "usd" ? "US$" : "$";
+
+  return (
+    <div className="shrink-0">
+      <input
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-label="Buscar material"
+        disabled={loading}
+        placeholder={loading ? "Cargando materiales…" : "Buscar material o texto libre..."}
+        className="h-8 w-72 rounded-md border border-white/20 bg-white px-2.5 text-xs text-zinc-900 shadow-none outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-60"
+        value={open ? query : etiqueta}
+        onMouseDown={() => {
+          if (!open) {
+            setQuery("");
+            setEditado(false);
+            setOpen(true);
+          }
+        }}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setEditado(true);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setActive((i) => (totalOpciones === 0 ? 0 : (i + 1) % totalOpciones));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+            setActive((i) =>
+              totalOpciones === 0 ? 0 : (i - 1 + totalOpciones) % totalOpciones,
+            );
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (open && totalOpciones > 0) elegirIndice(active);
+            else if (editado) elegirLibre();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setEditado(false);
+            setOpen(false);
+          }
+        }}
+      />
+      {open
+        ? createPortal(
+            <div
+              className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+              style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
+            >
+        <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto py-1">
+          {filtrados.length === 0 && !ofreceLibre ? (
+            <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+              {materials.length === 0
+                ? "Sin materiales. Cargalos en Stock → Materiales."
+                : "Sin coincidencias."}
+            </li>
+          ) : null}
+          {filtrados.map((m, index) => {
+            const precio = precios?.[m.id];
+            const activo = index === active;
+            return (
+              <li key={m.id} role="option" aria-selected={value === m.id}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-3 px-3 py-2 text-left",
+                    activo ? "bg-amber-500 text-white" : "hover:bg-muted",
+                  )}
+                  onMouseEnter={() => setActive(index)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    elegirCatalogo(m.id);
+                  }}
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="truncate text-sm font-medium">{m.name}</span>
+                    {m.espesor_mm != null && m.espesor_mm > 0 ? (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+                          activo
+                            ? "bg-white/20 text-white"
+                            : "bg-orange-100 text-orange-700",
+                        )}
+                      >
+                        {m.espesor_mm} mm
+                      </span>
+                    ) : null}
+                  </span>
+                  {precio != null ? (
+                    <span className="shrink-0 text-right leading-tight">
+                      <span className="block text-sm font-semibold tabular-nums">
+                        {prefijo}
+                        {formatPrecioMaterial(precio)}
+                      </span>
+                      <span
+                        className={cn(
+                          "block text-[10px]",
+                          activo ? "text-white/80" : "text-muted-foreground",
+                        )}
+                      >
+                        / {m.unit || "m2"}
+                      </span>
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+          {ofreceLibre ? (
+            <li role="option" aria-selected={false}>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full items-center px-3 py-2 text-left text-sm",
+                  active === filtrados.length
+                    ? "bg-amber-500 text-white"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
+                onMouseEnter={() => setActive(filtrados.length)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  elegirLibre();
+                }}
+              >
+                Usar «{qTrim}» como texto libre
+              </button>
+            </li>
+          ) : null}
+        </ul>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+type MaterialWizardRowLite = {
+  id: string;
+  name: string;
+  unit: string;
+  codigo?: string | null;
+  familia?: string | null;
+  espesor_mm?: number | null;
+};
 
 export type ChapaPickOption = {
   id: string;
@@ -463,71 +765,166 @@ export function PickArticulo({
   /** Lista dinámica de artículos (del hook useArticulos). */
   articulos: ArticuloConPrecio[];
 }) {
-  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const selected = articulos.find((a) => a.id === value);
+  const etiqueta = selected?.descripcion ?? "";
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 288 });
+
+  const filtrados = useMemo(() => {
+    const q = textoBusqueda(query);
+    if (!q) return articulos;
+    return articulos.filter((a) =>
+      textoBusqueda(`${a.descripcion} ${a.codigo}`).includes(q),
+    );
+  }, [articulos, query]);
+
+  useEffect(() => {
+    setActive(0);
+  }, [query, open]);
+
+  function colocarLista() {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = rect.width;
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    setPos({ top: rect.bottom + 4, left, width });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    colocarLista();
+    const cerrarAfuera = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (inputRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const mover = () => colocarLista();
+    document.addEventListener("mousedown", cerrarAfuera);
+    window.addEventListener("resize", mover);
+    window.addEventListener("scroll", mover, true);
+    return () => {
+      document.removeEventListener("mousedown", cerrarAfuera);
+      window.removeEventListener("resize", mover);
+      window.removeEventListener("scroll", mover, true);
+    };
+  }, [open]);
+
+  function elegir(id: string) {
+    onChange(id);
+    setOpen(false);
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className={cn(
-            "w-full justify-between text-xs font-normal shadow-sm border-border/90 bg-background text-foreground hover:bg-muted/30 hover:text-foreground",
-            compact ? "h-8 min-w-[8rem] px-2" : "h-9 min-w-[12rem] px-2.5",
-          )}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-1.5">
-            {selected ? (
-              <>
-                <span className="truncate text-left">{selected.descripcion}</span>
-                <span className="shrink-0 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
-                  {labelTipoUnidad(selected.unidad)}
-                </span>
-              </>
-            ) : (
-              <span className="truncate text-left text-muted-foreground">Sub-ítem…</span>
-            )}
-          </span>
-          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(100vw-2rem,28rem)] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Buscar sub-ítem…" />
-          <CommandList>
-            <CommandEmpty>
-              {articulos.length === 0
-                ? "Cargando sub-ítems…"
-                : "Sin coincidencias."}
-            </CommandEmpty>
-            <CommandGroup>
-              {articulos.map((a) => (
-                <CommandItem
-                  key={a.id}
-                  value={`${a.descripcion} ${a.codigo}`}
-                  onSelect={() => {
-                    onChange(a.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      value === a.id ? "opacity-100" : "opacity-0",
-                    )}
-                  />
-                  <span className="flex flex-col gap-0">
-                    <span className="font-medium">{a.descripcion}</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      tipo · {labelTipoUnidad(a.unidad)}
-                    </span>
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className={cn("min-w-0", compact ? "w-72" : "w-full min-w-72")}>
+      <input
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-label="Buscar sub-ítem"
+        placeholder="Buscar sub-ítem…"
+        className={cn(
+          "w-full rounded-md border border-border/90 bg-background px-2 text-xs text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-primary/15",
+          compact ? "h-8" : "h-9",
+        )}
+        value={open ? query : etiqueta}
+        onMouseDown={() => {
+          if (!open) {
+            setQuery("");
+            setOpen(true);
+          }
+        }}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setActive((i) => (filtrados.length === 0 ? 0 : (i + 1) % filtrados.length));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+            setActive((i) =>
+              filtrados.length === 0 ? 0 : (i - 1 + filtrados.length) % filtrados.length,
+            );
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const item = filtrados[active];
+            if (open && item) elegir(item.id);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setOpen(false);
+          }
+        }}
+      />
+      {open
+        ? createPortal(
+            <div
+              className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+              style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
+            >
+              <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto py-1">
+                {filtrados.length === 0 ? (
+                  <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    {articulos.length === 0 ? "Cargando sub-ítems…" : "Sin coincidencias."}
+                  </li>
+                ) : (
+                  filtrados.map((a, index) => {
+                    const activo = index === active;
+                    return (
+                      <li key={a.id} role="option" aria-selected={value === a.id}>
+                        <button
+                          type="button"
+                          className={cn(
+                            "flex w-full items-center gap-2 px-2.5 py-2 text-left",
+                            activo ? "bg-amber-500 text-white" : "hover:bg-muted",
+                          )}
+                          onMouseEnter={() => setActive(index)}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            elegir(a.id);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "h-4 w-4 shrink-0",
+                              value === a.id ? "opacity-100" : "opacity-0",
+                              activo && "text-white",
+                            )}
+                          />
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate text-sm font-medium">{a.descripcion}</span>
+                            <span
+                              className={cn(
+                                "text-[10px]",
+                                activo ? "text-white/80" : "text-muted-foreground",
+                              )}
+                            >
+                              tipo · {labelTipoUnidad(a.unidad)}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 }
