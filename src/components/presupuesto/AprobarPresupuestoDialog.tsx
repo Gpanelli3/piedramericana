@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -170,11 +169,6 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
       <DialogContent className="sm:max-w-md gap-4">
         <DialogHeader>
           <DialogTitle>Aprobar presupuesto</DialogTitle>
-          <DialogDescription className="text-left">
-            Confirmá el total del trabajo y la seña que ingresa ahora (puede ser el monto total o una parte). Los
-            cobros posteriores se registran solo en{" "}
-            <span className="font-medium text-foreground">Ventas</span> (menú lateral).
-          </DialogDescription>
         </DialogHeader>
 
         {row ?
@@ -208,13 +202,9 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
                 value={senaStr}
                 onChange={(e) => setSenaStr(e.target.value)}
               />
-              {senaInvalida ?
+              {senaInvalida ? (
                 <p className="text-xs text-destructive">La seña no puede superar el total aprobado.</p>
-              : (
-                <p className="text-xs text-muted-foreground leading-snug">
-                  Si ponés 0, la venta queda sin cobros hasta que cargues el primer pago en Ventas.
-                </p>
-              )}
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -285,10 +275,6 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
                   Entra a caja: {retencionPreview.neto.toLocaleString("es-AR")} {monedaLabel}
                 </p>
               </div>
-            ) : esAgente && senaNum > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                En efectivo, tarjeta y Mercado Pago no se descuenta retención.
-              </p>
             ) : null}
 
             <div className="space-y-1.5">

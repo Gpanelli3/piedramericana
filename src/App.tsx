@@ -3,6 +3,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { MainWorkspace } from "./pages/MainWorkspace";
 import { PresupuestoPrintPage } from "./pages/PresupuestoPrintPage";
+import { HojaTrabajoPrintPage } from "./pages/HojaTrabajoPrintPage";
 import { CobrosComprobantePrintPage } from "./pages/CobrosComprobantePrintPage";
 import { ObrasCobrosPrintPage } from "./pages/ObrasCobrosPrintPage";
 import { OtRotuloPrintPage } from "./pages/OtRotuloPrintPage";
@@ -18,6 +19,7 @@ export default function App() {
           <Route element={<RequireAuth />}>
             <Route path="/" element={<MainWorkspace />} />
             <Route path="/presupuestos/:id/imprimir" element={<PresupuestoPrintPage />} />
+            <Route path="/presupuestos/:id/hoja-trabajo" element={<HojaTrabajoPrintPage />} />
             <Route
               path="/presupuestos/:id/cobros/imprimir"
               element={<CobrosComprobantePrintPage />}

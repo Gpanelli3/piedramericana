@@ -50,6 +50,7 @@ export function validateMaterialesOt(
   ordenes: OrdenTrabajoWizard[],
 ): string | null {
   for (const ot of ordenes) {
+    if (ot.piedraDelCliente) continue;
     if (!ot.materialId?.trim()) {
       const titulo = ot.titulo.trim() || "sin título";
       return `Elegí un material (chapa) para la OT «${titulo}».`;

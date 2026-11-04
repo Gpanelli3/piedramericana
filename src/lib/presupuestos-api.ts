@@ -7,10 +7,15 @@ import {
 } from "@/types/presupuesto-payload";
 import {
   mergeVentasResumenIntoPresupuestos,
+  getVentaPorPresupuesto,
   type VentaResumenMerged,
 } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
 import { removePlano } from "@/lib/presupuesto-planos-storage";
+import {
+  ensurePrimerPrecio,
+  registrarEventoPrecio,
+} from "@/lib/presupuesto-eventos-api";
 
 export type PresupuestoRowLista = {
   id: string;
@@ -104,8 +109,63 @@ export async function approvePresupuestoWithVenta(presupuestoId: string): Promis
   return { error: null };
 }
 
+export type UsuarioAsignable = {
+  id: string;
+  nombre: string;
+  email: string | null;
+};
+
+/** Usuarios a los que se puede asignar la venta de un presupuesto. */
+export async function listUsuariosAsignables(): Promise<{
+  data: UsuarioAsignable[];
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("usuarios")
+    .select("id, full_name")
+    .order("full_name", { ascending: true });
+  if (error) return { data: [], error: new Error(error.message) };
+
+  const ids = (data ?? []).map((u) => u.id);
+  const emailPorUsuario = new Map<string, string>();
+  if (ids.length > 0) {
+    const emp = await supabase.from("empleados").select("usuario_id, email").in("usuario_id", ids);
+    if (!emp.error) {
+      for (const row of emp.data ?? []) {
+        const mail = typeof row.email === "string" ? row.email.trim() : "";
+        if (row.usuario_id && mail) emailPorUsuario.set(row.usuario_id, mail);
+      }
+    }
+  }
+
+  return {
+    data: (data ?? []).map((u) => ({
+      id: u.id,
+      nombre: u.full_name?.trim() || "Sin nombre",
+      email: emailPorUsuario.get(u.id) ?? null,
+    })),
+    error: null,
+  };
+}
+
 export async function getPresupuestoById(id: string) {
   return supabase.from("presupuestos").select("*").eq("id", id).maybeSingle();
+}
+
+export async function getPresupuestoVinculos(presupuestoId: string): Promise<{
+  ventaId: string | null;
+  otsCount: number;
+  error: Error | null;
+}> {
+  const venta = await getVentaPorPresupuesto(presupuestoId);
+  if (venta.error) return { ventaId: null, otsCount: 0, error: venta.error };
+  if (!venta.data) return { ventaId: null, otsCount: 0, error: null };
+  const ots = await supabase
+    .from("ordenes_trabajo")
+    .select("id", { count: "exact", head: true })
+    .eq("venta_id", venta.data.id);
+  if (ots.error) return { ventaId: venta.data.id, otsCount: 0, error: new Error(ots.error.message) };
+  return { ventaId: venta.data.id, otsCount: ots.count ?? 0, error: null };
 }
 
 export type PresupuestoVersionLista = {
@@ -177,7 +237,7 @@ export async function insertPresupuestoRow(input: {
   payload: PresupuestoPayloadV1;
   created_by: string | null;
 }) {
-  return supabase
+  const res = await supabase
     .from("presupuestos")
     .insert({
       numero: input.numero,
@@ -191,6 +251,15 @@ export async function insertPresupuestoRow(input: {
     })
     .select("id, numero")
     .single();
+  if (!res.error && res.data?.id) {
+    await ensurePrimerPrecio({
+      presupuestoId: res.data.id,
+      monto: input.total,
+      moneda: input.moneda,
+      createdBy: input.created_by,
+    });
+  }
+  return res;
 }
 
 /** Actualiza un presupuesto solo si sigue en estado `pendiente`. */
@@ -202,10 +271,12 @@ export async function updatePresupuestoRow(
     total: number;
     moneda: "ars" | "usd";
     payload: PresupuestoPayloadV1;
+    created_by?: string | null;
   },
 ) {
   const now = new Date().toISOString();
-  return supabase
+  const prev = await supabase.from("presupuestos").select("total").eq("id", id).maybeSingle();
+  const res = await supabase
     .from("presupuestos")
     .update({
       cliente: input.cliente,
@@ -213,12 +284,32 @@ export async function updatePresupuestoRow(
       total: input.total,
       moneda: input.moneda,
       payload: input.payload,
+      ...(input.created_by !== undefined ? { created_by: input.created_by } : {}),
       updated_at: now,
     })
     .eq("id", id)
     .eq("status", "pendiente")
     .select("id, numero")
     .maybeSingle();
+  if (!res.error && res.data?.id) {
+    const prevTotal = Number(prev.data?.total) || 0;
+    await ensurePrimerPrecio({
+      presupuestoId: res.data.id,
+      monto: prevTotal || input.total,
+      moneda: input.moneda,
+      createdBy: input.created_by ?? null,
+    });
+    if (Math.abs(prevTotal - input.total) > 0.009) {
+      await registrarEventoPrecio({
+        presupuestoId: res.data.id,
+        tipo: "ajuste",
+        monto: input.total,
+        moneda: input.moneda,
+        createdBy: input.created_by ?? null,
+      });
+    }
+  }
+  return res;
 }
 
 export async function patchPresupuestoStatus(id: string, status: PresupuestoEstado) {

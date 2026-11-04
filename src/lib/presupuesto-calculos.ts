@@ -160,7 +160,9 @@ export function reponerPreciosSugeridosOrdenes(
       const precioUnitario = precioSugeridoLinea({
         codigoArticulo: articulo.codigo,
         precioTrabajo: articulo.precio,
-        precioMaterial: preciosMaterial[orden.materialId] ?? null,
+        precioMaterial: orden.piedraDelCliente
+          ? null
+          : (preciosMaterial[orden.materialId] ?? null),
       });
       if (linea.precioUnitario === precioUnitario) return linea;
       changed = true;

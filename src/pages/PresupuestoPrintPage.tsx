@@ -27,6 +27,7 @@ import {
   importeMecPresupuesto,
 } from "@/lib/presupuesto-calculos";
 import { descargarElementoComoPdf } from "@/lib/descargar-pdf";
+import { registrarEventoPrecio } from "@/lib/presupuesto-eventos-api";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -130,6 +131,12 @@ export function PresupuestoPrintPage() {
     setDescargandoPdf(true);
     try {
       await descargarElementoComoPdf(el, `Presupuesto_${fila.numero}${ver}`);
+      await registrarEventoPrecio({
+        presupuestoId: fila.id,
+        tipo: "enviado_pdf",
+        monto: fila.total,
+        moneda: fila.moneda,
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo generar el PDF.");
     } finally {
@@ -222,6 +229,8 @@ export function PresupuestoPrintPage() {
               direccion={payload.direccion}
               observacion={payload.obsCabecera}
               origenLabel={origenLabel}
+              vendedorLabel={payload.vendedorNombre ?? ""}
+              comisionPct={payload.comisionPct ?? ""}
               moneda={payload.monedaPresupuesto}
               dolarHoy={payload.dolarHoy}
               ordenes={payload.ordenes}

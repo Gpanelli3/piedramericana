@@ -17,6 +17,12 @@ export type PresupuestoPayloadV1 = {
   clienteNombre: string;
   contacto: string;
   origenVentas: string;
+  /** Usuario de `usuarios` al que queda asignada la venta. */
+  vendedorId?: string | null;
+  /** Nombre al momento de guardar, para listados que leen el payload. */
+  vendedorNombre?: string;
+  /** Porcentaje de comisión del vendedor. Vacío = sin comisión. */
+  comisionPct?: string;
   tel: string;
   email: string;
   direccion: string;

@@ -1657,6 +1657,54 @@ export interface Database {
           },
         ];
       };
+      presupuesto_eventos_precio: {
+        Row: {
+          id: string;
+          presupuesto_id: string;
+          tipo: "primer_precio" | "enviado_pdf" | "version_nueva" | "ajuste";
+          monto: number;
+          moneda: "ars" | "usd";
+          created_at: string;
+          created_by: string | null;
+          meta: Json;
+        };
+        Insert: {
+          id?: string;
+          presupuesto_id: string;
+          tipo: "primer_precio" | "enviado_pdf" | "version_nueva" | "ajuste";
+          monto?: number;
+          moneda?: "ars" | "usd";
+          created_at?: string;
+          created_by?: string | null;
+          meta?: Json;
+        };
+        Update: {
+          id?: string;
+          presupuesto_id?: string;
+          tipo?: "primer_precio" | "enviado_pdf" | "version_nueva" | "ajuste";
+          monto?: number;
+          moneda?: "ars" | "usd";
+          created_at?: string;
+          created_by?: string | null;
+          meta?: Json;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "presupuesto_eventos_precio_presupuesto_id_fkey";
+            columns: ["presupuesto_id"];
+            isOneToOne: false;
+            referencedRelation: "presupuestos";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "presupuesto_eventos_precio_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       ventas: {
         Row: {
           id: string;

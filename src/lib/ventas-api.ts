@@ -10,6 +10,7 @@ import { calcularRetencion } from "@/lib/retencion-reglas";
 import { reservarChapasAOt } from "@/lib/stock-ot-api";
 import { getOrCreateMedicion, solicitarMedicion } from "@/lib/medicion-api";
 import type {
+  BachaOrigen,
   Database,
   EtapaOtKanban,
   JobStatus,
@@ -285,7 +286,7 @@ type OtBachaSync = {
   motivo_bloqueo: string | null;
   bacha_id: string | null;
   bacha_requerida: boolean | null;
-  bacha_origen: string | null;
+  bacha_origen: BachaOrigen | null;
   bacha_tipo: string | null;
   bacha_colocacion: string | null;
   nafe: string | null;
@@ -405,6 +406,8 @@ async function crearJobOtSiAusente(opts: {
           const fechaRaw = orden.fechaEntrega?.trim() || "";
           const fecha_programada =
             fechaRaw.length >= 10 ? `${fechaRaw.slice(0, 10)}T12:00:00.000Z` : fechaFallback;
+          const piedraCliente = orden.piedraDelCliente === true;
+          const piedraNota = (orden.materialLibre ?? "").trim();
           return {
             titulo: tituloOt || `OT · ${opts.presupuestoNumero}`,
             id_cotizacion: null as string | null,
@@ -412,12 +415,14 @@ async function crearJobOtSiAusente(opts: {
             id_cliente,
             estado: "pending" as const,
             fecha_programada,
-            notas: `OT desde venta (${opts.presupuestoNumero}).`,
+            notas: piedraCliente
+              ? `OT desde venta (${opts.presupuestoNumero}). Piedra del cliente${piedraNota ? `: ${piedraNota}` : ""}.`
+              : `OT desde venta (${opts.presupuestoNumero}).`,
             actualizado_en: now,
             etapa: "medicion" as const,
             pausada: false,
             bloqueada: false,
-            requiere_reserva_stock: true,
+            requiere_reserva_stock: !piedraCliente,
             medidas_confirmadas: medidasConfirmadas,
             fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: orden.key,
@@ -507,6 +512,7 @@ export async function intentarReservarChapasSenaladas(opts: {
   const fallbackOtId = opts.otId ?? Object.values(opts.otByOrdenKey ?? {})[0] ?? null;
 
   for (const ot of ordenes) {
+    if (ot.piedraDelCliente) continue;
     const chapaId = typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null;
     if (!chapaId) continue;
     const targetOtId = opts.otByOrdenKey?.[ot.key] ?? fallbackOtId;
@@ -918,7 +924,10 @@ export function textoDesdeOtPayloadClienteMaterial(
     typeof p.materialM2Presupuesto === "number"
       ? `${p.materialM2Presupuesto.toFixed(2)} m²`
       : "—";
-  const vendedorLabel = (p.ordenes?.[0]?.tecnicoId ?? "").trim() || "—";
+  const vendedorLabel =
+    (typeof p.vendedorNombre === "string" ? p.vendedorNombre.trim() : "") ||
+    (p.ordenes?.[0]?.tecnicoId ?? "").trim() ||
+    "—";
   return {
     materialLabel,
     m2Display: m2,

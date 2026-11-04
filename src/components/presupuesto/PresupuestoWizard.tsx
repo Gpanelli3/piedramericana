@@ -20,7 +20,9 @@ import { toast } from "sonner";
 import {
   getPresupuestoById,
   insertPresupuestoRow,
+  listUsuariosAsignables,
   updatePresupuestoRow,
+  type UsuarioAsignable,
 } from "@/lib/presupuestos-api";
 import {
   PRESUPUESTO_PAYLOAD_VERSION,
@@ -113,6 +115,9 @@ function buildPresupuestoPayloadV1(opts: {
   clienteNombre: string;
   contacto: string;
   origenVentas: string;
+  vendedorId: string | null;
+  vendedorNombre: string;
+  comisionPct: string;
   tel: string;
   email: string;
   direccion: string;
@@ -143,6 +148,9 @@ function buildPresupuestoPayloadV1(opts: {
     clienteNombre: opts.clienteNombre,
     contacto: opts.contacto,
     origenVentas: opts.origenVentas,
+    vendedorId: opts.vendedorId,
+    vendedorNombre: opts.vendedorNombre,
+    comisionPct: opts.comisionPct,
     tel: opts.tel,
     email: opts.email,
     direccion: opts.direccion,
@@ -196,6 +204,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   >(null);
   const [contacto, setContacto] = useState("");
   const [origenVentas, setOrigenVentas] = useState("");
+  const [vendedorId, setVendedorId] = useState("");
+  const [comisionPct, setComisionPct] = useState("");
+  const [usuarios, setUsuarios] = useState<UsuarioAsignable[]>([]);
+  const [usuariosCargando, setUsuariosCargando] = useState(isSupabaseConfigured);
   const [tel, setTel] = useState("");
   const [email, setEmail] = useState("");
   const [direccion, setDireccion] = useState("");
@@ -424,6 +436,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       setClienteSeleccionadoId(payload.clienteId ?? data.client_id ?? null);
       setContacto(payload.contacto ?? "");
       setOrigenVentas(payload.origenVentas ?? "");
+      setVendedorId(payload.vendedorId ?? data.created_by ?? "");
+      setComisionPct(payload.comisionPct ?? "");
       setTel(payload.tel ?? "");
       setEmail(payload.email ?? "");
       setDireccion(payload.direccion ?? "");
@@ -461,6 +475,32 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       cancelled = true;
     };
   }, [presupuestoId]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setUsuariosCargando(false);
+      return;
+    }
+    let cancelled = false;
+    void listUsuariosAsignables().then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        toast.error(`No se pudieron cargar los vendedores: ${error.message}`);
+        setUsuarios([]);
+      } else {
+        setUsuarios(data);
+      }
+      setUsuariosCargando(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (editando || editCargando || vendedorId || !user?.id) return;
+    setVendedorId(user.id);
+  }, [editando, editCargando, vendedorId, user?.id]);
 
   const clienteSeleccionado = useMemo(
     () =>
@@ -500,10 +540,14 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       rows.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
+        const activaPiedraCliente =
+          patch.piedraDelCliente === true && r.piedraDelCliente !== true;
         const materialId = patch.materialId;
-        if (materialId == null || materialId === r.materialId) {
-          return next;
-        }
+        const cambiaMaterial = materialId != null && materialId !== r.materialId;
+        if (!activaPiedraCliente && !cambiaMaterial) return next;
+        const precioMaterial = next.piedraDelCliente
+          ? null
+          : (preciosMaterial[next.materialId] ?? null);
         next.items = next.items.map((linea) => {
           const articulo = articulosBd.find((a) => a.id === linea.articuloId);
           if (!articulo || !esArticuloCobraMaterial(articulo.codigo)) return linea;
@@ -512,7 +556,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             precioUnitario: precioSugeridoLinea({
               codigoArticulo: articulo.codigo,
               precioTrabajo: articulo.precio,
-              precioMaterial: preciosMaterial[materialId] ?? null,
+              precioMaterial,
             }),
           };
         });
@@ -612,7 +656,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       precioUnitario: precioSugeridoLinea({
         codigoArticulo: artBd.codigo,
         precioTrabajo: artBd.precio,
-        precioMaterial: ot ? (preciosMaterial[ot.materialId] ?? null) : null,
+        precioMaterial:
+          ot?.piedraDelCliente ? null : ot ? (preciosMaterial[ot.materialId] ?? null) : null,
       }),
       cantidad: "1",
       altoM: "0",
@@ -626,7 +671,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     let totalM2 = 0;
     let totalMl = 0;
     let totalTon = 0;
-    let faltaPesoNonMarmol = false;
     const porOt: {
       key: string;
       titulo: string;
@@ -664,15 +708,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           totalTon += peso.ton;
           tonOt += peso.ton;
         }
-        if (
-          art.calculaMaterial &&
-          m2Linea > 0 &&
-          materialRow &&
-          materialRow.material_kind !== "marmol" &&
-          (materialRow.peso_por_m2_kg == null || !(materialRow.peso_por_m2_kg > 0))
-        ) {
-          faltaPesoNonMarmol = true;
-        }
       }
       porOt.push({
         key: ot.key,
@@ -695,7 +730,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       totalConDesc,
       porOt,
       descuentoPct: dPct,
-      faltaPesoNonMarmol,
     };
   }, [ordenes, descuentoGlobalPct, materials, articulosBd]);
 
@@ -732,6 +766,17 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       totalPresupuesto: eq.totalEnMonedaItems,
     };
   }, [totalesItems.totalConDesc, monedaPresupuesto, totalMecImporte, dolarHoy]);
+
+  const vendedorNombre = useMemo(() => {
+    if (!vendedorId) return "";
+    const deLista = usuarios.find((u) => u.id === vendedorId)?.nombre ?? "";
+    if (deLista) return deLista;
+    if (vendedorId === user?.id) {
+      const meta = user.user_metadata as { full_name?: string } | undefined;
+      return meta?.full_name?.trim() || user.email?.split("@")[0] || "";
+    }
+    return "";
+  }, [vendedorId, usuarios, user]);
 
   const validarAntesGrabar = useCallback((): string | null => {
     return validarPresupuestoCompleto(
@@ -779,6 +824,9 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       clienteNombre: clienteSeleccionado?.nombre ?? "",
       contacto,
       origenVentas,
+      vendedorId: vendedorId || null,
+      vendedorNombre,
+      comisionPct,
       tel,
       email,
       direccion,
@@ -804,16 +852,28 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       totalPresupuesto,
     });
     const nombreCliente = clienteSeleccionado?.nombre?.trim() || "Sin cliente";
+    const vendedorAsignado = vendedorId.trim() || user?.id || null;
     setGuardando(true);
 
     if (presupuestoId) {
-      const { data, error } = await updatePresupuestoRow(presupuestoId, {
+      let { data, error } = await updatePresupuestoRow(presupuestoId, {
         cliente: nombreCliente,
         client_id: clienteSeleccionadoId,
         total: totalPresupuesto,
         moneda: monedaPresupuesto,
         payload,
+        created_by: vendedorAsignado,
       });
+      if (error?.code === "23503" && vendedorAsignado) {
+        ({ data, error } = await updatePresupuestoRow(presupuestoId, {
+          cliente: nombreCliente,
+          client_id: clienteSeleccionadoId,
+          total: totalPresupuesto,
+          moneda: monedaPresupuesto,
+          payload,
+          created_by: null,
+        }));
+      }
       setGuardando(false);
       if (error) {
         const msg = error.message;
@@ -843,7 +903,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         moneda: monedaPresupuesto,
         status: "pendiente",
         payload,
-        created_by: user?.id ?? null,
+        created_by: vendedorAsignado,
       });
       if (error?.code === "23503") {
         ({ data, error } = await insertPresupuestoRow({
@@ -964,7 +1024,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             className={inputDisabledClass}
             inputMode="decimal"
             placeholder="m"
-            title="Largo en metros (m² por dimensiones)"
             value={line.altoM}
             onChange={(e) =>
               patchItem(ot.key, line.key, { altoM: e.target.value })
@@ -977,7 +1036,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             className={inputDisabledClass}
             inputMode="decimal"
             placeholder="m"
-            title="Ancho en metros"
             value={line.anchoM}
             onChange={(e) =>
               patchItem(ot.key, line.key, { anchoM: e.target.value })
@@ -994,11 +1052,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             <Input
               className={inputClass}
               inputMode="decimal"
-              title={
-                manualM2
-                  ? "Superficie total de material en m² (precio unitario $/m²)"
-                  : "Cantidad según unidad del artículo"
-              }
               value={line.cantidad}
               onChange={(e) =>
                 patchItem(ot.key, line.key, { cantidad: e.target.value })
@@ -1015,7 +1068,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             <Input
               className={inputClass}
               inputMode="decimal"
-              title="Cantidad de piezas"
               value={line.cantidad}
               onChange={(e) =>
                 patchItem(ot.key, line.key, { cantidad: e.target.value })
@@ -1034,7 +1086,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             className={inputDisabledClass}
             inputMode="decimal"
             placeholder="%"
-            title="Desperdicio: % extra sobre el área (cortes, roturas). Vacío = 0%."
             value={line.desperdicioPct}
             onChange={(e) =>
               patchItem(ot.key, line.key, { desperdicioPct: e.target.value })
@@ -1101,9 +1152,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     return (
       <div className="mx-auto max-w-lg space-y-3 px-3 py-16 text-center sm:px-4">
         <p className="text-sm text-destructive">{editLoadError}</p>
-        <p className="text-xs text-muted-foreground">
-          Volvé al listado e intentá con un presupuesto pendiente.
-        </p>
       </div>
     );
   }
@@ -1125,22 +1173,16 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       mecExcluidoTodasOts={mecExcluidoTodasOts}
       totalPresupuesto={totalPresupuesto}
       totalArsEquivalente={totalArsEquivalente}
-      faltaPesoNonMarmol={totalesItems.faltaPesoNonMarmol}
     />
   );
 
   return (
     <div className="w-full max-w-none pb-44">
       <div className="flex w-full flex-col gap-6 pb-8">
-        <header className="space-y-1">
+        <header>
           <h1 className="text-xl font-bold tracking-tight text-foreground">
             {editando && editNumero ? `Editando ${editNumero}` : "Nuevo presupuesto"}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {editando
-              ? "Se conserva el mismo número al guardar."
-              : "Cargá los datos y los ítems. El presupuesto puede convertirse en N órdenes de trabajo cuando se apruebe."}
-          </p>
         </header>
 
         <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
@@ -1154,6 +1196,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               abrirNuevoCliente={abrirNuevoCliente}
               origenVentas={origenVentas}
               setOrigenVentas={setOrigenVentas}
+              vendedorId={vendedorId}
+              setVendedorId={setVendedorId}
+              usuarios={usuarios}
+              usuariosCargando={usuariosCargando}
+              usuarioActualId={user?.id ?? null}
+              comisionPct={comisionPct}
+              setComisionPct={setComisionPct}
               contacto={contacto}
               setContacto={setContacto}
               tel={tel}
@@ -1173,7 +1222,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               obsServiciosMec={obsServiciosMec}
               setObsServiciosMec={setObsServiciosMec}
               mecExcluidoTodasOts={mecExcluidoTodasOts}
-              monedaPresupuesto={monedaPresupuesto}
               otUbicacion={ordenes[0] ?? null}
               patchUbicacion={patchUbicacionCompartida}
               mostrarUbicacionCompartida={compartenUbicacion}
@@ -1185,7 +1233,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               materialesCargando={materialesCargando}
               preciosMaterial={preciosMaterial}
               monedaMaterial={monedaPresupuesto}
-              totalesItems={totalesItems}
               patchOrden={patchOrden}
               addOrdenTrabajo={addOrdenTrabajo}
               removeOrdenTrabajo={removeOrdenTrabajo}
@@ -1235,7 +1282,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               Resumen del presupuesto
             </DialogTitle>
             <DialogDescription>
-              Vista para imprimir · {listaPrecioLabel}
+              {listaPrecioLabel}
               {monedaPresupuesto === "usd"
                 ? ` · Dólar hoy ${formatUsd(dolarHoy)}`
                 : ""}
@@ -1250,6 +1297,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               direccion={direccion}
               observacion={obsCabecera}
               origenLabel={origenLabelDisplay}
+              vendedorLabel={vendedorNombre}
+              comisionPct={comisionPct}
               listaPrecioLabel={listaPrecioLabel}
               moneda={monedaPresupuesto}
               dolarHoy={dolarHoy}

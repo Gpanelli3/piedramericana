@@ -47,6 +47,8 @@ export type OrdenTrabajoWizard = {
   materialId: string;
   /** Piedra escrita a mano cuando no se elige una del catálogo. */
   materialLibre?: string;
+  /** La piedra la aporta el cliente: no se cobra ni se reserva chapa del galpón. */
+  piedraDelCliente?: boolean;
   /**
    * Chapa señalada del inventario (sigue Disponible hasta la seña).
    * Al señar se intenta reservar; si ya no está, se pide otra del mismo material.
@@ -106,6 +108,7 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     fechaEntrega: "",
     materialId: materialIdDefault,
     materialLibre: "",
+    piedraDelCliente: false,
     chapaSugeridaId: null,
     chapaSugeridaBulto: "",
     chapaSugeridaLabel: "",

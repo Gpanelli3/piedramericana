@@ -20,7 +20,6 @@ type TarjetaResumenProps = {
   mecExcluidoTodasOts: boolean;
   totalPresupuesto: number;
   totalArsEquivalente: number;
-  faltaPesoNonMarmol?: boolean;
 };
 
 function formatMoney(n: number): string {
@@ -50,7 +49,6 @@ export function TarjetaResumen({
   mecExcluidoTodasOts,
   totalPresupuesto,
   totalArsEquivalente,
-  faltaPesoNonMarmol = false,
 }: TarjetaResumenProps) {
   const monedaLabel = monedaPresupuesto === "usd" ? "USD" : "ARS";
   const p = prefijo(monedaPresupuesto);
@@ -136,13 +134,6 @@ export function TarjetaResumen({
             </p>
           ) : null}
         </dl>
-
-        {faltaPesoNonMarmol ? (
-          <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-950">
-            Alguna OT con material no mármol no tiene kg/m² en Cantera. Las toneladas pueden
-            quedar incompletas.
-          </p>
-        ) : null}
       </div>
     </aside>
   );

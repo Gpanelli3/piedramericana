@@ -1,14 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  Printer,
-  Eye,
-  Pencil,
-  Download,
-  MoreHorizontal,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -19,18 +11,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { PresupuestoEstado } from "@/types/database";
 import type { PresupuestoRowLista } from "@/lib/presupuestos-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { cn } from "@/lib/utils";
-import type { NavigateFunction } from "react-router-dom";
 
 export type PresupuestoFiltroTab = "pendientes" | "aprobados" | "todos";
 
@@ -104,30 +89,16 @@ type Props = {
   loading: boolean;
   rows: PresupuestoRowLista[];
   tab: PresupuestoFiltroTab;
-  navigate: NavigateFunction;
   onVerResumen: (id: string) => void;
-  onEditar: (id: string) => void;
-  onDescargarPdf: (id: string) => void;
-  statusBusyId: string | null;
-  onAprobar: (id: string) => Promise<void>;
-  onRechazar: (id: string) => Promise<void>;
   medicionPorId?: Record<string, MedicionEstado>;
-  onListoParaMedir?: (row: PresupuestoRowLista) => void;
 };
 
 export function PresupuestosLista({
   loading,
   rows,
   tab,
-  navigate,
   onVerResumen,
-  onEditar,
-  onDescargarPdf,
-  statusBusyId,
-  onAprobar,
-  onRechazar,
   medicionPorId,
-  onListoParaMedir,
 }: Props) {
   const [q, setQ] = useState("");
   const estadoFiltro = estadoDesdeTab(tab);
@@ -186,22 +157,27 @@ export function PresupuestosLista({
                 <TableHead>Cliente</TableHead>
                 <TableHead className="whitespace-nowrap">Fecha</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="whitespace-nowrap">Estado</TableHead>
-                <TableHead className="pr-4 text-right w-[1%] whitespace-nowrap">
-                  Acciones
-                </TableHead>
+                <TableHead className="pr-4 whitespace-nowrap">Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {visibles.map((r) => {
-                const busy = statusBusyId === r.id;
-                const pendiente = r.status === "pendiente";
                 const medEstado = medicionPorId?.[r.id] ?? "sin_solicitar";
-                const puedePedirMedicion =
-                  (r.status === "pendiente" || r.status === "aprobado") &&
-                  medEstado === "sin_solicitar";
                 return (
-                  <TableRow key={r.id} className="hover:bg-muted/30">
+                  <TableRow
+                    key={r.id}
+                    className="cursor-pointer hover:bg-muted/30"
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Ver presupuesto ${r.numero}`}
+                    onClick={() => onVerResumen(r.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onVerResumen(r.id);
+                      }
+                    }}
+                  >
                     <TableCell className="pl-4 font-medium tabular-nums">
                       {r.numero}
                     </TableCell>
@@ -212,7 +188,7 @@ export function PresupuestosLista({
                     <TableCell className="text-right font-medium tabular-nums text-sm whitespace-nowrap">
                       {formatoTotal(r)}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="pr-4">
                       <div className="flex flex-wrap items-center gap-1">
                         <Badge
                           variant="outline"
@@ -228,83 +204,6 @@ export function PresupuestosLista({
                             {etiquetaMedicionEstado(medEstado)}
                           </Badge>
                         ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 px-2.5 text-xs"
-                          onClick={() => onVerResumen(r.id)}
-                        >
-                          <Eye className="h-3.5 w-3.5" aria-hidden />
-                          Ver
-                        </Button>
-
-                        {pendiente ? (
-                          <>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 px-2.5 text-xs bg-emerald-700 text-white hover:bg-emerald-800"
-                              disabled={busy}
-                              onClick={() => void onAprobar(r.id)}
-                            >
-                              Aprobar
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="h-8 px-2.5 text-xs"
-                              disabled={busy}
-                              onClick={() => void onRechazar(r.id)}
-                            >
-                              Rechazar
-                            </Button>
-                          </>
-                        ) : null}
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              aria-label="Más acciones"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            {pendiente ? (
-                              <DropdownMenuItem onClick={() => onEditar(r.id)}>
-                                <Pencil className="h-4 w-4" />
-                                Editar
-                              </DropdownMenuItem>
-                            ) : null}
-                            <DropdownMenuItem
-                              onClick={() =>
-                                navigate(`/presupuestos/${r.id}/imprimir`)
-                              }
-                            >
-                              <Printer className="h-4 w-4" />
-                              Imprimir
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onDescargarPdf(r.id)}>
-                              <Download className="h-4 w-4" />
-                              Descargar PDF
-                            </DropdownMenuItem>
-                            {puedePedirMedicion && onListoParaMedir ? (
-                              <DropdownMenuItem onClick={() => onListoParaMedir(r)}>
-                                Listo para medir
-                              </DropdownMenuItem>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>

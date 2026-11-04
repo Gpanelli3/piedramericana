@@ -128,11 +128,6 @@ export function OtUbicacionYPlano({
           <Input
             id={`${ot.key}-direccion-obra`}
             className="h-9 flex-1 text-sm"
-            placeholder={
-              cabecera
-                ? "Dirección, coordenadas o link de Google Maps"
-                : "Calle, ciudad… o pegá un link de Google Maps"
-            }
             value={ot.direccionObra}
             onChange={(e) => onDireccionChange(e.target.value)}
             onKeyDown={(e) => {
@@ -158,11 +153,6 @@ export function OtUbicacionYPlano({
             Buscar
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          {cabecera
-            ? "Tipéá la dirección o pegá un link de Google Maps. Si el arquitecto te pasa la ubicación de la obra, pegá el link acá y queda marcada en el presupuesto."
-            : "Escribí una dirección o pegá un link de Google Maps para obtener el punto en el mapa."}
-        </p>
         {hasCoords ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-emerald-700 dark:text-emerald-300">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -189,23 +179,18 @@ export function OtUbicacionYPlano({
 
       <div className="space-y-1.5">
         <Label htmlFor={`${ot.key}-referencia-obra`} className="text-xs font-medium">
-          Referencia{" "}
-          <span className="font-normal text-muted-foreground">(lote, manzana — va al PDF)</span>
+          Referencia
         </Label>
         <Input
           id={`${ot.key}-referencia-obra`}
           className="h-9 text-sm"
-          placeholder="Ej: Lote 42, Mz B · familia Gómez"
           value={ot.referenciaObra}
           onChange={(e) => patchOrden(ot.key, { referenciaObra: e.target.value })}
         />
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs font-medium">
-          ¿Con qué cotizaste?{" "}
-          <span className="font-normal text-muted-foreground">(opcional)</span>
-        </Label>
+        <Label className="text-xs font-medium">¿Con qué cotizaste?</Label>
         {ot.planoAdjunto ? (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
             <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -274,7 +259,7 @@ export function OtUbicacionYPlano({
               <FileUp className="h-5 w-5 text-muted-foreground" aria-hidden />
             )}
             <span className="text-sm text-muted-foreground">
-              {uploading ? "Subiendo…" : "Agregar archivo (PDF o imagen)"}
+              {uploading ? "Subiendo…" : "Agregar archivo"}
             </span>
           </label>
         )}

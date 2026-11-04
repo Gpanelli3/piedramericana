@@ -70,9 +70,6 @@ export function PresupuestoResumenInterior({
           <Label htmlFor="cot-mixta-dialog" className="text-sm font-semibold cursor-pointer">
             Cotización multimoneda
           </Label>
-          <p className="text-xs text-muted-foreground leading-snug">
-            Producto en la moneda de la lista e instalación (MEC) en pesos, unidos con el dólar del día.
-          </p>
         </div>
         {readOnly ? (
           <span className="text-sm text-muted-foreground shrink-0">
@@ -99,11 +96,6 @@ export function PresupuestoResumenInterior({
             className="rounded-xl border border-border bg-card px-4 py-4 shadow-sm space-y-3"
           >
             <p className="text-sm font-semibold text-foreground leading-snug">{ln.label}</p>
-            {ln.id === "piedra" && !readOnly ? (
-              <p className="text-xs text-muted-foreground leading-snug">
-                Monto igual al subtotal de ítems con descuento (se actualiza al cargar las líneas OT).
-              </p>
-            ) : null}
             {importeNoEditable ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
                 <div>
@@ -158,11 +150,6 @@ export function PresupuestoResumenInterior({
 
       {cotizacionMixtaActiva && (
         <div className="space-y-2 rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 dark:border-sky-900/50 dark:bg-sky-950/30">
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            La <span className="font-semibold text-foreground">piedra / producto</span> va en la moneda de la lista
-            y la <span className="font-semibold text-foreground">instalación (MEC)</span> en pesos. El total se
-            unifica con el dólar del día.
-          </p>
           <div className="flex items-center gap-2">
             <Label className="text-xs font-medium shrink-0">Dólar del día</Label>
             {readOnly || !setDolarHoy ? (

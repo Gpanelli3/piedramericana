@@ -58,7 +58,7 @@ export function PickChapaParaOt({ materialNombre, valueId, onChange }: Props) {
 
   return (
     <div className="space-y-1.5 min-w-0">
-      <Label className="text-xs font-medium">Chapa señalada (opcional)</Label>
+      <Label className="text-xs font-medium">Chapa señalada</Label>
       <PickChapaSugerida
         chapas={chapas}
         valueId={valueId}

@@ -27,6 +27,8 @@ export type PresupuestoDocumentoProps = {
   direccion?: string;
   observacion?: string;
   origenLabel?: string;
+  vendedorLabel?: string;
+  comisionPct?: string;
   listaPrecioLabel?: string;
   moneda: "ars" | "usd";
   /** Tipo de cambio del día. El MEC se imprime siempre en pesos. */
@@ -123,6 +125,7 @@ type GrupoDoc = {
   excluirMec: boolean;
   obsMec: string;
   bachaTexto?: string;
+  piedraDelCliente?: boolean;
   filas: FilaDoc[];
   subtotal: number;
 };
@@ -137,6 +140,8 @@ export function PresupuestoDocumento({
   direccion = "",
   observacion = "",
   origenLabel = "",
+  vendedorLabel = "",
+  comisionPct = "",
   listaPrecioLabel = "",
   moneda,
   dolarHoy = 0,
@@ -213,6 +218,7 @@ export function PresupuestoDocumento({
         excluirMec: Boolean(ot.excluirMec),
         obsMec: (ot.obsMec ?? "").trim(),
         bachaTexto,
+        piedraDelCliente: ot.piedraDelCliente === true,
         filas,
         subtotal: subOt,
       });
@@ -300,8 +306,18 @@ export function PresupuestoDocumento({
           <span className="font-semibold">Observación:</span> {observacion.trim() || "—"}
         </p>
         {origenLabel.trim() ? (
-          <p className="sm:col-span-2">
-            <span className="font-semibold">Origen / vendedor:</span> {origenLabel}
+          <p>
+            <span className="font-semibold">Origen:</span> {origenLabel}
+          </p>
+        ) : null}
+        {vendedorLabel.trim() ? (
+          <p>
+            <span className="font-semibold">Vendedor:</span> {vendedorLabel}
+          </p>
+        ) : null}
+        {comisionPct.trim() ? (
+          <p>
+            <span className="font-semibold">Comisión:</span> {comisionPct.trim()} %
           </p>
         ) : null}
       </section>
@@ -336,11 +352,12 @@ export function PresupuestoDocumento({
                 <tr className="bg-neutral-100 border-t border-neutral-800">
                   <td colSpan={5} className="px-2 py-1.5 font-semibold">
                     <p>{g.titulo}</p>
-                    {g.direccionObra || g.referenciaObra || g.planoNombre || g.excluirMec || g.bachaTexto ? (
+                    {g.direccionObra || g.referenciaObra || g.planoNombre || g.excluirMec || g.bachaTexto || g.piedraDelCliente ? (
                       <div className="mt-0.5 space-y-0.5 text-[10px] font-normal text-neutral-600">
                         {g.direccionObra ? <p>Obra: {g.direccionObra}</p> : null}
                         {g.referenciaObra ? <p>Ref.: {g.referenciaObra}</p> : null}
                         {g.planoNombre ? <p>Plano: {g.planoNombre}</p> : null}
+                        {g.piedraDelCliente ? <p>Piedra del cliente</p> : null}
                         {g.bachaTexto ? <p>Bacha: {g.bachaTexto}</p> : null}
                         {g.excluirMec ? (
                           <p>
@@ -465,21 +482,6 @@ export function PresupuestoDocumento({
           ) : null}
         </div>
       </div>
-
-      {/* Notas */}
-      <footer className="mt-5 border border-neutral-400 px-3 py-2 text-[10px] text-neutral-600 space-y-1 leading-relaxed">
-        <p>A los precios indicados se les debe adicionar el IVA correspondiente.</p>
-        <p>
-          Presupuesto sujeto a medición final en obra
-          {moneda === "usd" && dolarHoy > 0
-            ? ` y a variación del tipo de cambio (dólar del día ${formatMoney(dolarHoy, "usd")})`
-            : ""}
-          .
-        </p>
-        <p>
-          No incluye otros artículos de stock salvo que figuren como ítem en alguna OT.
-        </p>
-      </footer>
 
       {/* Firmas (impresión) */}
       <div className="mt-10 grid grid-cols-2 gap-8 sm:gap-16 print:mt-14">

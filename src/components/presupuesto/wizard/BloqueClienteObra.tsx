@@ -35,6 +35,13 @@ type BloqueClienteObraProps = {
   abrirNuevoCliente: (prefillNombre?: string) => void;
   origenVentas: string;
   setOrigenVentas: (v: string) => void;
+  vendedorId: string;
+  setVendedorId: (v: string) => void;
+  usuarios: { id: string; nombre: string; email: string | null }[];
+  usuariosCargando?: boolean;
+  usuarioActualId: string | null;
+  comisionPct: string;
+  setComisionPct: (v: string) => void;
   contacto: string;
   setContacto: (v: string) => void;
   tel: string;
@@ -54,7 +61,6 @@ type BloqueClienteObraProps = {
   obsServiciosMec: string;
   setObsServiciosMec: (v: string) => void;
   mecExcluidoTodasOts: boolean;
-  monedaPresupuesto: "ars" | "usd";
   otUbicacion: OrdenTrabajoWizard | null;
   patchUbicacion: (key: string, patch: Partial<OrdenTrabajoWizard>) => void;
   mostrarUbicacionCompartida: boolean;
@@ -103,6 +109,13 @@ export function BloqueClienteObra({
   abrirNuevoCliente,
   origenVentas,
   setOrigenVentas,
+  vendedorId,
+  setVendedorId,
+  usuarios,
+  usuariosCargando = false,
+  usuarioActualId,
+  comisionPct,
+  setComisionPct,
   contacto,
   setContacto,
   tel,
@@ -122,7 +135,6 @@ export function BloqueClienteObra({
   obsServiciosMec,
   setObsServiciosMec,
   mecExcluidoTodasOts,
-  monedaPresupuesto,
   otUbicacion,
   patchUbicacion,
   mostrarUbicacionCompartida,
@@ -210,15 +222,6 @@ export function BloqueClienteObra({
                     onToggle={() => setMColocacionGlobal(!mColocacionGlobal)}
                   />
                 </div>
-                {mecExcluidoTodasOts ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Todas las OT están marcadas sin MEC: el importe pasa a $0.
-                  </p>
-                ) : monedaPresupuesto === "usd" ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    El MEC se carga en pesos y se pasa a dólares con el tipo de cambio.
-                  </p>
-                ) : null}
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="w-44 space-y-1">
@@ -235,6 +238,21 @@ export function BloqueClienteObra({
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="w-28 space-y-1">
+                  <Label className="text-xs" htmlFor="comision-vendedor">
+                    Comisión
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      id="comision-vendedor"
+                      className="h-9 text-sm tabular-nums"
+                      inputMode="decimal"
+                      value={comisionPct}
+                      onChange={(e) => setComisionPct(e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
                 </div>
                 {mecActivo ? (
                   <div className="w-36 space-y-1">
@@ -260,7 +278,6 @@ export function BloqueClienteObra({
                 </div>
                 <Textarea
                   className="min-h-16 resize-y text-sm"
-                  placeholder="Notas sobre medición, envío o colocación…"
                   maxLength={500}
                   value={obsServiciosMec}
                   onChange={(e) => setObsServiciosMec(e.target.value)}
@@ -290,7 +307,7 @@ export function BloqueClienteObra({
                     size="icon"
                     className="h-10 w-10 shrink-0"
                     onClick={() => abrirNuevoCliente()}
-                    title="Nuevo cliente (si no aparece en el buscador)"
+                    aria-label="Nuevo cliente"
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -306,12 +323,40 @@ export function BloqueClienteObra({
                 <Label>Email</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
-              <div className="space-y-1 md:col-span-2">
+              <div className="space-y-1">
+                <Label>Vendedor</Label>
+                <Select
+                  value={vendedorId || undefined}
+                  onValueChange={setVendedorId}
+                  disabled={usuariosCargando && usuarios.length === 0}
+                >
+                  <SelectTrigger className="h-10 w-full">
+                    <SelectValue placeholder={usuariosCargando ? "Cargando…" : "Vendedor"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {usuarioActualId ? (
+                      <SelectItem value={usuarioActualId}>Asignármelo a mí</SelectItem>
+                    ) : null}
+                    {vendedorId &&
+                    vendedorId !== usuarioActualId &&
+                    !usuarios.some((u) => u.id === vendedorId) ? (
+                      <SelectItem value={vendedorId}>Vendedor asignado</SelectItem>
+                    ) : null}
+                    {usuarios
+                      .filter((u) => u.id !== usuarioActualId)
+                      .map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.email ? `${u.nombre} — ${u.email}` : u.nombre}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
                 <Label>Contacto</Label>
                 <Input
                   value={contacto}
                   onChange={(e) => setContacto(e.target.value)}
-                  placeholder="Quien recibe la obra"
                 />
               </div>
             </div>
@@ -322,11 +367,6 @@ export function BloqueClienteObra({
                 patchOrden={patchUbicacion}
                 variant="cabecera"
               />
-            ) : !mostrarUbicacionCompartida ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                Este presupuesto tiene direcciones o planos distintos por OT. Cargalos en cada
-                artículo para no pisar los datos.
-              </p>
             ) : null}
 
             <div className="space-y-1">
@@ -338,7 +378,6 @@ export function BloqueClienteObra({
               </div>
               <Textarea
                 className="max-h-32 resize-y"
-                placeholder="Notas que van en el presupuesto"
                 maxLength={500}
                 value={obsCabecera}
                 onChange={(e) => setObsCabecera(e.target.value)}

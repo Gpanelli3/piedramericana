@@ -172,6 +172,19 @@ const ETIQUETAS_ROL: Record<string, string> = {
   admin: "Administrador",
 };
 
+const SIDEBAR_MOTION =
+  "transition-[width,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
+
+function sidebarFadeCn(visible: boolean, className?: string) {
+  return cn(
+    "min-w-0 overflow-hidden transition-[opacity,transform] motion-reduce:transition-none",
+    visible
+      ? "translate-x-0 opacity-100 duration-200 delay-150 ease-out"
+      : "pointer-events-none -translate-x-0.5 opacity-0 duration-100 delay-0 ease-in",
+    className,
+  );
+}
+
 function limpiarParamsDeOtrosModulos(n: URLSearchParams, tab: WorkspaceTab) {
   if (tab !== "ventas") {
     n.delete("pv");
@@ -205,64 +218,79 @@ function ExpandableNavItem({
   submenuId,
   children,
 }: ExpandableNavProps) {
+  const submenuVisible = expandido && menuAbierto && active;
+
   return (
-    <div className="space-y-0.5">
+    <div>
       <div
         className={cn(
           "flex w-full items-stretch rounded-xl transition-colors",
           active ? "bg-accent text-accent-foreground" : "text-sidebar-foreground",
         )}
       >
-        {expandido ? (
-          <button
-            type="button"
-            className={cn(
-              "shrink-0 flex items-center justify-center rounded-xl px-1 py-2.5 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
-              active
-                ? "text-accent-foreground hover:bg-accent/80"
-                : "text-sidebar-foreground/70 hover:bg-muted hover:text-sidebar-foreground",
-            )}
-            aria-expanded={active ? menuAbierto : false}
-            aria-controls={submenuId}
-            aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleEncabezado();
-            }}
-          >
-            <ChevronRight
-              aria-hidden
-              className={cn(
-                "h-4 w-4 shrink-0 transition-transform duration-200",
-                menuAbierto && active && "rotate-90",
-              )}
-            />
-          </button>
-        ) : null}
         <button
           type="button"
           onClick={onToggleEncabezado}
+          aria-label={!expandido ? item.label : undefined}
           className={cn(
-            "flex min-w-0 items-center rounded-xl text-sm font-medium transition-colors text-left",
-            expandido ? "flex-1 gap-2.5 px-1 py-2.5" : "w-full justify-center px-2 py-2.5",
+            "flex min-w-0 flex-1 items-center rounded-xl py-2.5 text-left text-sm font-medium transition-colors",
             active
               ? "text-accent-foreground"
               : "text-sidebar-foreground hover:bg-muted",
           )}
         >
-          <span className="shrink-0">{item.icon}</span>
-          <span className={cn("truncate", expandido ? "flex-1" : "sr-only")}>{item.label}</span>
+          <span className="flex w-12 shrink-0 items-center justify-center">{item.icon}</span>
+          <span
+            aria-hidden={!expandido}
+            className={sidebarFadeCn(expandido, "flex-1 truncate whitespace-nowrap")}
+          >
+            {item.label}
+          </span>
+        </button>
+        <button
+          type="button"
+          tabIndex={expandido ? 0 : -1}
+          aria-hidden={!expandido}
+          className={cn(
+            "flex shrink-0 items-center justify-center rounded-xl outline-none transition-[opacity,width,padding] duration-200 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+            expandido ? "w-8 px-1 opacity-100" : "w-0 overflow-hidden p-0 opacity-0",
+            active
+              ? "text-accent-foreground hover:bg-accent/80"
+              : "text-sidebar-foreground/70 hover:bg-muted hover:text-sidebar-foreground",
+          )}
+          aria-expanded={active ? menuAbierto : false}
+          aria-controls={submenuId}
+          aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleEncabezado();
+          }}
+        >
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              "h-4 w-4 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              submenuVisible && "rotate-90",
+            )}
+          />
         </button>
       </div>
 
-      {expandido && menuAbierto && active ? (
-        <div
-          id={submenuId}
-          className="border-l-2 border-accent/40 ml-5 pl-2 space-y-0.5 mt-1"
-        >
-          {children}
+      <div
+        id={submenuId}
+        inert={!submenuVisible}
+        aria-hidden={!submenuVisible}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+          submenuVisible ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none",
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="ml-5 mt-1 space-y-0.5 border-l-2 border-accent/40 pl-2">
+            {children}
+          </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -297,7 +325,7 @@ export function AppSidebar() {
     cierreRef.current = window.setTimeout(() => {
       setHover(false);
       setFoco(false);
-    }, 160);
+    }, 240);
   }, [cancelarCierre]);
 
   const alEnfocar = useCallback(() => {
@@ -442,13 +470,9 @@ export function AppSidebar() {
   }, [activeTab]);
 
   const onPresupuestosEncabezado = useCallback(() => {
-    if (activeTab !== "ventas") {
-      gotoVentasQuery("nuevo");
-      setPresupuestosMenuAbierto(true);
-      return;
-    }
-    setPresupuestosMenuAbierto((prev) => !prev);
-  }, [activeTab, gotoVentasQuery]);
+    gotoVentasQuery("lista", "todos");
+    setPresupuestosMenuAbierto(true);
+  }, [gotoVentasQuery]);
 
   const onProduccionEncabezado = useCallback(() => {
     if (activeTab !== "produccion") {
@@ -493,10 +517,11 @@ export function AppSidebar() {
     <div className="relative h-full w-16 shrink-0 self-stretch">
     <aside
       className={cn(
-        "absolute inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col bg-sidebar border-r border-sidebar-border overflow-x-hidden transition-[width] duration-200 ease-out",
+        "absolute inset-y-0 left-0 z-50 flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto border-r border-sidebar-border bg-sidebar [scrollbar-width:thin] [scrollbar-color:oklch(0.34_0.01_60_/_0.22)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sidebar-foreground/20",
+        SIDEBAR_MOTION,
         expandido
-          ? "w-60 overflow-y-auto shadow-xl [scrollbar-gutter:stable]"
-          : "w-16 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          ? "w-60 shadow-[12px_0_28px_-10px_rgba(28,25,23,0.16)]"
+          : "w-16 shadow-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       )}
       onMouseEnter={abrirPorHover}
       onMouseLeave={programarCierre}
@@ -504,24 +529,31 @@ export function AppSidebar() {
       onBlurCapture={alDesenfocar}
     >
       {/* Brand */}
-      <div className={cn("py-5", expandido ? "px-5" : "px-2")}>
-        <div className={cn("flex items-center", expandido ? "gap-3" : "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent">
-            <MarmoGestMark className="h-5 w-5 text-accent-foreground" />
+      <div className="px-2 py-5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex w-12 shrink-0 items-center justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
+              <MarmoGestMark className="h-5 w-5 text-accent-foreground" />
+            </div>
           </div>
-          <span className={cn("whitespace-nowrap text-lg font-bold tracking-tight text-sidebar-foreground", !expandido && "sr-only")}>
+          <span
+            aria-hidden={!expandido}
+            className={sidebarFadeCn(expandido, "whitespace-nowrap text-lg font-bold tracking-tight text-sidebar-foreground")}
+          >
             MarmoGest
           </span>
         </div>
       </div>
 
       {/* User */}
-      <div className={cn("border-y border-sidebar-border py-4", expandido ? "px-5" : "px-2")}>
-        <div className={cn("flex items-center", expandido ? "gap-3" : "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
-            {initials}
+      <div className="border-y border-sidebar-border px-2 py-4">
+        <div className="flex items-center gap-2.5">
+          <div className="flex w-12 shrink-0 items-center justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
+              {initials}
+            </div>
           </div>
-          <div className={cn("min-w-0 flex-1", !expandido && "sr-only")}>
+          <div aria-hidden={!expandido} className={sidebarFadeCn(expandido, "flex-1")}>
             <p className="truncate text-sm font-medium text-sidebar-foreground">{displayName}</p>
             {roles.length > 0 ? (
               <p className="truncate text-xs text-sidebar-foreground/50">
@@ -540,11 +572,11 @@ export function AppSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className={cn("flex-1 space-y-0.5 py-4", expandido ? "px-3" : "px-2")}>
+      <nav className="flex-1 space-y-0.5 px-2 py-4">
         <p
           className={cn(
-            "px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40",
-            expandido ? "mb-2" : "sr-only",
+            "overflow-hidden px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+            expandido ? "mb-2 max-h-6 opacity-100" : "mb-0 max-h-0 opacity-0",
           )}
         >
           Navegación
@@ -673,35 +705,44 @@ export function AppSidebar() {
               key={item.id}
               type="button"
               onClick={() => gotoWorkspace(item.id)}
+              aria-label={!expandido ? item.label : undefined}
               className={cn(
                 "flex w-full items-center rounded-xl py-2.5 text-sm font-medium transition-colors",
-                expandido ? "gap-2.5 px-3" : "justify-center px-2",
                 activeTab === item.id
                   ? "bg-accent text-accent-foreground"
                   : "text-sidebar-foreground hover:bg-muted",
               )}
             >
-              <span className="shrink-0">{item.icon}</span>
-              <span className={cn("truncate", !expandido && "sr-only")}>{item.label}</span>
+              <span className="flex w-12 shrink-0 items-center justify-center">{item.icon}</span>
+              <span aria-hidden={!expandido} className={sidebarFadeCn(expandido, "truncate whitespace-nowrap")}>
+                {item.label}
+              </span>
             </button>
           );
         })}
       </nav>
 
       {/* Footer */}
-      <div className={cn("space-y-2 border-t border-sidebar-border py-4", expandido ? "px-4" : "px-2")}>
+      <div className="space-y-2 border-t border-sidebar-border px-2 py-4">
         <button
           type="button"
           onClick={() => void signOut()}
+          aria-label={!expandido ? "Cerrar sesión" : undefined}
+          className="flex w-full items-center rounded-lg py-2 text-left text-sm text-sidebar-foreground/60 transition-colors hover:bg-muted hover:text-sidebar-foreground"
+        >
+          <span className="flex w-12 shrink-0 items-center justify-center">
+            <LogOut className="h-4 w-4" />
+          </span>
+          <span aria-hidden={!expandido} className={sidebarFadeCn(expandido, "whitespace-nowrap")}>
+            Cerrar sesión
+          </span>
+        </button>
+        <p
           className={cn(
-            "flex w-full items-center rounded-lg py-2 text-left text-sm text-sidebar-foreground/60 hover:bg-muted hover:text-sidebar-foreground transition-colors",
-            expandido ? "gap-2 px-3" : "justify-center px-2",
+            "overflow-hidden px-3 text-[11px] text-sidebar-foreground/30 transition-[max-height,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+            expandido ? "max-h-6 opacity-100" : "max-h-0 opacity-0",
           )}
         >
-          <LogOut className="h-4 w-4 shrink-0" />
-          <span className={cn("whitespace-nowrap", !expandido && "sr-only")}>Cerrar sesión</span>
-        </button>
-        <p className={cn("px-3 text-[11px] text-sidebar-foreground/30", !expandido && "sr-only")}>
           Piedra Americana · escritorio
         </p>
       </div>

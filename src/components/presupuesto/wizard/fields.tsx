@@ -16,6 +16,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  menuItemActiveClass,
+  menuItemClass,
+  menuItemIdleClass,
+  menuPanelClass,
+} from "@/components/ui/menu-styles";
 import { Plus, Check, ChevronsUpDown, Search } from "lucide-react";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { ClientePresupuesto } from "@/lib/clients-api";
@@ -190,7 +196,7 @@ export function PickCliente({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(18rem,50vh)] overflow-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+          className={cn(menuPanelClass, "absolute left-0 right-0 top-[calc(100%+4px)] max-h-[min(18rem,50vh)] overflow-auto")}
         >
           {filtered.length > 0 ? (
             <ul className="p-0 m-0 list-none">
@@ -201,9 +207,9 @@ export function PickCliente({
                     role="option"
                     aria-selected={value === c.id}
                     className={cn(
-                      "flex w-full items-start gap-2 px-3 py-2 text-left text-sm",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      value === c.id && "bg-accent text-accent-foreground",
+                      menuItemClass,
+                      "items-start",
+                      value === c.id ? menuItemActiveClass : menuItemIdleClass,
                     )}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
@@ -221,12 +227,7 @@ export function PickCliente({
                     />
                     <div className="flex min-w-0 flex-col gap-0">
                       <span className="truncate font-medium">{c.nombre}</span>
-                      <span
-                        className={cn(
-                          "truncate text-xs",
-                          value === c.id ? "opacity-80" : "text-muted-foreground",
-                        )}
-                      >
+                      <span className="truncate text-xs text-muted-foreground">
                         {[c.contacto !== c.nombre ? c.contacto : null, c.tel]
                           .filter(Boolean)
                           .join(" · ") || "Sin contacto"}
@@ -242,10 +243,6 @@ export function PickCliente({
                 {clientes.length === 0
                   ? "Todavía no hay clientes guardados."
                   : `No hay ningún cliente que coincida${query ? ` con «${query}»` : ""}.`}
-              </p>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Podés dar de alta uno nuevo con el botón de abajo o el{" "}
-                <span className="font-medium text-foreground">+</span> al costado.
               </p>
               <Button
                 type="button"
@@ -376,6 +373,7 @@ export function BuscadorMaterial({
   precios,
   moneda = "usd",
   loading,
+  soloTextoLibre = false,
 }: {
   materials: MaterialWizardRowLite[];
   value: string;
@@ -384,6 +382,8 @@ export function BuscadorMaterial({
   precios?: Record<string, number>;
   moneda?: "ars" | "usd";
   loading?: boolean;
+  /** La piedra la trae el cliente: se anota el nombre, sin catálogo ni precio de lista. */
+  soloTextoLibre?: boolean;
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -452,9 +452,9 @@ export function BuscadorMaterial({
     const el = inputRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = Math.min(512, window.innerWidth - 16);
-    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
-    setPos({ top: rect.bottom + 6, left, width });
+    const width = rect.width;
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    setPos({ top: rect.bottom + 4, left, width });
   }
 
   useEffect(() => {
@@ -488,6 +488,19 @@ export function BuscadorMaterial({
   }
 
   const prefijo = moneda === "usd" ? "US$" : "$";
+
+  if (soloTextoLibre) {
+    return (
+      <input
+        type="text"
+        aria-label="Piedra que trae el cliente"
+        placeholder="Piedra que trae el cliente"
+        className="h-8 w-72 rounded-md border border-white/20 bg-white px-2.5 text-xs text-zinc-900 shadow-none outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-white/70"
+        value={textoLibre}
+        onChange={(e) => onChange({ materialId: "", materialLibre: e.target.value })}
+      />
+    );
+  }
 
   return (
     <div className="shrink-0">
@@ -541,10 +554,10 @@ export function BuscadorMaterial({
       {open
         ? createPortal(
             <div
-              className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+              className={menuPanelClass}
               style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
             >
-        <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto py-1">
+        <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto">
           {filtrados.length === 0 && !ofreceLibre ? (
             <li className="px-3 py-6 text-center text-sm text-muted-foreground">
               {materials.length === 0
@@ -560,8 +573,9 @@ export function BuscadorMaterial({
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 px-3 py-2 text-left",
-                    activo ? "bg-amber-500 text-white" : "hover:bg-muted",
+                    menuItemClass,
+                    "gap-3",
+                    activo ? menuItemActiveClass : menuItemIdleClass,
                   )}
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={(e) => {
@@ -573,14 +587,7 @@ export function BuscadorMaterial({
                   <span className="flex min-w-0 flex-1 items-center gap-2">
                     <span className="truncate text-sm font-medium">{m.name}</span>
                     {m.espesor_mm != null && m.espesor_mm > 0 ? (
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                          activo
-                            ? "bg-white/20 text-white"
-                            : "bg-orange-100 text-orange-700",
-                        )}
-                      >
+                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                         {m.espesor_mm} mm
                       </span>
                     ) : null}
@@ -591,12 +598,7 @@ export function BuscadorMaterial({
                         {prefijo}
                         {formatPrecioMaterial(precio)}
                       </span>
-                      <span
-                        className={cn(
-                          "block text-[10px]",
-                          activo ? "text-white/80" : "text-muted-foreground",
-                        )}
-                      >
+                      <span className="block text-[10px] text-muted-foreground">
                         / {m.unit || "m2"}
                       </span>
                     </span>
@@ -610,9 +612,9 @@ export function BuscadorMaterial({
               <button
                 type="button"
                 className={cn(
-                  "flex w-full items-center px-3 py-2 text-left text-sm",
+                  menuItemClass,
                   active === filtrados.length
-                    ? "bg-amber-500 text-white"
+                    ? menuItemActiveClass
                     : "text-muted-foreground hover:bg-muted",
                 )}
                 onMouseEnter={() => setActive(filtrados.length)}
@@ -693,7 +695,7 @@ export function PickChapaSugerida({
                   ? `${selected.bulto} · ${selected.largo_cm}×${selected.ancho_cm} cm (${m2(selected.largo_cm, selected.ancho_cm)} m²)`
                   : chapas.length === 0
                     ? "Sin chapas disponibles"
-                    : "Señalar chapa (opcional)…"}
+                    : "Señalar chapa"}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -871,10 +873,10 @@ export function PickArticulo({
       {open
         ? createPortal(
             <div
-              className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+              className={menuPanelClass}
               style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
             >
-              <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto py-1">
+              <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto">
                 {filtrados.length === 0 ? (
                   <li className="px-3 py-6 text-center text-sm text-muted-foreground">
                     {articulos.length === 0 ? "Cargando sub-ítems…" : "Sin coincidencias."}
@@ -887,8 +889,8 @@ export function PickArticulo({
                         <button
                           type="button"
                           className={cn(
-                            "flex w-full items-center gap-2 px-2.5 py-2 text-left",
-                            activo ? "bg-amber-500 text-white" : "hover:bg-muted",
+                            menuItemClass,
+                            activo ? menuItemActiveClass : menuItemIdleClass,
                           )}
                           onMouseEnter={() => setActive(index)}
                           onMouseDown={(e) => {
@@ -901,17 +903,11 @@ export function PickArticulo({
                             className={cn(
                               "h-4 w-4 shrink-0",
                               value === a.id ? "opacity-100" : "opacity-0",
-                              activo && "text-white",
                             )}
                           />
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate text-sm font-medium">{a.descripcion}</span>
-                            <span
-                              className={cn(
-                                "text-[10px]",
-                                activo ? "text-white/80" : "text-muted-foreground",
-                              )}
-                            >
+                            <span className="text-[10px] text-muted-foreground">
                               tipo · {labelTipoUnidad(a.unidad)}
                             </span>
                           </span>

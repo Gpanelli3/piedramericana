@@ -36,16 +36,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type PorOtRes = {
-  key: string;
-  titulo: string;
-  subtotal: number;
-  m2: number;
-  ml: number;
-  ton: number;
-  cantLineas: number;
-};
-
 export type StepOrdenesProps = {
   catalogoCargando: boolean;
   ordenes: OrdenTrabajoWizard[];
@@ -53,10 +43,6 @@ export type StepOrdenesProps = {
   materialesCargando?: boolean;
   preciosMaterial?: Record<string, number>;
   monedaMaterial?: "ars" | "usd";
-  totalesItems: {
-    faltaPesoNonMarmol: boolean;
-    porOt: PorOtRes[];
-  };
   patchOrden: (key: string, patch: Partial<OrdenTrabajoWizard>) => void;
   addOrdenTrabajo: () => void;
   removeOrdenTrabajo: (key: string) => void;
@@ -77,7 +63,6 @@ export function StepOrdenes({
   materialesCargando = false,
   preciosMaterial,
   monedaMaterial = "usd",
-  totalesItems,
   patchOrden,
   addOrdenTrabajo,
   removeOrdenTrabajo,
@@ -117,14 +102,6 @@ export function StepOrdenes({
           <span className="text-xs text-muted-foreground">{articulosLabel}</span>
         </div>
         <div className="space-y-4 px-4 py-4 sm:px-5">
-          {totalesItems.faltaPesoNonMarmol ? (
-            <p className="rounded-md border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/25 dark:text-amber-100">
-              Alguna OT tiene material <span className="font-semibold">no mármol</span> pero sin{" "}
-              <span className="font-semibold">peso (kg/m²)</span> en el maestro (menú lateral →{" "}
-              <span className="font-semibold">Cantera</span>). El total en toneladas puede quedar incompleto.
-            </p>
-          ) : null}
-
           <div className="space-y-3">
             {ordenes.map((ot, idx) => {
               return (
@@ -158,7 +135,7 @@ export function StepOrdenes({
                       <Input
                         id={`${ot.key}-titulo`}
                         className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-1 focus-visible:ring-white/30"
-                        placeholder="Nombre de la OT (ej: Mesada de cocina)"
+                        placeholder="Nombre"
                         value={ot.titulo}
                         onChange={(e) => patchOrden(ot.key, { titulo: e.target.value })}
                       />
@@ -169,6 +146,7 @@ export function StepOrdenes({
                         loading={materialesCargando}
                         precios={preciosMaterial}
                         moneda={monedaMaterial}
+                        soloTextoLibre={ot.piedraDelCliente === true}
                         onChange={(next) =>
                           patchOrden(ot.key, {
                             materialId: next.materialId,
@@ -204,33 +182,11 @@ export function StepOrdenes({
                               <TableRow className="border-b border-border/60 bg-muted/45 hover:bg-muted/45 [&_th]:h-8 [&_th]:py-1.5 [&_th]:text-[10px] [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:uppercase [&_th]:tracking-wide first:[&_th]:pl-3 last:[&_th]:pr-3">
                                 <TableHead className="w-8 whitespace-nowrap">#</TableHead>
                                 <TableHead className="w-72 min-w-72">Sub-item</TableHead>
-                                <TableHead
-                                  className="whitespace-nowrap"
-                                  title="Largo en metros (m² por dimensiones)."
-                                >
-                                  Largo
-                                </TableHead>
-                                <TableHead
-                                  className="whitespace-nowrap"
-                                  title="Ancho en metros (solo m² por dimensiones)."
-                                >
-                                  Ancho
-                                </TableHead>
-                                <TableHead
-                                  className="whitespace-nowrap"
-                                  title="m² calculados o cantidad según el tipo de artículo."
-                                >
-                                  m² / Cant
-                                </TableHead>
-                                <TableHead
-                                  className="whitespace-nowrap"
-                                  title="Unidades (piezas) o tipo de unidad del artículo."
-                                >
-                                  Unid.
-                                </TableHead>
-                                <TableHead title="Desperdicio: % extra de material. Vacío = 0%.">
-                                  Desp
-                                </TableHead>
+                                <TableHead className="whitespace-nowrap">Largo</TableHead>
+                                <TableHead className="whitespace-nowrap">Ancho</TableHead>
+                                <TableHead className="whitespace-nowrap">m² / Cant</TableHead>
+                                <TableHead className="whitespace-nowrap">Unid.</TableHead>
+                                <TableHead>Desp</TableHead>
                                 <TableHead className="whitespace-nowrap">Precio</TableHead>
                                 <TableHead className="text-right">Subtotal</TableHead>
                                 <TableHead className="w-12 p-1.5 text-center">
@@ -274,6 +230,31 @@ export function StepOrdenes({
                               }
                             />
                             Lleva bacha
+                          </label>
+                          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              id={`${ot.key}-piedra-cliente`}
+                              checked={ot.piedraDelCliente === true}
+                              onCheckedChange={(c) => {
+                                const on = Boolean(c);
+                                if (!on) {
+                                  patchOrden(ot.key, { piedraDelCliente: false });
+                                  return;
+                                }
+                                const nombreCatalogo =
+                                  materials.find((m) => m.id === ot.materialId)?.name ?? "";
+                                patchOrden(ot.key, {
+                                  piedraDelCliente: true,
+                                  materialId: "",
+                                  materialLibre:
+                                    (ot.materialLibre ?? "").trim() || nombreCatalogo,
+                                  chapaSugeridaId: null,
+                                  chapaSugeridaBulto: "",
+                                  chapaSugeridaLabel: "",
+                                });
+                              }}
+                            />
+                            La piedra la pone el cliente
                           </label>
                         </div>
 
