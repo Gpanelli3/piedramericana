@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -198,19 +198,18 @@ export function ClientesCatalogo() {
                 <TableHead>Teléfono</TableHead>
                 <TableHead className="hidden md:table-cell">Email</TableHead>
                 <TableHead className="hidden lg:table-cell">Dirección</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filtrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay clientes. Creá el primero o desde un presupuesto."
                       : "Ningún cliente coincide con la búsqueda."}
@@ -241,21 +240,6 @@ export function ClientesCatalogo() {
                     <TableCell className="hidden md:table-cell">{c.email || "—"}</TableCell>
                     <TableCell className="hidden max-w-[14rem] truncate lg:table-cell">
                       {c.direccion || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Editar"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          abrirEditar(c);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))

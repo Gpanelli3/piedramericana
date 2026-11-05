@@ -360,7 +360,7 @@ export async function getOtsAgrupadas(): Promise<{
 
 type FiltroTab = Exclude<ProduccionOtFiltro, "general">;
 
-/** OTs según tab de Producción (excepto General). */
+/** OTs según tab de Órdenes de Trabajo (excepto General). */
 export async function getOtsPorFiltro(
   filtro: FiltroTab,
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
@@ -376,6 +376,8 @@ export async function getOtsPorFiltro(
 
   if (filtro === "venta_retenida") {
     q = q.or("bloqueada.eq.true,pausada.eq.true");
+  } else if (filtro === "tecnica") {
+    q = q.eq("etapa", "medicion");
   } else if (filtro === "produccion") {
     q = q.in("etapa", ["corte", "produccion"]);
   } else if (filtro === "logistica") {

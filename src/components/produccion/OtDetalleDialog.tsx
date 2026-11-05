@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -15,12 +14,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
-import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { OtRoturaEstado } from "@/components/produccion/OtRoturaEstado";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
-import { M2Comparacion, UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
+import { UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
 import {
   avanzarEtapaOt,
   coalesceEtapaOt,
@@ -32,7 +36,6 @@ import {
   setOtBloqueada,
   setOtDesbloqueada,
   setOtFechaProgramada,
-  setOtNafe,
   setOtNotas,
   setOtPausada,
   siguienteEtapaOt,
@@ -42,7 +45,6 @@ import {
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
 import { avisoBachaPendiente, frenaAvancePorBacha } from "@/lib/bacha-reglas";
-import { NafeCampo } from "@/components/produccion/NafeCampo";
 import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
@@ -50,6 +52,7 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileImage,
@@ -57,9 +60,9 @@ import {
   Layers,
   MapPin,
   Printer,
-  Receipt,
   Ruler,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type { JobStatus } from "@/types/database";
 
 type Props = {
@@ -73,11 +76,22 @@ type Props = {
   /** Índice del item actual dentro de navItems */
   navIndex?: number;
   onNavChange?: (index: number) => void;
-  /** Mostrar pestaña de cobros (p. ej. desde Finanzas). */
+  /** Reservado: el saldo se muestra siempre en Datos. */
   mostrarSaldo?: boolean;
-  /** Botones de rótulo de taller y plano (Producción y Logística). */
+  /** Botones de rótulo de taller y plano (Órdenes de Trabajo). */
   mostrarRotulo?: boolean;
 };
+
+type VistaOt = "resumen" | "medidas" | "stock" | "estado";
+
+function DatoFila({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium text-foreground">{children}</dd>
+    </div>
+  );
+}
 
 function fmtMoneda(n: number, moneda: "ars" | "usd") {
   return moneda === "usd"
@@ -188,14 +202,11 @@ export function OtDetalleDialog({
   permitirEntregar = true,
   navItems,
   onNavChange,
-  mostrarSaldo = false,
   mostrarRotulo = false,
 }: Props) {
   const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
   const [fechaLocal, setFechaLocal] = useState("");
   const [savingFecha, setSavingFecha] = useState(false);
-  const [nafeLocal, setNafeLocal] = useState("");
-  const [savingNafe, setSavingNafe] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [medidaItems, setMedidaItems] = useState<MedidaItemEditable[]>([]);
@@ -207,14 +218,15 @@ export function OtDetalleDialog({
   const [notaLocal, setNotaLocal] = useState("");
   const [motivoLocal, setMotivoLocal] = useState("");
   const [savingEstado, setSavingEstado] = useState(false);
-  const [cobrosOpen, setCobrosOpen] = useState(false);
   const [pinned, setPinned] = useState<OtProduccionItem | null>(null);
   const [etapaOverride, setEtapaOverride] = useState<EtapaOtId | null>(null);
+  const [vista, setVista] = useState<VistaOt>("resumen");
 
   useEffect(() => {
     if (!open) {
       setPinned(null);
       setEtapaOverride(null);
+      setVista("resumen");
       return;
     }
     if (!itemProp) return;
@@ -247,6 +259,7 @@ export function OtDetalleDialog({
       if (!next || !navItems || !onNavChange) return;
       setPinned(next);
       setEtapaOverride(null);
+      setVista("resumen");
       const idx = navItems.findIndex((i) => i.orden.id === next.orden.id);
       if (idx >= 0) onNavChange(idx);
     },
@@ -256,7 +269,6 @@ export function OtDetalleDialog({
   useEffect(() => {
     if (!item || !open) return;
     setFechaLocal(fechaProgramadaInputValue(item.orden.fecha_programada));
-    setNafeLocal(item.orden.nafe ?? "");
     setMedidaItems([]);
     setSaldo(null);
     setLoadingExtra(true);
@@ -271,7 +283,7 @@ export function OtDetalleDialog({
     void (async () => {
       const [medidasRes, saldoRes] = await Promise.all([
         fetchMedidasOt(otId),
-        mostrarSaldo ? getOtSaldoVenta(ventaId) : Promise.resolve({ data: null, error: null }),
+        getOtSaldoVenta(ventaId),
       ]);
       if (cancelled) return;
       if (medidasRes.data) setMedidaItems(medidasRes.data.items);
@@ -281,7 +293,7 @@ export function OtDetalleDialog({
     return () => {
       cancelled = true;
     };
-  }, [item?.orden.id, open, mostrarSaldo, item?.ventaId]);
+  }, [item?.orden.id, open, item?.ventaId]);
 
   useEffect(() => {
     if (!open || !puedeNavegar) return;
@@ -442,14 +454,17 @@ export function OtDetalleDialog({
   const grupos = groupItemsByOrden(medidaItems);
 
   return (
-    <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[min(44rem,88vh)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+        <DialogContent className="flex max-h-[min(44rem,88vh)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 border-b border-border px-5 py-3.5 pr-12 text-left">
             <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                     {item.orden.titulo}
+                    {item.presupuestoNumero &&
+                    !item.orden.titulo?.includes(item.presupuestoNumero)
+                      ? ` · ${item.presupuestoNumero}`
+                      : ""}
                   </span>
                   {item.esReposicion ? (
                     <Badge
@@ -480,6 +495,12 @@ export function OtDetalleDialog({
                 <DialogTitle className="text-lg font-bold leading-tight text-foreground">
                   {item.cliente}
                 </DialogTitle>
+                {item.direccionObra !== "—" ? (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{item.direccionObra}</span>
+                  </p>
+                ) : null}
                 <DialogDescription className="sr-only">
                   Detalle de la orden de trabajo {item.orden.titulo}
                 </DialogDescription>
@@ -497,205 +518,145 @@ export function OtDetalleDialog({
             ) : null}
           </DialogHeader>
 
-          <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-2.5">
-            <div className="min-w-0 flex-1">
-              <OtEtapaStepper
-                etapa={etapa}
-                done={done}
-                disabled={!puedeMover}
-                busy={busy}
-                motivoDisabled={
-                  done
-                    ? "OT entregada"
-                    : bloqueada
-                      ? "OT bloqueada"
-                      : pausada
-                        ? "OT pausada"
-                        : frenaBacha
-                          ? bachaPendiente ?? "Bacha pendiente"
-                          : undefined
-                }
-                onSelect={(e) => void onEtapaSelect(e)}
-              />
-            </div>
-            {puedeNavegar ? (
-              <div className="flex shrink-0 items-center gap-0.5 border-l border-border pl-3">
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  disabled={!hayAnterior}
-                  aria-label="OT anterior de esta venta"
-                  onClick={() => irAHermano(-1)}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span
-                  className="min-w-[3.25rem] text-center text-[11px] tabular-nums text-muted-foreground"
-                  title="Otras OTs de esta venta"
-                >
-                  {navPos + 1} / {hermanosUsables.length}
-                </span>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  disabled={!haySiguiente}
-                  aria-label="OT siguiente de esta venta"
-                  onClick={() => irAHermano(1)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
+          <div className="shrink-0 border-b border-border px-5 py-2.5">
+            <OtEtapaStepper
+              etapa={etapa}
+              done={done}
+              disabled={!puedeMover}
+              busy={busy}
+              motivoDisabled={
+                done
+                  ? "OT entregada"
+                  : bloqueada
+                    ? "OT bloqueada"
+                    : pausada
+                      ? "OT pausada"
+                      : frenaBacha
+                        ? bachaPendiente ?? "Bacha pendiente"
+                        : undefined
+              }
+              onSelect={(e) => void onEtapaSelect(e)}
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="space-y-3 border-b border-border bg-muted/20 px-5 py-3">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs sm:grid-cols-3">
-                <div>
-                  <p className="text-muted-foreground">Material</p>
-                  <p className="font-medium text-foreground">{item.materialLabel}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">NAFE</p>
-                  {!done ? (
-                    <div className="mt-0.5">
-                      <NafeCampo
-                        id={`ot-nafe-${item.orden.id}`}
-                        compact
-                        value={nafeLocal}
-                        onChange={setNafeLocal}
-                      />
-                      {(nafeLocal.trim() || "") !== (item.orden.nafe ?? "").trim() ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="mt-1 h-7 text-xs"
-                          disabled={savingNafe}
-                          onClick={() => {
-                            setSavingNafe(true);
-                            void setOtNafe(item.orden.id, nafeLocal).then((res) => {
-                              setSavingNafe(false);
-                              if (res.error) {
-                                toast.error(res.error.message);
-                                return;
-                              }
-                              toast.success("NAFE actualizado.");
-                              refresh();
-                            });
-                          }}
-                        >
-                          Guardar
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="font-medium text-foreground">{item.orden.nafe?.trim() || "—"}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Ingreso</p>
-                  <p className="font-medium tabular-nums text-foreground">
-                    {formatFechaCorta(item.orden.creado_en)}
+            {vista === "resumen" ? (
+            <div className="px-5 py-4">
+              <div className="grid gap-8 sm:grid-cols-2">
+                <section className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Pieza
                   </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Entrega</p>
-                  {!done ? (
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <FechaInput
-                        className="h-8 max-w-[11rem] text-xs"
-                        value={fechaLocal}
-                        onChange={setFechaLocal}
-                      />
-                      {fechaDirty ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs"
-                          disabled={savingFecha}
-                          onClick={() => void onGuardarFecha()}
-                        >
-                          Guardar
-                        </Button>
-                      ) : null}
-                    </div>
+                  <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <h3 className="text-lg font-semibold leading-tight text-foreground">
+                      {item.materialLabel}
+                    </h3>
+                    {item.m2Venta > 0 ? (
+                      <span className="text-sm tabular-nums text-muted-foreground">
+                        {formatMetraje(item.m2Venta)} m²
+                      </span>
+                    ) : null}
+                  </div>
+                  {loadingExtra ? (
+                    <p className="mt-3 text-xs text-muted-foreground">Cargando…</p>
+                  ) : medidaItems.length > 0 ? (
+                    <ul className="mt-3 divide-y divide-border/70 overflow-hidden rounded-lg border border-border bg-background">
+                      {grupos.flatMap((g, gi) =>
+                        g.items.map((it, ii) => (
+                          <li
+                            key={`${gi}-${ii}`}
+                            className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm"
+                          >
+                            <span className="min-w-0 truncate text-foreground">
+                              {it.articuloLabel}
+                            </span>
+                            <span className="shrink-0 tabular-nums text-muted-foreground">
+                              {it.m2Approx > 0
+                                ? `${formatMetraje(it.m2Approx)} m²`
+                                : it.cantidad
+                                  ? `${it.cantidad} u`
+                                  : "—"}
+                            </span>
+                          </li>
+                        )),
+                      )}
+                    </ul>
                   ) : (
-                    <p className="font-medium tabular-nums text-foreground">
-                      {formatFechaCorta(item.orden.fecha_programada)}
-                    </p>
+                    <p className="mt-3 text-xs text-muted-foreground">Sin ítems cargados.</p>
                   )}
-                </div>
-              </div>
-              <M2Comparacion item={item} />
-              {item.direccionObra !== "—" ? (
-                <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{item.direccionObra}</span>
-                </div>
-              ) : null}
-              {loadingExtra ? (
-                <p className="text-xs text-muted-foreground">Cargando piezas…</p>
-              ) : medidaItems.length > 0 ? (
-                <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                  {grupos.flatMap((g, gi) =>
-                    g.items.map((it, ii) => (
-                      <li key={`${gi}-${ii}`} className="min-w-0">
-                        <span className="font-medium text-foreground">{it.articuloLabel}</span>
-                        <span className="tabular-nums text-muted-foreground">
-                          {it.m2Approx > 0
-                            ? ` · ${formatMetraje(it.m2Approx)} m²`
-                            : it.cantidad && it.cantidad !== "1"
-                              ? ` · ×${it.cantidad}`
-                              : ""}
+                </section>
+
+                <section className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                    Datos
+                  </p>
+                  <dl className="mt-1 divide-y divide-border/70 text-sm">
+                    <DatoFila label="Vendedor">
+                      {item.vendedorLabel?.trim() || "—"}
+                    </DatoFila>
+                    <DatoFila label="Entrega comprometida">
+                      {!done ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <FechaInput
+                            className="h-8 max-w-[11rem] text-xs"
+                            value={fechaLocal}
+                            onChange={setFechaLocal}
+                          />
+                          {fechaDirty ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={savingFecha}
+                              onClick={() => void onGuardarFecha()}
+                            >
+                              Guardar
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="tabular-nums">
+                          {formatFechaCorta(item.orden.fecha_programada)}
                         </span>
-                      </li>
-                    )),
-                  )}
-                </ul>
-              ) : null}
+                      )}
+                    </DatoFila>
+                    <DatoFila label="Saldo">
+                      {loadingExtra ? (
+                        "…"
+                      ) : saldo ? (
+                        <span
+                          className={cn(
+                            "tabular-nums",
+                            saldo.saldo > 0
+                              ? "text-amber-800 dark:text-amber-200"
+                              : "text-emerald-700 dark:text-emerald-300",
+                          )}
+                        >
+                          {fmtMoneda(saldo.saldo, saldo.moneda)}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </DatoFila>
+                  </dl>
+                </section>
+              </div>
             </div>
+            ) : null}
 
-            <Tabs key={item.orden.id} defaultValue="medidas" className="gap-0 px-5 py-3">
-              <TabsList className="h-auto w-full flex-wrap justify-start">
-                <TabsTrigger value="medidas" className="gap-1.5 text-xs">
-                  <Ruler className="h-3.5 w-3.5" />
-                  Medidas
-                </TabsTrigger>
-                <TabsTrigger value="stock" className="gap-1.5 text-xs">
-                  <Layers className="h-3.5 w-3.5" />
-                  Materiales y stock
-                  {stockPendiente ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-label="Pendiente" />
-                  ) : null}
-                </TabsTrigger>
-                {!done ? (
-                  <TabsTrigger value="estado" className="gap-1.5 text-xs">
-                    Estado y notas
-                  </TabsTrigger>
-                ) : null}
-                {mostrarSaldo ? (
-                  <TabsTrigger value="cobros" className="gap-1.5 text-xs">
-                    <Receipt className="h-3.5 w-3.5" />
-                    Cobros
-                  </TabsTrigger>
-                ) : null}
-              </TabsList>
-
-              <TabsContent value="medidas" className="mt-3">
+            {vista === "medidas" ? (
+              <div className="px-5 py-3">
                 <OtMedidasPanel
                   otId={item.orden.id}
                   destacado={etapa === "medicion" && !item.orden.medidas_confirmadas}
                   onSaved={refresh}
                 />
-              </TabsContent>
+              </div>
+            ) : null}
 
-              <TabsContent value="stock" className="mt-3">
+            {vista === "stock" ? (
+              <div className="px-5 py-3">
                 <OtStockPanel
                   otId={item.orden.id}
                   materialHint={item.materialLabel}
@@ -711,10 +672,11 @@ export function OtDetalleDialog({
                   bachaId={item.orden.bacha_id}
                   onChanged={refresh}
                 />
-              </TabsContent>
+              </div>
+            ) : null}
 
-              {!done ? (
-                <TabsContent value="estado" className="mt-3">
+            {vista === "estado" && !done ? (
+                  <div className="space-y-4 px-5 py-3">
                   <div className="space-y-4 rounded-lg border border-border bg-muted/20 px-4 py-4">
                     <div className="space-y-1.5">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -830,141 +792,132 @@ export function OtDetalleDialog({
                       </div>
                     ) : null}
                   </div>
-                </TabsContent>
-              ) : null}
-
-              {mostrarSaldo ? (
-                <TabsContent value="cobros" className="mt-3">
-                  <div className="rounded-lg border border-border bg-muted/20 px-4 py-4">
-                    {loadingExtra ? (
-                      <p className="text-xs text-muted-foreground">Cargando…</p>
-                    ) : saldo ? (
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-2xl font-bold tabular-nums text-foreground">
-                            {fmtMoneda(saldo.saldo, saldo.moneda)}
-                          </p>
-                          <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Total: {fmtMoneda(saldo.total, saldo.moneda)}</span>
-                            <span>Cobrado: {fmtMoneda(saldo.cobrado, saldo.moneda)}</span>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <Progress value={saldo.pct} className="h-1.5" />
-                          <p className="text-right text-[11px] text-muted-foreground">
-                            {saldo.pct}% cobrado
-                          </p>
-                        </div>
-                        {saldo.saldo > 0 && !done && item.presupuestoId ? (
-                          <Button
-                            type="button"
-                            className="w-full"
-                            onClick={() => setCobrosOpen(true)}
-                          >
-                            <Receipt className="mr-2 h-4 w-4" />
-                            Registrar pago
-                          </Button>
-                        ) : null}
-                        {saldo.saldo <= 0 ? (
-                          <p className="text-center text-xs font-medium text-green-600 dark:text-green-400">
-                            Venta cobrada en su totalidad
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Sin información de cobros.</p>
-                    )}
                   </div>
-                </TabsContent>
-              ) : null}
-            </Tabs>
+            ) : null}
           </div>
 
           <div className="shrink-0 border-t border-border bg-background px-4 py-2.5">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {mostrarRotulo ? (
-                <div className="mr-auto flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {vista !== "resumen" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setVista("resumen")}
+                >
+                  <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                  Volver
+                </Button>
+              ) : puedeNavegar ? (
+                <div className="flex items-center gap-0.5">
                   <Button
                     type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      onOpenChange(false);
-                      irARotulo(item.orden.id);
-                    }}
+                    size="icon-sm"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    disabled={!hayAnterior}
+                    aria-label="OT anterior de esta venta"
+                    onClick={() => irAHermano(-1)}
                   >
-                    <Printer className="mr-1 h-3.5 w-3.5" />
-                    Rótulo
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
+                  <span
+                    className="min-w-[3.25rem] text-center text-[11px] tabular-nums text-muted-foreground"
+                    title="Otras OTs de esta venta"
+                  >
+                    {navPos + 1} / {hermanosUsables.length}
+                  </span>
                   <Button
                     type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busyPlanoId === item.orden.id}
-                    onClick={() => void abrirPlano(item)}
+                    size="icon-sm"
+                    variant="ghost"
+                    className="h-8 w-8"
+                    disabled={!haySiguiente}
+                    aria-label="OT siguiente de esta venta"
+                    onClick={() => irAHermano(1)}
                   >
-                    <FileImage className="mr-1 h-3.5 w-3.5" />
-                    Plano
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-              ) : null}
-              {!done && nextEtapa ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!puedeMover || busy || frenaBacha}
-                  onClick={() => void onAvanzar()}
-                >
-                  Pasar a {etiquetaTabDestino(nextEtapa)}
-                  <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                </Button>
-              ) : permitirEntregar && !done && etapa === "despacho" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!puedeMover || busy}
-                  onClick={() => void onEntregar()}
-                >
-                  Marcar entregada
-                  <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                </Button>
-              ) : null}
+              ) : (
+                <span />
+              )}
 
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="text-xs text-muted-foreground"
-                onClick={() => onOpenChange(false)}
-              >
-                Cerrar
-              </Button>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" size="sm" variant="outline">
+                      Más
+                      <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setVista("medidas")}>
+                      <Ruler className="h-4 w-4" />
+                      Medidas
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setVista("stock")}>
+                      <Layers className="h-4 w-4" />
+                      Materiales y stock
+                      {stockPendiente ? (
+                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      ) : null}
+                    </DropdownMenuItem>
+                    {!done ? (
+                      <DropdownMenuItem onSelect={() => setVista("estado")}>
+                        <FileText className="h-4 w-4" />
+                        Estado y notas
+                      </DropdownMenuItem>
+                    ) : null}
+                    {mostrarRotulo ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            onOpenChange(false);
+                            irARotulo(item.orden.id);
+                          }}
+                        >
+                          <Printer className="h-4 w-4" />
+                          Rótulo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={busyPlanoId === item.orden.id}
+                          onSelect={() => void abrirPlano(item)}
+                        >
+                          <FileImage className="h-4 w-4" />
+                          Plano
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {!done && nextEtapa ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!puedeMover || busy || frenaBacha}
+                    onClick={() => void onAvanzar()}
+                  >
+                    Pasar a {etiquetaTabDestino(nextEtapa)}
+                    <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                ) : permitirEntregar && !done && etapa === "despacho" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!puedeMover || busy}
+                    onClick={() => void onEntregar()}
+                  >
+                    Marcar entregada
+                    <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-
-      {mostrarSaldo && item.presupuestoId ? (
-        <VentaCobrosDialog
-          open={cobrosOpen}
-          onOpenChange={setCobrosOpen}
-          presupuestoId={item.presupuestoId}
-          rowResumen={{
-            cliente: item.cliente === "—" ? null : item.cliente,
-            numero: item.presupuestoNumero,
-            total: saldo?.total ?? null,
-            moneda: saldo?.moneda ?? null,
-            orden_trabajo_id: item.orden.id,
-            ot_etapa: String(item.orden.etapa),
-            ot_estado: item.orden.estado as JobStatus,
-          }}
-          onDatosCambiaron={async () => {
-            refresh();
-            const res = await getOtSaldoVenta(item.ventaId);
-            if (res.data) setSaldo(res.data);
-          }}
-        />
-      ) : null}
-    </>
   );
 }

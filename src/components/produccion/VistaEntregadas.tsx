@@ -40,7 +40,7 @@ export function VistaEntregadas() {
       <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Producción · Entregadas</h1>
+            <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo · Entregadas</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Histórico de OTs cerradas (solo lectura)
             </p>

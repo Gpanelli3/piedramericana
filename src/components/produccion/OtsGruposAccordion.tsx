@@ -8,7 +8,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
-import { TallerOtActionsProvider } from "@/components/produccion/useAccionesRotuloOt";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import type { OtProduccionItem, VentaGrupoOt } from "@/lib/produccion-api";
 import type { JobStatus } from "@/types/database";
@@ -71,7 +70,7 @@ export function OtsGruposAccordion({
   }
 
   return (
-    <TallerOtActionsProvider>
+    <>
       <div className="space-y-3">
         {grupos.map((g) => {
           const open = openIds.has(g.ventaId);
@@ -167,6 +166,6 @@ export function OtsGruposAccordion({
         navIndex={navIndex}
         onNavChange={setNavIndex}
       />
-    </TallerOtActionsProvider>
+    </>
   );
 }

@@ -28,10 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Banknote,
   Wallet,
   TrendingUp,
   ChevronDown,
-  ChevronRight,
   Search,
   Download,
   FileSpreadsheet,
@@ -181,12 +181,17 @@ export function VistaAdministracion() {
   const kpis = useMemo(() => {
     let saldoUsd = 0;
     let saldoArs = 0;
+    let totalUsd = 0;
+    let totalArs = 0;
     for (const r of filtradas) {
       const sal = r.saldo_misma_moneda;
+      const tot = r.total;
       if (r.moneda === "usd") {
         if (typeof sal === "number" && sal > 0) saldoUsd += sal;
+        if (typeof tot === "number" && Number.isFinite(tot)) totalUsd += tot;
       } else {
         if (typeof sal === "number" && sal > 0) saldoArs += sal;
+        if (typeof tot === "number" && Number.isFinite(tot)) totalArs += tot;
       }
     }
     const conSaldo = filtradas.filter((r) => {
@@ -196,6 +201,8 @@ export function VistaAdministracion() {
     return {
       saldoUsd,
       saldoArs,
+      totalUsd,
+      totalArs,
       conSaldo,
       totalAprob: filtradas.length,
     };
@@ -291,7 +298,7 @@ export function VistaAdministracion() {
       </header>
 
       <div className="space-y-6 px-5 py-5 sm:px-6 sm:py-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card className="border-border shadow-sm">
             <CardContent className="flex gap-4 p-4 sm:p-5">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -304,6 +311,29 @@ export function VistaAdministracion() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {hayFiltrosActivos ? "Según filtros activos" : "Presupuestos en estado aprobado"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border shadow-sm">
+            <CardContent className="flex gap-4 p-4 sm:p-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Banknote className="h-5 w-5 text-foreground/80" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Ventas totales</p>
+                <p className="text-sm font-semibold tabular-nums leading-snug text-foreground">
+                  {cargando ?
+                    "…"
+                  : <>
+                      <span className="block">{formatMonto(kpis.totalUsd, "usd")}</span>
+                      <span className="block text-muted-foreground">{formatMonto(kpis.totalArs, "ars")}</span>
+                    </>
+                  }
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {hayFiltrosActivos ? "Según filtros activos" : "Suma de los totales aprobados"}
                 </p>
               </div>
             </CardContent>
@@ -441,24 +471,21 @@ export function VistaAdministracion() {
                     <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
                       Vendedor
                     </TableHead>
-                    <TableHead className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                    <TableHead className="whitespace-nowrap pr-4 text-xs font-medium text-muted-foreground sm:pr-6">
                       Fecha
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap pr-4 text-right text-xs font-medium text-muted-foreground sm:pr-6">
-                      Acción
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cargando ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                         Cargando…
                       </TableCell>
                     </TableRow>
                   ) : filtradas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                         {hayFiltrosActivos ?
                           "Ninguna venta coincide con los filtros."
                         : "No hay presupuestos aprobados."}
@@ -501,23 +528,8 @@ export function VistaAdministracion() {
                               {r.vendedor_nombre?.trim() || "—"}
                             </p>
                           </TableCell>
-                          <TableCell className="py-3 whitespace-nowrap text-sm tabular-nums text-muted-foreground">
+                          <TableCell className="py-3 whitespace-nowrap pr-4 text-sm tabular-nums text-muted-foreground sm:pr-6">
                             {formatoFecha(r.created_at)}
-                          </TableCell>
-                          <TableCell className="py-3 pr-4 text-right sm:pr-6">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                abrirCobros(r);
-                              }}
-                            >
-                              Cobros
-                              <ChevronRight className="h-3 w-3 opacity-70" />
-                            </Button>
                           </TableCell>
                         </TableRow>
                       );

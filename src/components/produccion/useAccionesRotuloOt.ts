@@ -1,4 +1,4 @@
-import { createContext, createElement, useCallback, useContext, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { abrirPlanoOt } from "@/lib/rotulo-ot-api";
@@ -34,16 +34,4 @@ export function useAccionesRotuloOt() {
   }, []);
 
   return { irARotulo, abrirPlano, busyPlanoId };
-}
-
-const TallerOtActionsContext = createContext<ReturnType<typeof useAccionesRotuloOt> | null>(null);
-
-/** Disponible en los listados de producción para Ver / Rótulo / Plano. */
-export function TallerOtActionsProvider({ children }: { children: ReactNode }) {
-  const value = useAccionesRotuloOt();
-  return createElement(TallerOtActionsContext.Provider, { value }, children);
-}
-
-export function useTallerOtActions() {
-  return useContext(TallerOtActionsContext);
 }

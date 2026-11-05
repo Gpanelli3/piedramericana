@@ -94,7 +94,7 @@ const NAV_ITEMS: NavItemDef[] = [
   },
   {
     id: "produccion",
-    label: "Producción",
+    label: "Órdenes de Trabajo",
     icon: <Wrench className="h-[18px] w-[18px]" />,
     roles: ["cortador", "produccion", "medidor", "admin"],
   },

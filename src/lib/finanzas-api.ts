@@ -332,6 +332,7 @@ export async function registrarMovimientoPorCobro(opts: {
   descripcion: string;
   created_by?: string | null;
   acreditacion?: AcreditacionMovimiento;
+  concepto?: Exclude<ConceptoMovimiento, "transferencia">;
 }): Promise<{ id: string | null; error: Error | null }> {
   if (!Number.isFinite(opts.monto) || opts.monto <= 0) {
     return { id: null, error: new Error("Monto inválido.") };
@@ -348,7 +349,7 @@ export async function registrarMovimientoPorCobro(opts: {
       moneda: opts.moneda,
       fecha: opts.fecha,
       metodo,
-      concepto: "trabajo",
+      concepto: opts.concepto ?? "trabajo",
       descripcion: opts.descripcion,
       referencia_tipo: "venta_pago",
       referencia_id: opts.pagoId,

@@ -72,7 +72,7 @@ export function VistaVentaRetenida() {
       <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Producción · Venta retenida</h1>
+            <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo · Venta Retenida</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               OTs bloqueadas o pausadas (plata, bacha, rotura u otro motivo)
             </p>

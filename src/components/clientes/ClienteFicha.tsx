@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, FileText, User, Wallet, Wrench } from "lucide-react";
+import { ArrowLeft, BookOpen, FileText, User, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,15 +17,15 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
-import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
+import { etiquetaMetodo } from "@/lib/finanzas-api";
 import {
   fetchClienteFicha,
   type ClienteFichaData,
+  type ClienteFichaMovimiento,
   type ClientePresupuesto,
 } from "@/lib/clients-api";
 import type { PresupuestoEstado } from "@/types/database";
-import type { ProduccionOtFiltro } from "@/types/workspace";
 import { cn } from "@/lib/utils";
 
 function fmtMonto(n: number, moneda: "ars" | "usd") {
@@ -128,32 +128,17 @@ export function ClienteFicha({
     );
   };
 
-  const irOt = (ot: { tabProduccion: ProduccionOtFiltro; enMedicion: boolean }) => {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        if (ot.enMedicion) {
-          n.set("ws", "medicion");
-          n.delete("ot");
-        } else {
-          n.set("ws", "produccion");
-          n.set("ot", ot.tabProduccion);
-        }
-        n.delete("cid");
-        n.delete("pv");
-        n.delete("ft");
-        n.delete("rid");
-        n.delete("id");
-        n.delete("pid");
-        n.delete("eq");
-        return n;
-      },
-      { replace: false },
-    );
+  const irMovimiento = (m: ClienteFichaMovimiento) => {
+    const tieneVenta = Boolean(act?.ventas.some((v) => v.presupuestoId === m.presupuestoId));
+    if (tieneVenta) irVenta(m.presupuestoId);
+    else irPresupuesto(m.presupuestoId);
   };
 
   const hayUsd = Boolean(
-    act && (act.saldoUsd > 0.009 || act.cobradoUsd > 0.009),
+    act &&
+      (act.saldoUsd > 0.009 ||
+        act.cobradoUsd > 0.009 ||
+        act.movimientos.some((m) => m.moneda === "usd")),
   );
 
   return (
@@ -179,63 +164,57 @@ export function ClienteFicha({
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Saldo ARS</p>
-            <p className="text-lg font-semibold tabular-nums">
-              {cargando ? "…" : fmtMonto(act?.saldoArs ?? 0, "ars")}
+          <CardContent className="p-4">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Saldo
             </p>
-          </CardContent>
-        </Card>
-        {hayUsd ? (
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Saldo USD</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {fmtMonto(act?.saldoUsd ?? 0, "usd")}
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Cobrado ARS</p>
-            <p className="text-lg font-semibold tabular-nums">
-              {cargando ? "…" : fmtMonto(act?.cobradoArs ?? 0, "ars")}
-            </p>
-          </CardContent>
-        </Card>
-        {hayUsd ? (
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Cobrado USD</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {fmtMonto(act?.cobradoUsd ?? 0, "usd")}
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Presupuestos</p>
-            <p className="text-lg font-semibold tabular-nums">
-              {cargando ? "…" : (act?.presupuestos.length ?? 0)}
-            </p>
+            {cargando ? (
+              <p className="mt-1 text-lg font-semibold">…</p>
+            ) : (
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xl font-semibold tabular-nums tracking-tight">
+                  {fmtMonto(act?.saldoArs ?? 0, "ars")}
+                </p>
+                {hayUsd ? (
+                  <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                    {fmtMonto(act?.saldoUsd ?? 0, "usd")}
+                  </p>
+                ) : null}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">OTs abiertas</p>
-            <p className="text-lg font-semibold tabular-nums">
-              {cargando ? "…" : (act?.otsAbiertas ?? 0)}
+          <CardContent className="p-4">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Cobrado
             </p>
+            {cargando ? (
+              <p className="mt-1 text-lg font-semibold">…</p>
+            ) : (
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xl font-semibold tabular-nums tracking-tight">
+                  {fmtMonto(act?.cobradoArs ?? 0, "ars")}
+                </p>
+                {hayUsd ? (
+                  <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                    {fmtMonto(act?.cobradoUsd ?? 0, "usd")}
+                  </p>
+                ) : null}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="presupuestos" className="gap-3">
+      <Tabs defaultValue="cuenta-corriente" className="gap-3">
         <TabsList>
+          <TabsTrigger value="cuenta-corriente" className="gap-1.5">
+            <BookOpen className="h-3.5 w-3.5" />
+            Cuenta corriente ({act?.movimientos.length ?? 0})
+          </TabsTrigger>
           <TabsTrigger value="presupuestos" className="gap-1.5">
             <FileText className="h-3.5 w-3.5" />
             Presupuestos ({act?.presupuestos.length ?? 0})
@@ -244,11 +223,71 @@ export function ClienteFicha({
             <Wallet className="h-3.5 w-3.5" />
             Ventas ({act?.ventas.length ?? 0})
           </TabsTrigger>
-          <TabsTrigger value="ots" className="gap-1.5">
-            <Wrench className="h-3.5 w-3.5" />
-            OTs ({act?.ots.length ?? 0})
-          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="cuenta-corriente">
+          {cargando ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Cargando…</p>
+          ) : !act?.movimientos.length ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Todavía no hay movimientos en la cuenta corriente.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead className="text-right">Debe</TableHead>
+                    <TableHead className="text-right">Haber</TableHead>
+                    <TableHead className="text-right">Saldo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {act.movimientos.map((m) => (
+                    <TableRow
+                      key={m.id}
+                      className="cursor-pointer"
+                      onClick={() => irMovimiento(m)}
+                    >
+                      <TableCell className="whitespace-nowrap">{fmtFechaIso(m.fecha)}</TableCell>
+                      <TableCell>
+                        <p className="font-medium">
+                          {m.tipo === "cargo" ? `Cargo ${m.numero}` : `Pago ${m.numero}`}
+                        </p>
+                        {m.tipo === "pago" ? (
+                          <p className="text-xs text-muted-foreground">
+                            {etiquetaMetodo(m.metodo)}
+                            {m.nota?.trim() ? ` · ${m.nota.trim()}` : ""}
+                          </p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {m.debe > 0.009 ? fmtMonto(m.debe, m.moneda) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-green-700 dark:text-green-400">
+                        {m.haber > 0.009 ? fmtMonto(m.haber, m.moneda) : "—"}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-medium tabular-nums",
+                          m.saldo > 0.009
+                            ? "text-destructive"
+                            : m.saldo < -0.009
+                              ? "text-green-700 dark:text-green-400"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {fmtMonto(m.saldo, m.moneda)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="presupuestos">
           {cargando ? (
@@ -342,42 +381,6 @@ export function ClienteFicha({
           )}
         </TabsContent>
 
-        <TabsContent value="ots">
-          {cargando ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Cargando…</p>
-          ) : !act?.ots.length ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No hay órdenes de trabajo de este cliente.
-            </p>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border bg-white">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>OT</TableHead>
-                    <TableHead>Presupuesto</TableHead>
-                    <TableHead>Etapa</TableHead>
-                    <TableHead>Entrega</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {act.ots.map((ot) => (
-                    <TableRow
-                      key={ot.id}
-                      className="cursor-pointer"
-                      onClick={() => irOt(ot)}
-                    >
-                      <TableCell className="font-medium">{ot.titulo}</TableCell>
-                      <TableCell className="text-muted-foreground">{ot.presupuestoNumero}</TableCell>
-                      <TableCell>{etiquetaEtapaOt(ot.etapa, ot.estado)}</TableCell>
-                      <TableCell>{formatFechaCorta(ot.fecha_programada)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </TabsContent>
       </Tabs>
 
       <ClienteFormDialog

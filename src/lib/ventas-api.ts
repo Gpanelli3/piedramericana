@@ -5,6 +5,7 @@ import {
   normalizarMetodoLibro,
   registrarMovimientoPorCobro,
   sugerirCuentaPorMetodo,
+  type ConceptoMovimiento,
 } from "@/lib/finanzas-api";
 import { calcularRetencion } from "@/lib/retencion-reglas";
 import { reservarChapasAOt } from "@/lib/stock-ot-api";
@@ -653,6 +654,115 @@ async function repairOrdenesTrabajoFaltantes(): Promise<{ error: Error | null }>
   return { error: null };
 }
 
+export type DeudaClienteVenta = {
+  presupuestoId: string;
+  numero: string;
+  cliente: string;
+  moneda: "ars" | "usd";
+  total: number;
+  saldo: number;
+  titulo: string | null;
+};
+
+export async function listDeudasCliente(opts: {
+  clientId: string | null;
+  clienteNombre: string;
+}): Promise<{ data: DeudaClienteVenta[]; error: Error | null }> {
+  const selectPres = "id, numero, cliente, client_id, total, moneda, status, created_at";
+  const nombre = opts.clienteNombre.trim();
+  const results: Array<{ data: unknown[] | null; error: { message: string } | null }> = [];
+
+  if (opts.clientId) {
+    const r = await supabase
+      .from("presupuestos")
+      .select(selectPres)
+      .eq("status", "aprobado")
+      .eq("client_id", opts.clientId);
+    if (r.error) return { data: [], error: new Error(r.error.message) };
+    results.push(r);
+  }
+  if (nombre) {
+    const r = await supabase
+      .from("presupuestos")
+      .select(selectPres)
+      .eq("status", "aprobado")
+      .eq("cliente", nombre);
+    if (r.error) return { data: [], error: new Error(r.error.message) };
+    results.push(r);
+  }
+  if (results.length === 0) return { data: [], error: null };
+
+  const byId = new Map<
+    string,
+    {
+      id: string;
+      numero: string;
+      cliente: string;
+      total: number;
+      moneda: "ars" | "usd";
+      status: string;
+      created_at: string;
+    }
+  >();
+  for (const r of results) {
+    for (const row of r.data ?? []) {
+      const p = row as {
+        id: string;
+        numero: string;
+        cliente: string;
+        total: number;
+        moneda: "ars" | "usd";
+        status: string;
+        created_at: string;
+      };
+      if (p.id) byId.set(p.id, p);
+    }
+  }
+  const base = [...byId.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  try {
+    const merged = await mergeVentasResumenIntoPresupuestos(base);
+    const otIds = [
+      ...new Set(
+        merged
+          .map((r) => r.orden_trabajo_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const tituloPorOt = new Map<string, string>();
+    if (otIds.length > 0) {
+      const otRes = await supabase.from("ordenes_trabajo").select("id, titulo").in("id", otIds);
+      if (!otRes.error) {
+        for (const ot of otRes.data ?? []) {
+          const t = typeof ot.titulo === "string" ? ot.titulo.trim() : "";
+          if (ot.id && t) tituloPorOt.set(ot.id, t);
+        }
+      }
+    }
+    const deudas: DeudaClienteVenta[] = [];
+    for (const r of merged) {
+      const saldoRaw =
+        typeof r.saldo_misma_moneda === "number" ? r.saldo_misma_moneda : r.total;
+      const saldo = Math.max(0, saldoRaw);
+      if (saldo <= 0.005) continue;
+      deudas.push({
+        presupuestoId: r.id,
+        numero: r.numero,
+        cliente: r.cliente,
+        moneda: r.moneda,
+        total: r.total,
+        saldo,
+        titulo: r.orden_trabajo_id ? tituloPorOt.get(r.orden_trabajo_id) ?? null : null,
+      });
+    }
+    return { data: deudas, error: null };
+  } catch (e) {
+    return {
+      data: [],
+      error: e instanceof Error ? e : new Error("No se pudieron cargar las deudas del cliente."),
+    };
+  }
+}
+
 export async function registrarPagoSena(opts: {
   presupuestoId: string;
   monto: number;
@@ -665,6 +775,7 @@ export async function registrarPagoSena(opts: {
   retencionPorcentaje?: number | null;
   retencionMonto?: number | null;
   comprobante?: File | null;
+  concepto?: Exclude<ConceptoMovimiento, "transferencia">;
 }): Promise<ResultadoSenia> {
   const { data: pres, error: pErr } = await supabase
     .from("presupuestos")
@@ -742,6 +853,7 @@ export async function registrarPagoSena(opts: {
       descripcion: `Cobro ${presCast.numero} · ${opts.metodo}`,
       created_by: opts.created_by ?? null,
       acreditacion: metodoLibro === "tarjeta" ? "pendiente" : "no_aplica",
+      concepto: opts.concepto ?? "trabajo",
     });
     if (mov.error) return { error: mov.error };
     if (opts.comprobante && mov.id) {

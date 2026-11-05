@@ -2,11 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import { otTituloDisplay } from "@/components/produccion/ot-ui";
-import { useTallerOtActions } from "@/components/produccion/useAccionesRotuloOt";
 import type { OtProduccionItem } from "@/lib/produccion-api";
 import { avisoBachaPendiente } from "@/lib/bacha-reglas";
-import { ArrowRight, Eye, FileImage, Printer } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 type Props = {
   item: OtProduccionItem;
@@ -17,28 +16,38 @@ type Props = {
     disabled?: boolean;
   };
   extra?: ReactNode;
-  tallerActions?: {
-    onRotulo: () => void;
-    onPlano: () => void;
-    planoBusy?: boolean;
-  };
 };
 
-export function OtListRow({ item, onVer, primaryAction, extra, tallerActions }: Props) {
-  const taller = useTallerOtActions();
-  const actions = taller
-    ? {
-        onRotulo: () => taller.irARotulo(item.orden.id),
-        onPlano: () => void taller.abrirPlano(item),
-        planoBusy: taller.busyPlanoId === item.orden.id,
-      }
-    : tallerActions;
+function esControl(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select"));
+}
+
+export function OtListRow({ item, onVer, primaryAction, extra }: Props) {
   const bachaPendiente = avisoBachaPendiente({
     bachaRequerida: Boolean(item.orden.bacha_requerida),
     bachaAsignada: Boolean(item.orden.bacha_id),
   });
+
+  const onRowClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (esControl(e.target)) return;
+    onVer();
+  };
+
+  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (esControl(e.target)) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onVer();
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      tabIndex={0}
+      onClick={onRowClick}
+      onKeyDown={onRowKeyDown}
+      className="flex cursor-pointer flex-col gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between"
+    >
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="truncate text-sm font-medium text-foreground">{otTituloDisplay(item)}</p>
         <p className="truncate text-xs text-muted-foreground">
@@ -56,30 +65,8 @@ export function OtListRow({ item, onVer, primaryAction, extra, tallerActions }: 
         ) : null}
         {extra}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={onVer}>
-          <Eye className="mr-1 h-3.5 w-3.5" />
-          Ver
-        </Button>
-        {actions ? (
-          <>
-            <Button type="button" size="sm" variant="outline" onClick={actions.onRotulo}>
-              <Printer className="mr-1 h-3.5 w-3.5" />
-              Rótulo
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={actions.planoBusy}
-              onClick={actions.onPlano}
-            >
-              <FileImage className="mr-1 h-3.5 w-3.5" />
-              Plano
-            </Button>
-          </>
-        ) : null}
-        {primaryAction ? (
+      {primaryAction ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             type="button"
             size="sm"
@@ -89,8 +76,8 @@ export function OtListRow({ item, onVer, primaryAction, extra, tallerActions }: 
             {primaryAction.label}
             <ArrowRight className="ml-1 h-3.5 w-3.5" />
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -230,10 +230,26 @@ export type ClienteFichaOt = {
   enMedicion: boolean;
 };
 
+export type ClienteFichaMovimiento = {
+  id: string;
+  fecha: string;
+  presupuestoId: string;
+  numero: string;
+  tipo: "cargo" | "pago";
+  detalle: string;
+  metodo: string | null;
+  nota: string | null;
+  moneda: "ars" | "usd";
+  debe: number;
+  haber: number;
+  saldo: number;
+};
+
 export type ClienteFichaData = {
   presupuestos: ClienteFichaPresupuesto[];
   ventas: ClienteFichaVenta[];
   ots: ClienteFichaOt[];
+  movimientos: ClienteFichaMovimiento[];
   saldoArs: number;
   saldoUsd: number;
   cobradoArs: number;
@@ -249,6 +265,7 @@ export function tabProduccionDesdeOt(ot: {
 }): ProduccionOtFiltro {
   if (ot.estado === "done") return "entregadas";
   if (ot.bloqueada || ot.pausada) return "venta_retenida";
+  if (ot.etapa === "medicion") return "tecnica";
   if (ot.etapa === "corte" || ot.etapa === "produccion") return "produccion";
   if (ot.etapa === "despacho") return "logistica";
   return "general";
@@ -259,12 +276,88 @@ function emptyFicha(): ClienteFichaData {
     presupuestos: [],
     ventas: [],
     ots: [],
+    movimientos: [],
     saldoArs: 0,
     saldoUsd: 0,
     cobradoArs: 0,
     cobradoUsd: 0,
     otsAbiertas: 0,
   };
+}
+
+function montoPagoNum(raw: unknown): number {
+  const val = typeof raw === "string" ? parseFloat(raw) : Number(raw ?? 0);
+  return Number.isFinite(val) ? val : 0;
+}
+
+function armarCuentaCorriente(opts: {
+  cargos: Array<{
+    id: string;
+    fecha: string;
+    presupuestoId: string;
+    numero: string;
+    moneda: "ars" | "usd";
+    total: number;
+  }>;
+  pagos: Array<{
+    id: string;
+    fecha: string;
+    created_at: string;
+    ventaId: string;
+    presupuestoId: string;
+    numero: string;
+    moneda: "ars" | "usd";
+    monto: number;
+    metodo: string | null;
+    nota: string | null;
+  }>;
+}): ClienteFichaMovimiento[] {
+  const items: Array<ClienteFichaMovimiento & { sortKey: string }> = [];
+  for (const c of opts.cargos) {
+    const fecha = c.fecha.slice(0, 10);
+    items.push({
+      id: `cargo-${c.id}`,
+      fecha,
+      presupuestoId: c.presupuestoId,
+      numero: c.numero,
+      tipo: "cargo",
+      detalle: `Cargo ${c.numero}`,
+      metodo: null,
+      nota: null,
+      moneda: c.moneda,
+      debe: c.total,
+      haber: 0,
+      saldo: 0,
+      sortKey: `${fecha}T0-${c.id}`,
+    });
+  }
+  for (const p of opts.pagos) {
+    const fecha = p.fecha.slice(0, 10);
+    items.push({
+      id: p.id,
+      fecha,
+      presupuestoId: p.presupuestoId,
+      numero: p.numero,
+      tipo: "pago",
+      detalle: p.nota?.trim() ? p.nota.trim() : `Pago ${p.numero}`,
+      metodo: p.metodo,
+      nota: p.nota,
+      moneda: p.moneda,
+      debe: 0,
+      haber: p.monto,
+      saldo: 0,
+      sortKey: `${fecha}T1-${p.created_at}`,
+    });
+  }
+  items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  const run = { ars: 0, usd: 0 };
+  const withSaldo: ClienteFichaMovimiento[] = items.map(({ sortKey: _s, ...m }) => {
+    const delta = m.debe - m.haber;
+    if (m.moneda === "usd") run.usd += delta;
+    else run.ars += delta;
+    return { ...m, saldo: m.moneda === "usd" ? run.usd : run.ars };
+  });
+  return withSaldo.reverse();
 }
 
 function mergePresupuestosUnicos(rows: PresupuestoFichaRow[]): PresupuestoFichaRow[] {
@@ -311,6 +404,14 @@ export async function fetchClienteFicha(
   }
 
   const ventas: ClienteFichaVenta[] = [];
+  const cargosCc: Array<{
+    id: string;
+    fecha: string;
+    presupuestoId: string;
+    numero: string;
+    moneda: "ars" | "usd";
+    total: number;
+  }> = [];
   let saldoArs = 0;
   let saldoUsd = 0;
   let cobradoArs = 0;
@@ -336,6 +437,14 @@ export async function fetchClienteFicha(
     }
 
     if (r.status !== "aprobado") continue;
+    cargosCc.push({
+      id: r.id,
+      fecha: r.created_at,
+      presupuestoId: r.id,
+      numero: r.numero,
+      moneda: r.moneda,
+      total: r.total,
+    });
     const saldoPendiente =
       typeof r.saldo_misma_moneda === "number" ? Math.max(0, r.saldo_misma_moneda) : Math.max(0, r.total);
     if (r.moneda === "usd") saldoUsd += saldoPendiente;
@@ -343,15 +452,34 @@ export async function fetchClienteFicha(
   }
 
   const ventaIds = [...new Set(ventas.map((v) => v.id))];
-  const [otVentaRes, otClienteRes] = await Promise.all([
+  const [otVentaRes, otClienteRes, pagosRes] = await Promise.all([
     ventaIds.length > 0
       ? supabase.from("ordenes_trabajo").select("*").in("venta_id", ventaIds)
       : Promise.resolve({ data: [] as OrdenFichaRow[], error: null }),
     supabase.from("ordenes_trabajo").select("*").eq("id_cliente", clientId),
+    ventaIds.length > 0
+      ? supabase
+          .from("ventas_pagos")
+          .select("id, venta_id, monto, moneda, fecha, metodo, nota, created_at")
+          .in("venta_id", ventaIds)
+      : Promise.resolve({
+          data: [] as Array<{
+            id: string;
+            venta_id: string;
+            monto: unknown;
+            moneda: "ars" | "usd";
+            fecha: string;
+            metodo: string | null;
+            nota: string | null;
+            created_at: string;
+          }>,
+          error: null,
+        }),
   ]);
 
   if (otVentaRes.error) return { data: emptyFicha(), error: new Error(otVentaRes.error.message) };
   if (otClienteRes.error) return { data: emptyFicha(), error: new Error(otClienteRes.error.message) };
+  if (pagosRes.error) return { data: emptyFicha(), error: new Error(pagosRes.error.message) };
 
   const otsById = new Map<string, OrdenFichaRow>();
   for (const row of [
@@ -362,6 +490,24 @@ export async function fetchClienteFicha(
   }
 
   const ventaPorId = new Map(ventas.map((v) => [v.id, v]));
+
+  const pagosCc = (pagosRes.data ?? []).flatMap((p) => {
+    const venta = ventaPorId.get(p.venta_id);
+    if (!venta) return [];
+    return [{
+      id: p.id,
+      fecha: p.fecha,
+      created_at: p.created_at,
+      ventaId: p.venta_id,
+      presupuestoId: venta.presupuestoId,
+      numero: venta.numero,
+      moneda: p.moneda === "usd" ? "usd" as const : "ars" as const,
+      monto: montoPagoNum(p.monto),
+      metodo: p.metodo,
+      nota: p.nota,
+    }];
+  });
+  const movimientos = armarCuentaCorriente({ cargos: cargosCc, pagos: pagosCc });
 
   const ots: ClienteFichaOt[] = [...otsById.values()]
     .filter((ot) => ot.estado !== "cancelled")
@@ -402,6 +548,7 @@ export async function fetchClienteFicha(
       })),
       ventas,
       ots,
+      movimientos,
       saldoArs: Math.round(saldoArs),
       saldoUsd: Math.round(saldoUsd * 100) / 100,
       cobradoArs: Math.round(cobradoArs),
