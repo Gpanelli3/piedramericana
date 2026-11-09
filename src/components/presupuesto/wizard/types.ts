@@ -1,4 +1,5 @@
 import type { ModoIngresoM2 } from "@/lib/presupuesto-calculos";
+import type { PlanCorte } from "@/lib/plan-corte";
 
 export const TIPOS_COLOCACION = [
   { value: "bajo", label: "Bajo mesada" },
@@ -52,10 +53,13 @@ export type OrdenTrabajoWizard = {
   /**
    * Chapa señalada del inventario (sigue Disponible hasta la seña).
    * Al señar se intenta reservar; si ya no está, se pide otra del mismo material.
+   * Si hay `planCorte`, las planchas del plan tienen prioridad.
    */
   chapaSugeridaId: string | null;
   chapaSugeridaBulto: string;
   chapaSugeridaLabel: string;
+  /** Plan de acomodo automático. Confirmado por el vendedor antes de la seña. */
+  planCorte?: PlanCorte | null;
   tipoColocacion: (typeof TIPOS_COLOCACION)[number]["value"];
   /** Quedó en presupuestos viejos. El modelo real está en el stock de bachas. */
   bachaId: string;
@@ -112,6 +116,7 @@ export function newOrdenTrabajo(materialIdDefault: string): OrdenTrabajoWizard {
     chapaSugeridaId: null,
     chapaSugeridaBulto: "",
     chapaSugeridaLabel: "",
+    planCorte: null,
     tipoColocacion: "bajo",
     bachaId: "",
     llevaBacha: false,

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import type { ChapaReservaPendiente } from "@/lib/ventas-api";
 import { listChapasDisponibles, reservarChapasAOt } from "@/lib/stock-ot-api";
+import { sincronizarPlanCorteOt } from "@/lib/plan-corte-stock";
 
 type Props = {
   open: boolean;
@@ -93,6 +94,12 @@ export function ElegirChapaReemplazoDialog({
         });
         if (res.error) {
           toast.error(res.error.message);
+          setBusy(false);
+          return;
+        }
+        const sync = await sincronizarPlanCorteOt({ otId: p.otId });
+        if (sync.error) {
+          toast.error(sync.error.message);
           setBusy(false);
           return;
         }

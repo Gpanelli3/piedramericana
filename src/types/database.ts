@@ -10,7 +10,7 @@ export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired"
 export type JobStatus = "pending" | "in_progress" | "done" | "cancelled";
 export type InvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type ProfileRole = "admin" | "staff" | "sales";
-export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja" | "Bloqueada";
+export type InventorySlabEstado = "Disponible" | "Reservada" | "Usada" | "Baja" | "Bloqueada" | "Prevista";
 export type RoturaTipoDb = "chapa" | "pieza";
 export type RoturaMomentoDb = "corte" | "instalacion" | "viaje" | "otro";
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
@@ -726,6 +726,7 @@ export interface Database {
           bacha_colocacion: string | null;
           bacha_id: string | null;
           nafe: string | null;
+          plan_corte: Json | null;
         };
         Insert: {
           id?: string;
@@ -754,6 +755,7 @@ export interface Database {
           bacha_colocacion?: string | null;
           bacha_id?: string | null;
           nafe?: string | null;
+          plan_corte?: Json | null;
         };
         Update: {
           id?: string;
@@ -782,6 +784,7 @@ export interface Database {
           bacha_colocacion?: string | null;
           bacha_id?: string | null;
           nafe?: string | null;
+          plan_corte?: Json | null;
         };
         Relationships: [
           {

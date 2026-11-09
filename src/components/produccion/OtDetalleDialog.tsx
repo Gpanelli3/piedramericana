@@ -63,7 +63,6 @@ import {
   Ruler,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { JobStatus } from "@/types/database";
 
 type Props = {
   item: OtProduccionItem | null;

@@ -23,6 +23,8 @@ import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
 import { BuscadorMaterial } from "./fields";
+import { PlanCorteOtBanner } from "@/components/presupuesto/PlanCorteOtBanner";
+import type { PlanCorte } from "@/lib/plan-corte";
 import {
   TIPOS_COLOCACION,
   type LineaItemOT,
@@ -54,6 +56,7 @@ export type StepOrdenesProps = {
   ) => ReactNode;
   /** Si true, la ubicación se carga en la cabecera y no se repite por OT. */
   ocultarUbicacion?: boolean;
+  planCorteLoading?: boolean;
 };
 
 export function StepOrdenes({
@@ -69,6 +72,7 @@ export function StepOrdenes({
   addItem,
   renderLineaCells,
   ocultarUbicacion = false,
+  planCorteLoading = false,
 }: StepOrdenesProps) {
   const totalSubItems = ordenes.reduce((acc, ot) => acc + ot.items.length, 0);
   const nArt = ordenes.length;
@@ -147,13 +151,14 @@ export function StepOrdenes({
                         precios={preciosMaterial}
                         moneda={monedaMaterial}
                         soloTextoLibre={ot.piedraDelCliente === true}
-                        onChange={(next) =>
+                            onChange={(next) =>
                           patchOrden(ot.key, {
                             materialId: next.materialId,
                             materialLibre: next.materialLibre,
                             chapaSugeridaId: null,
                             chapaSugeridaBulto: "",
                             chapaSugeridaLabel: "",
+                            planCorte: null,
                           })
                         }
                       />
@@ -251,12 +256,45 @@ export function StepOrdenes({
                                   chapaSugeridaId: null,
                                   chapaSugeridaBulto: "",
                                   chapaSugeridaLabel: "",
+                                  planCorte: null,
                                 });
                               }}
                             />
                             La piedra la pone el cliente
                           </label>
                         </div>
+
+                        <PlanCorteOtBanner
+                          plan={ot.planCorte ?? null}
+                          loading={planCorteLoading}
+                          materialNombre={
+                            materials.find((m) => m.id === ot.materialId)?.name ??
+                            ot.materialLibre ??
+                            ""
+                          }
+                          piedraDelCliente={ot.piedraDelCliente === true}
+                          chapaSugeridaId={ot.chapaSugeridaId}
+                          onChangePlan={(plan: PlanCorte | null) => {
+                            const first = plan?.planchas[0];
+                            patchOrden(ot.key, {
+                              planCorte: plan,
+                              chapaSugeridaId: first?.chapaId ?? ot.chapaSugeridaId,
+                              chapaSugeridaBulto: first?.bulto ?? ot.chapaSugeridaBulto,
+                              chapaSugeridaLabel:
+                                plan?.materialLabel || ot.chapaSugeridaLabel,
+                            });
+                          }}
+                          onElegirChapa={(chapa) =>
+                            patchOrden(ot.key, {
+                              chapaSugeridaId: chapa.id,
+                              chapaSugeridaBulto: chapa.bulto,
+                              chapaSugeridaLabel: chapa.label,
+                              planCorte: ot.planCorte
+                                ? { ...ot.planCorte, confirmado: false }
+                                : ot.planCorte,
+                            })
+                          }
+                        />
 
                         {ot.llevaBacha ? (
                           <div className="grid grid-cols-1 gap-3 border-t border-border/40 px-3 py-3 sm:grid-cols-2">

@@ -175,6 +175,7 @@ export async function liberarChapasDeOt(opts: {
     .eq("estado", "Reservada");
   if (selErr) return { error: new Error(selErr.message) };
 
+  const idsLibres = (rows ?? []).map((r) => r.id);
   const { error: upErr } = await supabase
     .from("chapas_inventario")
     .update({
@@ -182,11 +183,16 @@ export async function liberarChapasDeOt(opts: {
       ot_reserva_id: null,
       updated_at: ts,
     })
-    .in(
-      "id",
-      (rows ?? []).map((r) => r.id),
-    );
+    .in("id", idsLibres);
   if (upErr) return { error: new Error(upErr.message) };
+  if (idsLibres.length > 0) {
+    await supabase
+      .from("chapas_inventario")
+      .delete()
+      .eq("estado", "Prevista")
+      .eq("ot_reserva_id", opts.otId)
+      .in("chapa_origen_id", idsLibres);
+  }
 
   for (const c of rows ?? []) {
     await logMovimiento({
@@ -200,7 +206,7 @@ export async function liberarChapasDeOt(opts: {
   return { error: null };
 }
 
-async function nextRetazoBulto(baseBulto: string, idx: number): Promise<string> {
+export async function nextRetazoBulto(baseBulto: string, idx: number): Promise<string> {
   const candidate = `${baseBulto}-R${idx}`;
   const { data } = await supabase
     .from("chapas_inventario")
@@ -415,6 +421,11 @@ export async function bloquearChapaPorRotura(opts: {
     })
     .eq("id", c.id);
   if (upErr) return { error: new Error(upErr.message) };
+  await supabase
+    .from("chapas_inventario")
+    .delete()
+    .eq("estado", "Prevista")
+    .eq("chapa_origen_id", c.id);
 
   await logMovimiento({
     chapaId: c.id,

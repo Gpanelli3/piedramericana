@@ -156,6 +156,7 @@ export function VistaStock() {
         "M2 res.",
         "M2 retazo",
         "Retazos",
+        "Sobrante previsto m2",
         "Costo USD",
       ],
       rows.map((r) => [
@@ -168,6 +169,7 @@ export function VistaStock() {
         r.m2Reservados > 0 ? r.m2Reservados.toFixed(2) : "",
         r.m2Retazo > 0 ? r.m2Retazo.toFixed(2) : "",
         r.retazosCount > 0 ? r.retazosCount : "",
+        r.m2SobrantePrevisto > 0 ? r.m2SobrantePrevisto.toFixed(2) : "",
         r.costoUsdTotal != null ? Math.round(r.costoUsdTotal) : "",
       ]),
     );

@@ -8,6 +8,7 @@ import {
 import { fetchM2TriosPorPresupuestos, m2CambioSignificativo } from "@/lib/ot-medidas-api";
 import { formatMetraje, type M2Trio } from "@/lib/presupuesto-calculos";
 import { bloquearChapaPorRotura, crearPedazoBloqueadoDePieza, bajaChapaPorRotura, listChapasPorOt, reservarChapasAOt } from "@/lib/stock-ot-api";
+import { confirmarCorteDeOt, sincronizarPlanCorteOt } from "@/lib/plan-corte-stock";
 import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
 import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
 import { bachaResuelta, MOTIVO_BLOQUEO_BACHA, motivoBloqueoBacha } from "@/lib/bacha-reglas";
@@ -660,6 +661,11 @@ export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | nul
   const gateBacha = await assertBachaResuelta(ot, next);
   if (gateBacha) return { error: gateBacha };
 
+  if (etapa === "corte" && next !== "corte") {
+    const corte = await confirmarCorteDeOt({ otId });
+    if (corte.error) return corte;
+  }
+
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
 
@@ -687,6 +693,10 @@ export async function setEtapaOt(
   if (gate) return { error: gate };
   const gateBacha = await assertBachaResuelta(ot, next);
   if (gateBacha) return { error: gateBacha };
+  if (coalesceEtapaOt(ot.etapa) === "corte" && next !== "corte") {
+    const corte = await confirmarCorteDeOt({ otId });
+    if (corte.error) return corte;
+  }
 
   let status: JobStatus = (ot.estado as JobStatus) ?? "pending";
   if (status === "pending") status = "in_progress";
@@ -921,6 +931,7 @@ export async function bajaPedazoBloqueadoYReponer(opts: {
     .from("ordenes_trabajo")
     .update({ pausada: false, requiere_reserva_stock: false, actualizado_en: now })
     .eq("id", otId);
+  await sincronizarPlanCorteOt({ otId, created_by: opts.created_by ?? null });
   await consolidarReposicionesAbiertas();
 
   return {

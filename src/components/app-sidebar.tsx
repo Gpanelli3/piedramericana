@@ -205,6 +205,7 @@ type ExpandableNavProps = {
   menuAbierto: boolean;
   expandido: boolean;
   onToggleEncabezado: () => void;
+  onToggleSubmenu: () => void;
   submenuId: string;
   children: ReactNode;
 };
@@ -215,6 +216,7 @@ function ExpandableNavItem({
   menuAbierto,
   expandido,
   onToggleEncabezado,
+  onToggleSubmenu,
   submenuId,
   children,
 }: ExpandableNavProps) {
@@ -262,8 +264,9 @@ function ExpandableNavItem({
           aria-controls={submenuId}
           aria-label={menuAbierto ? `Contraer submenú de ${item.label}` : `Desplegar submenú de ${item.label}`}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
-            onToggleEncabezado();
+            onToggleSubmenu();
           }}
         >
           <ChevronRight
@@ -474,6 +477,15 @@ export function AppSidebar() {
     setPresupuestosMenuAbierto(true);
   }, [gotoVentasQuery]);
 
+  const onPresupuestosSubmenu = useCallback(() => {
+    if (activeTab !== "ventas") {
+      gotoVentasQuery("lista", "todos");
+      setPresupuestosMenuAbierto(true);
+      return;
+    }
+    setPresupuestosMenuAbierto((prev) => !prev);
+  }, [activeTab, gotoVentasQuery]);
+
   const onProduccionEncabezado = useCallback(() => {
     if (activeTab !== "produccion") {
       gotoProduccionOt("general");
@@ -591,6 +603,7 @@ export function AppSidebar() {
                 menuAbierto={presupuestosMenuAbierto}
                 expandido={expandido}
                 onToggleEncabezado={onPresupuestosEncabezado}
+                onToggleSubmenu={onPresupuestosSubmenu}
                 submenuId="sidebar-presupuestos-submenu"
               >
                 <button
@@ -634,6 +647,7 @@ export function AppSidebar() {
                 menuAbierto={produccionMenuAbierto}
                 expandido={expandido}
                 onToggleEncabezado={onProduccionEncabezado}
+                onToggleSubmenu={onProduccionEncabezado}
                 submenuId="sidebar-produccion-submenu"
               >
                 {PRODUCCION_OT_FILTROS.map((filtro) => (
@@ -659,6 +673,7 @@ export function AppSidebar() {
                 menuAbierto={equipoMenuAbierto}
                 expandido={expandido}
                 onToggleEncabezado={onEquipoEncabezado}
+                onToggleSubmenu={onEquipoEncabezado}
                 submenuId="sidebar-equipo-submenu"
               >
                 {EQUIPO_SECCIONES.map((seccion) => (
@@ -684,6 +699,7 @@ export function AppSidebar() {
                 menuAbierto={finanzasMenuAbierto}
                 expandido={expandido}
                 onToggleEncabezado={onFinanzasEncabezado}
+                onToggleSubmenu={onFinanzasEncabezado}
                 submenuId="sidebar-finanzas-submenu"
               >
                 {FINANZAS_SECCIONES.map((seccion) => (

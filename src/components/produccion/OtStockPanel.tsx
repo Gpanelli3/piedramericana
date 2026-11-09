@@ -111,6 +111,7 @@ export function OtStockPanel({
   const { reloadChapas } = useStock();
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
+  const [previstos, setPrevistos] = useState<ChapaInventarioRow[]>([]);
   const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
@@ -135,18 +136,21 @@ export function OtStockPanel({
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const [r, u, rot, mov] = await Promise.all([
+    const [r, u, pv, rot, mov] = await Promise.all([
       listChapasPorOt(otId, ["Reservada"]),
       listChapasPorOt(otId, ["Usada", "Baja"]),
+      listChapasPorOt(otId, ["Prevista"]),
       listChapasRoturaPorOt(otId),
       listTrazabilidadStockPorOt(otId),
     ]);
     if (r.error) toast.error(r.error.message);
     if (u.error) toast.error(u.error.message);
+    if (pv.error) toast.error(pv.error.message);
     if (rot.error) toast.error(rot.error.message);
     if (mov.error) toast.error(mov.error.message);
     setReservadas(r.data);
     setUsadas(u.data);
+    setPrevistos(pv.data);
     setBloqueadas(rot.data);
     setMovimientos(mov.data);
     try {
@@ -476,7 +480,7 @@ export function OtStockPanel({
           <Layers className="h-3.5 w-3.5" />
           Placas / stock
         </p>
-        {reservadas.length === 0 && usadas.length === 0 && !esperaReponer ? (
+        {reservadas.length === 0 && usadas.length === 0 && previstos.length === 0 && !esperaReponer ? (
           <Button
             type="button"
             size="sm"
@@ -529,7 +533,7 @@ export function OtStockPanel({
 
       {loading ? (
         <p className="text-xs text-muted-foreground">Cargando…</p>
-      ) : reservadas.length === 0 && usadas.length === 0 ? (
+      ) : reservadas.length === 0 && usadas.length === 0 && previstos.length === 0 ? (
         !reservaPendiente && !esperaReponer ? (
           <p className="text-xs text-muted-foreground">
             Sin placas asignadas. Si señalaste una chapa en el presupuesto, se reserva al señar; si no,
@@ -572,6 +576,23 @@ export function OtStockPanel({
                 )}
               >
                 {c.estado === "Usada" ? "Ya se cortó" : c.estado}
+              </Badge>
+            </li>
+          ))}
+          {previstos.map((c) => (
+            <li
+              key={c.id}
+              className="flex items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50/60 px-2.5 py-1.5 text-xs dark:border-sky-900 dark:bg-sky-950/30"
+            >
+              <div className="min-w-0">
+                <span className="font-mono">{c.bulto}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm
+                </span>
+              </div>
+              <Badge variant="outline" className="border-sky-200 text-[10px] text-sky-800">
+                Sobrante previsto
               </Badge>
             </li>
           ))}

@@ -4,6 +4,7 @@ import type {
   PlanoAdjuntoOt,
 } from "@/components/presupuesto/wizard/types";
 import { parseDecimalInput } from "@/lib/presupuesto-calculos";
+import { normalizePlanCorte } from "@/lib/plan-corte";
 
 function normalizePlanoAdjunto(raw: unknown): PlanoAdjuntoOt | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -81,6 +82,7 @@ export function normalizeOrdenesFromPayload(raw: unknown): OrdenTrabajoWizard[] 
       chapaSugeridaId: typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null,
       chapaSugeridaBulto: typeof ot.chapaSugeridaBulto === "string" ? ot.chapaSugeridaBulto : "",
       chapaSugeridaLabel: typeof ot.chapaSugeridaLabel === "string" ? ot.chapaSugeridaLabel : "",
+      planCorte: normalizePlanCorte(ot.planCorte),
       tipoColocacion:
         ot.tipoColocacion === "sobre" || ot.tipoColocacion === "ras" || ot.tipoColocacion === "bajo"
           ? ot.tipoColocacion

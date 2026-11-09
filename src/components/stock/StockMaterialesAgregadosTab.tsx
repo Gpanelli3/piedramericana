@@ -24,6 +24,7 @@ type SortKey =
   | "m2Reservados"
   | "m2Retazo"
   | "retazosCount"
+  | "m2SobrantePrevisto"
   | "costoUsdTotal";
 
 type Props = {
@@ -152,13 +153,14 @@ export function StockMaterialesAgregadosTab({
               <SortHead label="M² res." column="m2Reservados" align="right" />
               <SortHead label="M² retazo" column="m2Retazo" align="right" />
               <SortHead label="Retazos" column="retazosCount" align="right" />
+              <SortHead label="Sobrante previsto" column="m2SobrantePrevisto" align="right" />
               <SortHead label="Costo USD" column="costoUsdTotal" align="right" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
                   {q.trim() ? `No hay resultados para «${q}».` : "Sin materiales en stock."}
                 </TableCell>
               </TableRow>
@@ -204,6 +206,9 @@ export function StockMaterialesAgregadosTab({
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                     {row.retazosCount > 0 ? row.retazosCount : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                    {row.m2SobrantePrevisto > 0 ? formatM2(row.m2SobrantePrevisto) : "—"}
                   </TableCell>
                   <TableCell className="pr-4 text-right text-sm tabular-nums font-medium">
                     {formatUsd(row.costoUsdTotal)}

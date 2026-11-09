@@ -77,6 +77,13 @@ import {
   validarPresupuestoCompleto,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
+import {
+  chapaIdsDePlan,
+  piezasDesdeOrden,
+  planificarCorte,
+} from "@/lib/plan-corte";
+import { listChapasCandidatasPlan } from "@/lib/plan-corte-stock";
+import { esChapaRetazo } from "@/lib/stock-api";
 
 export type { LineaItemOT } from "./wizard/types";
 
@@ -270,6 +277,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [ordenes, setOrdenes] = useState<OrdenTrabajoWizard[]>(() => [
     newOrdenTrabajo(""),
   ]);
+  const [planCorteLoading, setPlanCorteLoading] = useState(false);
   const [descuentoGlobalPct, setDescuentoGlobalPct] = useState("");
 
   const [logistica, setLogistica] = useState<LogisticaPresupuesto>(() => ({
@@ -628,6 +636,117 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       ),
     );
   };
+
+  const planCorteInputKey = useMemo(
+    () =>
+      ordenes
+        .map((ot) =>
+          [
+            ot.key,
+            ot.materialId,
+            ot.materialLibre ?? "",
+            ot.piedraDelCliente ? "1" : "0",
+            ot.chapaSugeridaId ?? "",
+            ot.items
+              .map(
+                (i) =>
+                  `${i.articuloId}:${i.modoIngreso}:${i.altoM}:${i.anchoM}:${i.cantidad}`,
+              )
+              .join(","),
+          ].join("|"),
+        )
+        .join("||"),
+    [ordenes],
+  );
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || editCargando) return;
+    let cancel = false;
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        setPlanCorteLoading(true);
+        const nextPlans = new Map<string, OrdenTrabajoWizard["planCorte"]>();
+        for (const ot of ordenes) {
+          if (ot.piedraDelCliente) {
+            nextPlans.set(ot.key, null);
+            continue;
+          }
+          const piezas = piezasDesdeOrden(ot, articulosBd);
+          const materialNombre =
+            materials.find((m) => m.id === ot.materialId)?.name ??
+            ot.materialLibre ??
+            "";
+          if (piezas.length === 0) {
+            nextPlans.set(
+              ot.key,
+              planificarCorte({
+                piezas: [],
+                planchas: [],
+                materialId: ot.materialId || null,
+                materialLabel: materialNombre,
+              }),
+            );
+            continue;
+          }
+          const candidatas = await listChapasCandidatasPlan({
+            materialId: ot.materialId || null,
+            materialLabel: materialNombre,
+          });
+          if (cancel) return;
+          const planchas = candidatas.data.map((c) => ({
+            id: c.id,
+            bulto: c.bulto,
+            largoCm: Number(c.largo_cm),
+            anchoCm: Number(c.ancho_cm),
+            loteCodigo: c.lote_codigo,
+            esRetazo: esChapaRetazo({
+              chapaOrigenId: c.chapa_origen_id,
+              motivoEstado: c.motivo_estado,
+            }),
+            espesorCm: c.espesor_cm != null ? Number(c.espesor_cm) : null,
+          }));
+          const plan = planificarCorte({
+            piezas,
+            planchas,
+            materialId: ot.materialId || null,
+            materialLabel: materialNombre,
+            forzarChapaIds: ot.chapaSugeridaId ? [ot.chapaSugeridaId] : null,
+          });
+          if (ot.planCorte?.confirmado) {
+            const prev = new Set(chapaIdsDePlan(ot.planCorte));
+            const next = new Set(chapaIdsDePlan(plan));
+            if (prev.size === next.size && [...prev].every((id) => next.has(id))) {
+              plan.confirmado = true;
+            }
+          }
+          nextPlans.set(ot.key, plan);
+        }
+        if (cancel) return;
+        setOrdenes((rows) =>
+          rows.map((r) => {
+            if (!nextPlans.has(r.key)) return r;
+            const plan = nextPlans.get(r.key) ?? null;
+            const prev = r.planCorte ?? null;
+            if (
+              prev?.fingerprint === plan?.fingerprint &&
+              prev?.confirmado === plan?.confirmado &&
+              (prev?.planchas.length ?? 0) === (plan?.planchas.length ?? 0)
+            ) {
+              return r;
+            }
+            return { ...r, planCorte: plan };
+          }),
+        );
+        setPlanCorteLoading(false);
+      })();
+    }, 400);
+    return () => {
+      cancel = true;
+      window.clearTimeout(handle);
+    };
+    // planCorteInputKey cubre material/medidas/chapa; ordenes se lee fresco del closure del timeout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planCorteInputKey, articulosBd, materials, editCargando]);
 
   const onArticuloChange = (
     otKey: string,
@@ -1239,6 +1358,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               addItem={addItem}
               renderLineaCells={renderLineaCells}
               ocultarUbicacion={compartenUbicacion}
+              planCorteLoading={planCorteLoading}
             />
           </div>
           <div className="order-2 md:order-none md:col-start-2 md:row-start-1 md:sticky md:top-4">

@@ -5,6 +5,7 @@ import {
   type PresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
 import type { Json, JobStatus, PresupuestoEstado, VentaEstado } from "@/types/database";
+import { normalizePlanCorte } from "@/lib/plan-corte";
 
 export type ReportesPeriodo = "mes" | "30d" | "90d" | "anio";
 
@@ -106,6 +107,7 @@ type OtLite = {
   creado_en: string;
   venta_id: string | null;
   tipo?: string | null;
+  plan_corte?: unknown;
 };
 
 type ChapaLite = {
@@ -273,7 +275,7 @@ export async function fetchReportesDashboard(
     supabase
       .from("ordenes_trabajo")
       .select(
-        "id, titulo, etapa, estado, pausada, fecha_programada, actualizado_en, creado_en, venta_id, tipo",
+        "id, titulo, etapa, estado, pausada, fecha_programada, actualizado_en, creado_en, venta_id, tipo, plan_corte",
       ),
     supabase
       .from("chapas_inventario")
@@ -380,13 +382,23 @@ export async function fetchReportesDashboard(
       (c) =>
         c.chapa_origen_id &&
         origenIds.has(c.chapa_origen_id) &&
+        c.estado !== "Prevista" &&
         inRange(c.updated_at, mesFrom, mesTo),
     )
     .reduce((s, c) => s + chapaM2(c), 0);
 
   let m2Planificados = 0;
   const otsConConsumoMes = new Set<string>();
-  // Approximate planned m² from approved budgets updated/created this month with active OTs
+  let m2PerdidoPlanes = 0;
+  let m2PlanchasPlanes = 0;
+  for (const ot of ots) {
+    if (!inRange(ot.actualizado_en, mesFrom, mesTo)) continue;
+    const plan = normalizePlanCorte(ot.plan_corte);
+    if (!plan || plan.planchas.length === 0) continue;
+    otsConConsumoMes.add(ot.id);
+    m2PlanchasPlanes += plan.m2TotalPlanchas;
+    m2PerdidoPlanes += plan.planchas.reduce((s, p) => s + p.m2Perdido, 0);
+  }
   for (const p of presupuestos) {
     if (p.status !== "aprobado") continue;
     const payload = payloadByPres.get(p.id);
@@ -404,10 +416,14 @@ export async function fetchReportesDashboard(
       otsConConsumoMes.add(ot.id);
     }
   }
-  // If we have used slabs but no planned link, still show consumed m²
-  const desperdicioM2Consumidos = Math.round(m2Usados * 1000) / 1000;
+  const desperdicioM2Consumidos =
+    m2PlanchasPlanes > 0
+      ? Math.round(m2PlanchasPlanes * 1000) / 1000
+      : Math.round(m2Usados * 1000) / 1000;
   let desperdicioPct = 0;
-  if (m2Usados > 0) {
+  if (m2PlanchasPlanes > 0) {
+    desperdicioPct = Math.round((m2PerdidoPlanes / m2PlanchasPlanes) * 1000) / 10;
+  } else if (m2Usados > 0) {
     const waste = Math.max(0, m2Usados - m2Retazos - m2Planificados);
     desperdicioPct = Math.round((waste / m2Usados) * 1000) / 10;
   } else if (otsConConsumoMes.size === 0) {

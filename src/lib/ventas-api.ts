@@ -8,7 +8,8 @@ import {
   type ConceptoMovimiento,
 } from "@/lib/finanzas-api";
 import { calcularRetencion } from "@/lib/retencion-reglas";
-import { reservarChapasAOt } from "@/lib/stock-ot-api";
+import { aplicarPlanEnSenia } from "@/lib/plan-corte-stock";
+import { validarPlanParaSenia } from "@/lib/plan-corte";
 import { getOrCreateMedicion, solicitarMedicion } from "@/lib/medicion-api";
 import type {
   BachaOrigen,
@@ -514,60 +515,30 @@ export async function intentarReservarChapasSenaladas(opts: {
 
   for (const ot of ordenes) {
     if (ot.piedraDelCliente) continue;
-    const chapaId = typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null;
-    if (!chapaId) continue;
     const targetOtId = opts.otByOrdenKey?.[ot.key] ?? fallbackOtId;
     if (!targetOtId) continue;
+    const plan = ot.planCorte ?? null;
+    const chapaId = typeof ot.chapaSugeridaId === "string" ? ot.chapaSugeridaId : null;
+    if (!plan && !chapaId) continue;
 
-    const { data: chapa, error: cErr } = await supabase
-      .from("chapas_inventario")
-      .select("id,bulto,material_label,estado,ot_reserva_id")
-      .eq("id", chapaId)
-      .maybeSingle();
-    if (cErr) return { error: new Error(cErr.message), pendientes, reservadas };
-
-    const bulto =
-      (typeof ot.chapaSugeridaBulto === "string" && ot.chapaSugeridaBulto) ||
-      chapa?.bulto ||
-      "—";
-    const materialLabel =
-      (typeof ot.chapaSugeridaLabel === "string" && ot.chapaSugeridaLabel) ||
-      chapa?.material_label ||
-      "Material";
-
-    if (chapa?.estado === "Reservada" && chapa.ot_reserva_id === targetOtId) {
-      reservadas += 1;
-      continue;
-    }
-
-    if (!chapa || chapa.estado !== "Disponible") {
-      pendientes.push({
-        otId: targetOtId,
-        ordenKey: ot.key,
-        chapaIdFallida: chapaId,
-        bulto,
-        materialLabel,
-      });
-      continue;
-    }
-
-    const res = await reservarChapasAOt({
+    const applied = await aplicarPlanEnSenia({
       otId: targetOtId,
-      chapaIds: [chapaId],
-      permitirMezclaLotes: true,
+      plan,
+      chapaFallbackId: chapaId,
       created_by: opts.created_by ?? null,
     });
-    if (res.error) {
+    if (applied.error || applied.pendientes) {
+      const firstId = plan?.planchas[0]?.chapaId ?? chapaId ?? "";
       pendientes.push({
         otId: targetOtId,
         ordenKey: ot.key,
-        chapaIdFallida: chapaId,
-        bulto,
-        materialLabel,
+        chapaIdFallida: firstId,
+        bulto: plan?.planchas[0]?.bulto || ot.chapaSugeridaBulto || "—",
+        materialLabel: plan?.materialLabel || ot.chapaSugeridaLabel || "Material",
       });
       continue;
     }
-    reservadas += 1;
+    reservadas += plan?.planchas.length || (chapaId ? 1 : 0);
   }
 
   return { error: null, pendientes, reservadas };
@@ -786,6 +757,10 @@ export async function registrarPagoSena(opts: {
   const presCast = pres as PresupuestoRow | null;
   if (!presCast) return { error: new Error("Presupuesto no encontrado.") };
   if (presCast.status !== "aprobado") return { error: new Error("Solo presupuestos aprobados reciben seña.") };
+
+  const payloadSenia = parsePayload(presCast.payload as Json);
+  const planErr = payloadSenia ? validarPlanParaSenia(payloadSenia.ordenes) : null;
+  if (planErr) return { error: new Error(planErr) };
 
   const ventaRes = await getOrCreateVentaParaPago(opts.presupuestoId);
   if (ventaRes.error) return { error: ventaRes.error };

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { sincronizarPlanCorteOt } from "@/lib/plan-corte-stock";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import {
   articuloCalculoParaLinea,
@@ -564,12 +565,30 @@ export async function guardarMedidasPresupuesto(opts: {
   items: MedidaItemPatch[];
   notas?: string;
 }): Promise<GuardarMedidasOtResult> {
-  return aplicarMedidasAPresupuesto({
+  const res = await aplicarMedidasAPresupuesto({
     presupuestoId: opts.presupuestoId,
     items: opts.items,
     ordenKey: null,
     notas: opts.notas,
   });
+  if (res.error) return res;
+  const ventaRes = await supabase
+    .from("ventas")
+    .select("id")
+    .eq("presupuesto_id", opts.presupuestoId)
+    .maybeSingle();
+  if (ventaRes.data?.id) {
+    const ots = await supabase
+      .from("ordenes_trabajo")
+      .select("id")
+      .eq("venta_id", ventaRes.data.id)
+      .neq("estado", "cancelled");
+    for (const ot of ots.data ?? []) {
+      const sync = await sincronizarPlanCorteOt({ otId: ot.id });
+      if (sync.error) return { ...res, error: sync.error };
+    }
+  }
+  return res;
 }
 
 /**
@@ -618,6 +637,8 @@ export async function guardarMedidasOt(opts: {
     })
     .eq("id", opts.otId);
   if (upOt.error) return { ...res, error: new Error(upOt.error.message) };
+  const sync = await sincronizarPlanCorteOt({ otId: opts.otId });
+  if (sync.error) return { ...res, error: sync.error };
   return res;
 }
 

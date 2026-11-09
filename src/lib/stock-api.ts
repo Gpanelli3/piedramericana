@@ -424,6 +424,8 @@ export type MaterialStockAgregado = {
   m2Reservados: number;
   m2Retazo: number;
   retazosCount: number;
+  m2SobrantePrevisto: number;
+  previstosCount: number;
   costoUsdTotal: number | null;
 };
 
@@ -434,10 +436,12 @@ function m2DeChapa(largoCm: number, anchoCm: number): number {
 export function esChapaRetazo(c: {
   chapaOrigenId?: string | null;
   motivoEstado?: string | null;
+  estado?: string | null;
 }): boolean {
+  if (c.estado === "Prevista") return true;
   if (c.chapaOrigenId) return true;
   const m = (c.motivoEstado ?? "").toLowerCase();
-  return m.includes("retazo") || m.includes("recorte");
+  return m.includes("retazo") || m.includes("recorte") || m.includes("previsto");
 }
 
 export type MaterialCatalogLookup = {
@@ -483,13 +487,18 @@ export function aggregateChapasPorMaterial(
         m2Reservados: 0,
         m2Retazo: 0,
         retazosCount: 0,
+        m2SobrantePrevisto: 0,
+        previstosCount: 0,
         costoUsdTotal: null,
       };
       map.set(key, row);
     }
     const m2 = m2DeChapa(c.largoCm, c.anchoCm);
     const esRetazo = esChapaRetazo(c);
-    if (c.estado === "Disponible") {
+    if (c.estado === "Prevista") {
+      row.m2SobrantePrevisto += m2;
+      row.previstosCount += 1;
+    } else if (c.estado === "Disponible") {
       row.planchasDisponibles += 1;
       row.planchasTotalActivas += 1;
       row.m2Disponibles += m2;
