@@ -2,12 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, History, Layers, Package } from "lucide-react";
+import { AlertTriangle, History, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { OtBachaControl } from "@/components/produccion/OtBachaControl";
 import {
   listChapasDisponibles,
   listChapasPorOt,
@@ -27,15 +26,6 @@ import {
   type ChapaInventarioRow,
   type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
-import {
-  actualizarOrigenBachaOt,
-  asignarBachaAOt,
-  createBachaInventario,
-  fetchBachasDisponiblesParaOt,
-  fetchBachasInventario,
-  liberarBachaDeOt,
-  type BachaInventarioRow,
-} from "@/lib/stock-api";
 import { bajaPedazoBloqueadoYReponer } from "@/lib/produccion-api";
 import { useAuth } from "@/contexts/AuthContext";
 import { AvisoRetazoPiezas } from "@/components/stock/AvisoRetazoPiezas";
@@ -43,14 +33,6 @@ import { type PiezaMedida } from "@/lib/rotura-reglas";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useStock } from "@/contexts/StockContext";
 import { cn } from "@/lib/utils";
-import { etiquetaTipoColocacion } from "@/components/presupuesto/wizard/types";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 type Props = {
   otId: string;
@@ -123,15 +105,6 @@ export function OtStockPanel({
   const [reemplazoOpen, setReemplazoOpen] = useState(false);
   const [reemplazoId, setReemplazoId] = useState("");
   const [reemplazoOpciones, setReemplazoOpciones] = useState<ChapaInventarioRow[]>([]);
-  const [bachaAsignada, setBachaAsignada] = useState<BachaInventarioRow | null>(null);
-  const [bachasDisponibles, setBachasDisponibles] = useState<BachaInventarioRow[]>([]);
-  const [bachaSelectId, setBachaSelectId] = useState("");
-  const [registrarClienteOpen, setRegistrarClienteOpen] = useState(false);
-  const [registrarModelo, setRegistrarModelo] = useState("");
-  const [registrarUbicacion, setRegistrarUbicacion] = useState("");
-  const [origen, setOrigen] = useState<"propia" | "cliente">(
-    bachaOrigen === "cliente" ? "cliente" : "propia",
-  );
 
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -153,49 +126,12 @@ export function OtStockPanel({
     setPrevistos(pv.data);
     setBloqueadas(rot.data);
     setMovimientos(mov.data);
-    try {
-      const bachas = await fetchBachasDisponiblesParaOt({ clienteNombre, clienteId });
-      setBachasDisponibles(bachas);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudieron cargar las bachas");
-      setBachasDisponibles([]);
-    }
-    if (bachaId) {
-      try {
-        const todas = await fetchBachasInventario();
-        setBachaAsignada(todas.find((b) => b.id === bachaId) ?? null);
-      } catch {
-        setBachaAsignada(null);
-      }
-    } else {
-      setBachaAsignada(null);
-    }
     setLoading(false);
-  }, [otId, bachaId, clienteNombre, clienteId]);
+  }, [otId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
-
-  useEffect(() => {
-    setOrigen(bachaOrigen === "cliente" ? "cliente" : "propia");
-  }, [bachaOrigen]);
-
-  const onCambiarOrigen = async (value: string) => {
-    const next = value === "cliente" ? "cliente" : "propia";
-    if (next === origen) return;
-    const previo = origen;
-    setOrigen(next);
-    setBusy(true);
-    const res = await actualizarOrigenBachaOt({ otId, origen: next });
-    setBusy(false);
-    if (res.error) {
-      setOrigen(previo);
-      toast.error(res.error.message);
-      return;
-    }
-    onChanged?.();
-  };
 
   const reservaPendiente = requiereReservaStock && reservadas.length === 0;
   const esperaReponer = bloqueadas.length > 0 && reservadas.length === 0;
@@ -282,196 +218,11 @@ export function OtStockPanel({
     await toastSiAgotado(null, materialHint);
   };
 
-  const mostrarBacha = bachaRequerida || Boolean(bachaId) || Boolean(bachaAsignada);
-
-  const onAsignarBacha = async (id: string) => {
-    if (!id) {
-      toast.error("Elegí una bacha del stock.");
-      return;
-    }
-    setBusy(true);
-    const res = await asignarBachaAOt({
-      bachaId: id,
-      otId,
-      clienteNombre,
-      clienteId,
-    });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Bacha asignada.");
-    setBachaSelectId("");
-    await reload();
-    onChanged?.();
-  };
-
-  const onLiberarBacha = async () => {
-    setBusy(true);
-    const res = await liberarBachaDeOt({ otId });
-    setBusy(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Bacha liberada.");
-    await reload();
-    onChanged?.();
-  };
-
-  const onRegistrarBachaCliente = async () => {
-    const nombre = (clienteNombre ?? "").trim();
-    if (!nombre) {
-      toast.error("La OT no tiene nombre de cliente.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await createBachaInventario({
-        origen: "cliente",
-        cliente_nombre: nombre,
-        cliente_id: clienteId,
-        modelo: registrarModelo.trim() || bachaTipo || null,
-        ubicacion: registrarUbicacion.trim() || null,
-        estado: "disponible",
-      });
-      const asg = await asignarBachaAOt({
-        bachaId: created.id,
-        otId,
-        clienteNombre: nombre,
-        clienteId,
-      });
-      if (asg.error) throw asg.error;
-      toast.success("Bacha del cliente registrada y asignada.");
-      setRegistrarClienteOpen(false);
-      setRegistrarModelo("");
-      setRegistrarUbicacion("");
-      await reload();
-      onChanged?.();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo registrar la bacha");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (!isSupabaseConfigured) {
     return (
       <p className="text-xs text-muted-foreground">Stock remoto no disponible en esta sesión.</p>
     );
   }
-
-  const bachaBlock = mostrarBacha ? (
-    <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <Package className="h-3.5 w-3.5" />
-        Bacha
-      </p>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted-foreground">
-          {bachaColocacion ? etiquetaTipoColocacion(bachaColocacion) : "Colocación sin definir"}
-        </p>
-        <Select
-          value={origen}
-          disabled={busy}
-          onValueChange={(v) => void onCambiarOrigen(v)}
-        >
-          <SelectTrigger className="h-8 w-full text-xs sm:w-40" aria-label="Origen de la bacha">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="propia">Nuestra</SelectItem>
-            <SelectItem value="cliente">Del cliente</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {bachaAsignada ? (
-        <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 text-xs">
-            <span className="font-medium">
-              {bachaAsignada.modelo?.trim() || "Asignada"}
-            </span>
-            {bachaAsignada.origen === "cliente" ? (
-              <span className="text-muted-foreground">
-                {" "}
-                · {bachaAsignada.cliente_nombre} · no vendible
-              </span>
-            ) : null}
-          </p>
-          <div className="flex gap-1">
-            <Badge variant="secondary" className="text-[10px]">
-              Asignada
-            </Badge>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-6 px-1.5 text-xs"
-              disabled={busy}
-              onClick={() => void onLiberarBacha()}
-            >
-              Liberar
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-            Bacha pendiente
-          </p>
-          {bachasDisponibles.length > 0 ? (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Select value={bachaSelectId} onValueChange={setBachaSelectId}>
-                <SelectTrigger className="h-8 w-full text-xs sm:flex-1">
-                  <SelectValue placeholder="Elegir del stock…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bachasDisponibles.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {(b.modelo?.trim() || "Sin modelo") +
-                        (b.origen === "cliente"
-                          ? ` · ${b.cliente_nombre} (no vendible)`
-                          : " · nuestra")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 text-xs"
-                disabled={busy || !bachaSelectId}
-                onClick={() => void onAsignarBacha(bachaSelectId)}
-              >
-                Asignar
-              </Button>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              No hay bachas disponibles
-              {origen === "cliente" ? " de este cliente" : " en stock"}.
-            </p>
-          )}
-          {origen === "cliente" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 w-full text-xs"
-              disabled={busy}
-              onClick={() => {
-                setRegistrarModelo(bachaTipo ?? "");
-                setRegistrarClienteOpen(true);
-              }}
-            >
-              Registró llegada
-            </Button>
-          ) : null}
-        </div>
-      )}
-    </div>
-  ) : null;
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
@@ -599,7 +350,17 @@ export function OtStockPanel({
         </ul>
       )}
 
-      {bachaBlock}
+      <OtBachaControl
+        otId={otId}
+        clienteNombre={clienteNombre}
+        clienteId={clienteId}
+        bachaRequerida={bachaRequerida}
+        bachaOrigen={bachaOrigen}
+        bachaTipo={bachaTipo}
+        bachaColocacion={bachaColocacion}
+        bachaId={bachaId}
+        onChanged={onChanged}
+      />
 
       {movimientos.length > 0 ? (
         <div className="space-y-1.5 border-t border-border/60 pt-2">
@@ -731,46 +492,6 @@ export function OtStockPanel({
             </Button>
             <Button disabled={busy || selected.size === 0} onClick={() => void onReservar()}>
               Reservar {selected.size || ""}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={registrarClienteOpen} onOpenChange={setRegistrarClienteOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Bacha del cliente</DialogTitle>
-            <DialogDescription>
-              Entra a stock con el nombre de {clienteNombre?.trim() || "este cliente"} y no se puede
-              vender. Queda asignada a esta OT.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Modelo</Label>
-              <Input
-                className="h-8 text-xs"
-                value={registrarModelo}
-                onChange={(e) => setRegistrarModelo(e.target.value)}
-                placeholder="Ej. Johnson 70"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Ubicación (opcional)</Label>
-              <Input
-                className="h-8 text-xs"
-                value={registrarUbicacion}
-                onChange={(e) => setRegistrarUbicacion(e.target.value)}
-                placeholder="Estantería, taller…"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRegistrarClienteOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="button" disabled={busy} onClick={() => void onRegistrarBachaCliente()}>
-              Registrar y asignar
             </Button>
           </DialogFooter>
         </DialogContent>

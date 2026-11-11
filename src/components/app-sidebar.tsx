@@ -345,7 +345,8 @@ export function AppSidebar() {
 
   const activeTab = useMemo(() => wsDesdeParam(searchParams.get("ws")), [searchParams]);
   const pv = searchParams.get("pv") ?? "";
-  const ft = searchParams.get("ft") ?? "pendientes";
+  const ftParam = searchParams.get("ft");
+  const ft = ftParam === "pendientes" ? "dormidos" : (ftParam ?? "");
   const otFiltro = useMemo(
     () => produccionOtDesdeParam(searchParams.get("ot")),
     [searchParams],
@@ -389,9 +390,9 @@ export function AppSidebar() {
     (
       tipo: "nuevo" | "lista",
       filt:
-        | "pendientes"
+        | "dormidos"
         | "aprobados"
-        | "todos" = "pendientes",
+        | "todos" = "dormidos",
     ) => {
       setSearchParams(
         (prev) => {
@@ -629,10 +630,10 @@ export function AppSidebar() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => gotoVentasQuery("lista", "pendientes")}
-                  className={submenuLinkCn(pv !== "nuevo" && ft === "pendientes")}
+                  onClick={() => gotoVentasQuery("lista", "dormidos")}
+                  className={submenuLinkCn(pv !== "nuevo" && ft === "dormidos")}
                 >
-                  Pendientes
+                  Dormidos
                 </button>
               </ExpandableNavItem>
             );

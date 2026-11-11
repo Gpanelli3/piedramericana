@@ -155,9 +155,9 @@ export function VistaDashboard() {
                   <FilePlus2 className="h-4 w-4" />
                   Nuevo presupuesto
                 </Button>
-                <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("ventas", { pv: "list", ft: "pendientes" })}>
+                <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("ventas", { pv: "list", ft: "dormidos" })}>
                   <ListChecks className="h-4 w-4" />
-                  Ver pendientes
+                  Ver dormidos
                 </Button>
                 <Button variant="outline" className="h-12 justify-start gap-3" onClick={() => ir("administracion")}>
                   <Wallet className="h-4 w-4" />
@@ -174,11 +174,11 @@ export function VistaDashboard() {
               <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Operación</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                  label="Presupuestos pendientes"
-                  value={cargando ? "…" : String(data?.presupuestosPendientes ?? 0)}
-                  hint="Esperando aprobación"
+                  label="Presupuestos dormidos"
+                  value={cargando ? "…" : String(data?.presupuestosDormidos ?? 0)}
+                  hint="Sin confirmar hace 7 días"
                   icon={<ClipboardList className="h-5 w-5" aria-hidden />}
-                  onClick={() => ir("ventas", { pv: "list", ft: "pendientes" })}
+                  onClick={() => ir("ventas", { pv: "list", ft: "dormidos" })}
                 />
                 <KpiCard
                   label="OTs activas"

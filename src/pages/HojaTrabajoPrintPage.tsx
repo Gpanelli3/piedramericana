@@ -133,7 +133,7 @@ export function HojaTrabajoPrintPage() {
   const payload = payloadHistorico ?? payloadVigente;
 
   const volverVentas = useCallback(() => {
-    navigate("/?ws=ventas&pv=list&ft=pendientes");
+    navigate("/?ws=ventas&pv=list&ft=todos");
   }, [navigate]);
 
   return (

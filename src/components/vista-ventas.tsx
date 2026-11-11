@@ -24,9 +24,8 @@ import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 function parseTab(v: string | null): PresupuestoFiltroTab {
-  if (v === "aprobados" || v === "todos" || v === "pendientes") {
-    return v;
-  }
+  if (v === "aprobados" || v === "todos" || v === "dormidos") return v;
+  if (v === "pendientes") return "dormidos";
   return "todos";
 }
 
@@ -129,7 +128,7 @@ export function VistaVentas() {
         (prev) => {
           const n = new URLSearchParams(prev);
           n.set("pv", "list");
-          n.set("ft", "pendientes");
+          n.set("ft", "todos");
           n.set("rid", id);
           n.delete("id");
           return n;

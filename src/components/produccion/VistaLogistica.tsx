@@ -53,13 +53,13 @@ export function VistaLogistica() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <OtSeccionHeader filtro="logistica" count={`${totalOts} en logística`} />
+      <OtSeccionHeader filtro="logistica" count={`${totalOts} en instalaciones`} />
 
       <main className="p-4 sm:p-6">
         <OtsGruposAccordion
           grupos={grupos}
           loading={loading}
-          emptyText="No hay OTs en logística."
+          emptyText="No hay OTs en instalaciones."
           onChanged={() => void refresh()}
           renderRow={(item, { onVer }) => (
             <OtListRow

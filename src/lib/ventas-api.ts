@@ -24,8 +24,6 @@ import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/pre
 import {
   camposRequisitoBacha,
   esBloqueoPorBacha,
-  etapaExigeBachaAsignada,
-  MOTIVO_BLOQUEO_BACHA,
   ordenBachaParaOt,
 } from "@/lib/bacha-reglas";
 
@@ -295,16 +293,9 @@ type OtBachaSync = {
 };
 
 function parcheBloqueoBacha(
-  ot: Pick<OtBachaSync, "etapa" | "bloqueada" | "motivo_bloqueo" | "bacha_id">,
-  requerida: boolean,
+  ot: Pick<OtBachaSync, "bloqueada" | "motivo_bloqueo">,
 ): { bloqueada: boolean; motivo_bloqueo: string | null } | null {
-  const asignada = Boolean(ot.bacha_id);
-  const bloqueada = Boolean(ot.bloqueada);
-  const porBacha = esBloqueoPorBacha(ot.motivo_bloqueo);
-  if (requerida && !asignada && etapaExigeBachaAsignada(ot.etapa) && !bloqueada) {
-    return { bloqueada: true, motivo_bloqueo: MOTIVO_BLOQUEO_BACHA };
-  }
-  if (bloqueada && porBacha && (!requerida || asignada)) {
+  if (Boolean(ot.bloqueada) && esBloqueoPorBacha(ot.motivo_bloqueo)) {
     return { bloqueada: false, motivo_bloqueo: null };
   }
   return null;
@@ -333,7 +324,7 @@ async function sincronizarBachaEnOtsExistentes(
       (ot.bacha_tipo ?? null) === camposSync.bacha_tipo &&
       (ot.bacha_colocacion ?? null) === camposSync.bacha_colocacion &&
       (ot.nafe ?? null) === nafe;
-    const bloqueo = parcheBloqueoBacha(ot, campos.bacha_requerida);
+    const bloqueo = parcheBloqueoBacha(ot);
     if (igual && !bloqueo) continue;
     const patch: Database["public"]["Tables"]["ordenes_trabajo"]["Update"] = {
       ...camposSync,

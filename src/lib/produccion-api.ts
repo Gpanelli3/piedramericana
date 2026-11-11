@@ -11,7 +11,7 @@ import { bloquearChapaPorRotura, crearPedazoBloqueadoDePieza, bajaChapaPorRotura
 import { confirmarCorteDeOt, sincronizarPlanCorteOt } from "@/lib/plan-corte-stock";
 import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
 import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
-import { bachaResuelta, MOTIVO_BLOQUEO_BACHA, motivoBloqueoBacha } from "@/lib/bacha-reglas";
+import { MOTIVO_BLOQUEO_BACHA } from "@/lib/bacha-reglas";
 import type {
   Database,
   EtapaOtKanban,
@@ -345,7 +345,7 @@ export async function getOtsAgrupadas(): Promise<{
   error: Error | null;
 }> {
   await consolidarReposicionesAbiertas();
-  await liberarBloqueoBachaEnCorte();
+  await liberarBloqueoPorBachaPendiente();
   const { data, error } = await supabase
     .from("ordenes_trabajo")
     .select("*")
@@ -367,7 +367,7 @@ export async function getOtsPorFiltro(
   filtro: FiltroTab,
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
   await consolidarReposicionesAbiertas();
-  await liberarBloqueoBachaEnCorte();
+  await liberarBloqueoPorBachaPendiente();
   let q = supabase.from("ordenes_trabajo").select("*").not("venta_id", "is", null);
 
   if (filtro === "entregadas") {
@@ -554,23 +554,8 @@ async function assertPuedeSalirDeMedicion(
   return null;
 }
 
-/** Compuerta: no se sale de corte a producción (ni se salta a logística) sin bacha asignada. */
-async function assertBachaResuelta(
-  ot: OrdenTrabajoRow,
-  nextEtapa: EtapaOtId,
-): Promise<Error | null> {
-  if (nextEtapa === "medicion" || nextEtapa === "corte") return null;
-  const r = bachaResuelta({
-    bachaRequerida: Boolean(ot.bacha_requerida),
-    bachaAsignada: Boolean(ot.bacha_id),
-  });
-  const motivo = motivoBloqueoBacha(r);
-  if (motivo) return new Error(motivo);
-  return null;
-}
-
-/** OTs que quedaron bloqueadas al entrar a corte: el corte sigue activo. */
-async function liberarBloqueoBachaEnCorte(): Promise<void> {
+/** Si una OT quedó bloqueada por bacha pendiente, se desbloquea: solo se avisa. */
+async function liberarBloqueoPorBachaPendiente(): Promise<void> {
   await supabase
     .from("ordenes_trabajo")
     .update({
@@ -579,8 +564,7 @@ async function liberarBloqueoBachaEnCorte(): Promise<void> {
       actualizado_en: new Date().toISOString(),
     })
     .eq("bloqueada", true)
-    .eq("motivo_bloqueo", MOTIVO_BLOQUEO_BACHA)
-    .eq("etapa", "corte");
+    .eq("motivo_bloqueo", MOTIVO_BLOQUEO_BACHA);
 }
 
 export async function enviarPresupuestoAProduccion(presupuestoId: string): Promise<{
@@ -659,8 +643,6 @@ export async function avanzarEtapaOt(otId: string): Promise<{ error: Error | nul
 
   const gate = await assertPuedeSalirDeMedicion(ot, next);
   if (gate) return { error: gate };
-  const gateBacha = await assertBachaResuelta(ot, next);
-  if (gateBacha) return { error: gateBacha };
 
   if (etapa === "corte" && next !== "corte") {
     const corte = await confirmarCorteDeOt({ otId });
@@ -692,8 +674,6 @@ export async function setEtapaOt(
   const next = etapaOtValida(etapa);
   const gate = await assertPuedeSalirDeMedicion(ot, next);
   if (gate) return { error: gate };
-  const gateBacha = await assertBachaResuelta(ot, next);
-  if (gateBacha) return { error: gateBacha };
   if (coalesceEtapaOt(ot.etapa) === "corte" && next !== "corte") {
     const corte = await confirmarCorteDeOt({ otId });
     if (corte.error) return corte;

@@ -35,7 +35,7 @@ export const PRODUCCION_OT_LABELS: Record<ProduccionOtFiltro, string> = {
   venta_retenida: "Venta Retenida",
   corte: "Corte",
   produccion: "Producción",
-  logistica: "Logística",
+  logistica: "Instalaciones",
   entregadas: "Entregadas",
 };
 

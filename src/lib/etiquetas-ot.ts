@@ -31,13 +31,13 @@ export function chipClaseEtapaOt(
 }
 
 /**
- * Subestados: Medición (módulo propio, todavía no es OT) → Corte → Producción → Logística.
+ * Subestados: Medición (módulo propio, todavía no es OT) → Corte → Producción → Instalaciones.
  */
 export const ETAPA_OT_LABELS = {
   medicion: "Medición",
   corte: "Corte",
   produccion: "Producción",
-  despacho: "Logística",
+  despacho: "Instalaciones",
 } as const;
 
 export type EtapaOtLabelKey = keyof typeof ETAPA_OT_LABELS;

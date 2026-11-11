@@ -3,8 +3,6 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   bachaCorrespondeACliente,
   esBloqueoPorBacha,
-  etapaExigeBachaAsignada,
-  MOTIVO_BLOQUEO_BACHA,
 } from "@/lib/bacha-reglas";
 
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
@@ -691,7 +689,7 @@ export async function liberarBachaDeOt(opts: {
   if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
   const otRes = await supabase
     .from("ordenes_trabajo")
-    .select("id,bacha_id,bacha_requerida,etapa,bloqueada")
+    .select("id,bacha_id,bloqueada,motivo_bloqueo")
     .eq("id", opts.otId)
     .maybeSingle();
   if (otRes.error) return { error: new Error(otRes.error.message) };
@@ -704,15 +702,13 @@ export async function liberarBachaDeOt(opts: {
       .eq("id", ot.bacha_id);
     if (upB.error) return { error: new Error(upB.error.message) };
   }
-  const etapa = typeof ot.etapa === "string" ? ot.etapa : "";
-  const relock = Boolean(ot.bacha_requerida) && etapaExigeBachaAsignada(etapa);
   const upOt = await supabase
     .from("ordenes_trabajo")
     .update({
       bacha_id: null,
       actualizado_en: new Date().toISOString(),
-      ...(relock && !ot.bloqueada
-        ? { bloqueada: true, motivo_bloqueo: MOTIVO_BLOQUEO_BACHA }
+      ...(ot.bloqueada && esBloqueoPorBacha(ot.motivo_bloqueo)
+        ? { bloqueada: false, motivo_bloqueo: null }
         : {}),
     })
     .eq("id", opts.otId);

@@ -62,7 +62,7 @@ export function OtListRow({ item, onVer, primaryAction, extra }: Props) {
           </p>
         ) : null}
         {bachaPendiente && !item.orden.bloqueada ? (
-          <p className="text-[11px] text-amber-700 dark:text-amber-300">{bachaPendiente}</p>
+          <p className="text-[11px] text-red-700 dark:text-red-300">Falta bacha</p>
         ) : null}
         {extra}
       </div>

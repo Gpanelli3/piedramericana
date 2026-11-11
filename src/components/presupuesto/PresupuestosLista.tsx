@@ -12,17 +12,17 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { PresupuestoEstado } from "@/types/database";
-import type { PresupuestoRowLista } from "@/lib/presupuestos-api";
+import { presupuestoEstaDormido, type PresupuestoRowLista } from "@/lib/presupuestos-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { cn } from "@/lib/utils";
 
-export type PresupuestoFiltroTab = "pendientes" | "aprobados" | "todos";
+export type PresupuestoFiltroTab = "dormidos" | "aprobados" | "todos";
 
 function tituloFiltro(tab: PresupuestoFiltroTab): string {
   switch (tab) {
-    case "pendientes":
-      return "Pendientes";
+    case "dormidos":
+      return "Dormidos";
     case "aprobados":
       return "Aprobados";
     case "todos":
@@ -74,14 +74,19 @@ function statusLabel(s: PresupuestoEstado): string {
 }
 
 function estadoDesdeTab(tab: PresupuestoFiltroTab): PresupuestoEstado | undefined {
-  if (tab === "pendientes") return "pendiente";
   if (tab === "aprobados") return "aprobado";
   return undefined;
 }
 
-function badgeTone(s: PresupuestoEstado) {
-  if (s === "pendiente") return "border-amber-300 bg-amber-50 text-amber-900";
-  if (s === "aprobado") return "border-emerald-300 bg-emerald-50 text-emerald-900";
+function etiquetaEstado(row: PresupuestoRowLista): string {
+  if (presupuestoEstaDormido(row)) return "Dormido";
+  return statusLabel(row.status);
+}
+
+function badgeTone(row: PresupuestoRowLista) {
+  if (presupuestoEstaDormido(row)) return "border-stone-300 bg-stone-100 text-stone-700";
+  if (row.status === "pendiente") return "border-amber-300 bg-amber-50 text-amber-900";
+  if (row.status === "aprobado") return "border-emerald-300 bg-emerald-50 text-emerald-900";
   return "border-rose-300 bg-rose-50 text-rose-900";
 }
 
@@ -105,7 +110,11 @@ export function PresupuestosLista({
 
   const visibles = useMemo(() => {
     const porEstado =
-      estadoFiltro === undefined ? rows : rows.filter((r) => r.status === estadoFiltro);
+      tab === "dormidos"
+        ? rows.filter((r) => presupuestoEstaDormido(r))
+        : estadoFiltro === undefined
+          ? rows
+          : rows.filter((r) => r.status === estadoFiltro);
     const needle = q.trim().toLowerCase();
     if (!needle) return porEstado;
     return porEstado.filter(
@@ -113,11 +122,11 @@ export function PresupuestosLista({
         r.numero.toLowerCase().includes(needle) ||
         r.cliente.toLowerCase().includes(needle),
     );
-  }, [rows, estadoFiltro, q]);
+  }, [rows, estadoFiltro, tab, q]);
 
   const estadoVacioMsj = (): string => {
     if (q.trim()) return "Ningún presupuesto coincide con la búsqueda.";
-    if (tab === "pendientes") return "No hay presupuestos pendientes de revisión.";
+    if (tab === "dormidos") return "No hay presupuestos dormidos. Entran acá si pasan 7 días sin confirmarse.";
     if (tab === "aprobados") return "Todavía no hay presupuestos aprobados.";
     return "No hay presupuestos cargados.";
   };
@@ -194,10 +203,10 @@ export function PresupuestosLista({
                           variant="outline"
                           className={cn(
                             "font-medium text-[11px] sm:text-xs",
-                            badgeTone(r.status),
+                            badgeTone(r),
                           )}
                         >
-                          {statusLabel(r.status)}
+                          {etiquetaEstado(r)}
                         </Badge>
                         {medicionPorId && medEstado !== "sin_solicitar" ? (
                           <Badge variant="outline" className="text-[10px] font-medium">

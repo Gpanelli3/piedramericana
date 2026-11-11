@@ -28,6 +28,25 @@ export type PresupuestoRowLista = {
   updated_at: string;
 };
 
+/** Días sin confirmar (sigue en pendiente) para pasar a Dormidos. */
+export const DIAS_PARA_DORMIR_PRESUPUESTO = 7;
+
+export function limitePresupuestoDormido(ahora = new Date()): string {
+  const d = new Date(ahora.getTime());
+  d.setDate(d.getDate() - DIAS_PARA_DORMIR_PRESUPUESTO);
+  return d.toISOString();
+}
+
+export function presupuestoEstaDormido(
+  row: { status: string; created_at: string },
+  ahora = new Date(),
+): boolean {
+  if (row.status !== "pendiente") return false;
+  const creado = new Date(row.created_at).getTime();
+  if (!Number.isFinite(creado)) return false;
+  return creado <= new Date(limitePresupuestoDormido(ahora)).getTime();
+}
+
 export async function listPresupuestosLista(): Promise<{
   data: PresupuestoRowLista[] | null;
   error: Error | null;

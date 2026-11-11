@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import { OtRoturaEstado } from "@/components/produccion/OtRoturaEstado";
+import { OtBachaControl } from "@/components/produccion/OtBachaControl";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
 import { UrgenciaBadge, formatFechaCorta } from "@/components/produccion/ot-ui";
 import {
@@ -37,7 +38,7 @@ import {
   type OtSaldoVenta,
 } from "@/lib/produccion-api";
 import { etiquetaEtapaKanban, etiquetaTabDestino } from "@/lib/etiquetas-ot";
-import { avisoBachaPendiente, frenaAvancePorBacha } from "@/lib/bacha-reglas";
+import { avisoBachaPendiente } from "@/lib/bacha-reglas";
 import { useAccionesRotuloOt } from "@/components/produccion/useAccionesRotuloOt";
 import { fetchMedidasOt, type MedidaItemEditable } from "@/lib/ot-medidas-api";
 import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
@@ -370,11 +371,6 @@ export function OtDetalleDialog({
     bachaRequerida: Boolean(item.orden.bacha_requerida),
     bachaAsignada: Boolean(item.orden.bacha_id),
   });
-  const frenaBacha = frenaAvancePorBacha({
-    bachaRequerida: Boolean(item.orden.bacha_requerida),
-    bachaAsignada: Boolean(item.orden.bacha_id),
-    nextEtapa,
-  });
 
   const estadoGuardado: EstadoOtLocal = bloqueada ? "bloqueada" : pausada ? "pausada" : "activa";
   const opcionesEstado = [
@@ -515,9 +511,9 @@ export function OtDetalleDialog({
                 {item.orden.motivo_bloqueo}
               </div>
             ) : bachaPendiente ? (
-              <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="mt-2 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {bachaPendiente}. El corte sigue. Para pasar a producción hay que asignar la bacha.
+                Falta bacha
               </div>
             ) : null}
           </DialogHeader>
@@ -535,9 +531,7 @@ export function OtDetalleDialog({
                     ? "OT bloqueada"
                     : pausada
                       ? "OT pausada"
-                      : frenaBacha
-                        ? bachaPendiente ?? "Bacha pendiente"
-                        : undefined
+                      : undefined
               }
               onSelect={(e) => void onEtapaSelect(e)}
             />
@@ -574,7 +568,13 @@ export function OtDetalleDialog({
                     <span className="inline-flex items-center gap-1.5">
                       {sec.label}
                       {sec.id === "stock" && stockPendiente ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            bachaPendiente ? "bg-red-500" : "bg-amber-500",
+                          )}
+                          aria-hidden
+                        />
                       ) : null}
                     </span>
                   </button>
@@ -673,6 +673,19 @@ export function OtDetalleDialog({
                   ) : (
                     <p className="mt-3 text-xs text-muted-foreground">Sin ítems cargados.</p>
                   )}
+                  <div className="mt-3">
+                    <OtBachaControl
+                      otId={item.orden.id}
+                      clienteNombre={item.cliente}
+                      clienteId={item.orden.id_cliente}
+                      bachaRequerida={Boolean(item.orden.bacha_requerida)}
+                      bachaOrigen={item.orden.bacha_origen}
+                      bachaTipo={item.orden.bacha_tipo}
+                      bachaColocacion={item.orden.bacha_colocacion}
+                      bachaId={item.orden.bacha_id}
+                      soloAviso
+                    />
+                  </div>
                 </section>
 
                 <section className="min-w-0">
@@ -934,7 +947,7 @@ export function OtDetalleDialog({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={!puedeMover || busy || frenaBacha}
+                    disabled={!puedeMover || busy}
                     onClick={() => void onAvanzar()}
                   >
                     Pasar a {etiquetaTabDestino(nextEtapa)}

@@ -76,7 +76,7 @@ describe("etapaExigeBachaAsignada", () => {
 });
 
 describe("frenaAvancePorBacha", () => {
-  it("deja cortar aunque falte la bacha", () => {
+  it("no bloquea ni frena el avance: solo se avisa", () => {
     expect(
       frenaAvancePorBacha({
         bachaRequerida: true,
@@ -84,19 +84,13 @@ describe("frenaAvancePorBacha", () => {
         nextEtapa: "corte",
       }),
     ).toBe(false);
-  });
-
-  it("frena el paso a producción si esa OT lleva bacha y no está asignada", () => {
     expect(
       frenaAvancePorBacha({
         bachaRequerida: true,
         bachaAsignada: false,
         nextEtapa: "produccion",
       }),
-    ).toBe(true);
-  });
-
-  it("no frena si la OT no lleva bacha", () => {
+    ).toBe(false);
     expect(
       frenaAvancePorBacha({
         bachaRequerida: false,

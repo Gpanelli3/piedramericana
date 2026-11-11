@@ -65,18 +65,13 @@ export function etapaExigeBachaAsignada(etapa: string | null | undefined): boole
   return ETAPAS_EXIGEN_BACHA.has((etapa ?? "").trim());
 }
 
-/** Frena el paso a producción/logística. El corte sigue activo. */
-export function frenaAvancePorBacha(input: {
+/** Aviso sí; la OT no se bloquea ni se frena el avance. */
+export function frenaAvancePorBacha(_input: {
   bachaRequerida: boolean;
   bachaAsignada: boolean;
   nextEtapa: string | null | undefined;
 }): boolean {
-  const next = (input.nextEtapa ?? "").trim();
-  if (!next || next === "medicion" || next === "corte") return false;
-  return !bachaResuelta({
-    bachaRequerida: input.bachaRequerida,
-    bachaAsignada: input.bachaAsignada,
-  }).ok;
+  return false;
 }
 
 export function avisoBachaPendiente(input: {

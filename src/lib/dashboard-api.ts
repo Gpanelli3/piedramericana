@@ -1,4 +1,4 @@
-import { listPresupuestosResumen } from "@/lib/presupuestos-api";
+import { limitePresupuestoDormido, listPresupuestosResumen } from "@/lib/presupuestos-api";
 import { loadOtKanbanView } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
 import { etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
@@ -12,7 +12,7 @@ export type ProximaEntregaRow = {
 };
 
 export type DashboardResumen = {
-  presupuestosPendientes: number;
+  presupuestosDormidos: number;
   presupuestosAprobados: number;
   otsActivas: number;
   otsEnMedicion: number;
@@ -41,7 +41,8 @@ export async function fetchDashboardResumen(): Promise<{
     supabase
       .from("presupuestos")
       .select("*", { count: "exact", head: true })
-      .eq("status", "pendiente"),
+      .eq("status", "pendiente")
+      .lte("created_at", limitePresupuestoDormido()),
     supabase
       .from("presupuesto_mediciones")
       .select("id", { count: "exact", head: true })
@@ -85,7 +86,7 @@ export async function fetchDashboardResumen(): Promise<{
 
   return {
     data: {
-      presupuestosPendientes: pendientesRes.count ?? 0,
+      presupuestosDormidos: pendientesRes.count ?? 0,
       presupuestosAprobados: aprobados.length,
       otsActivas,
       otsEnMedicion,

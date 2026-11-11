@@ -235,7 +235,7 @@ function emptyDashboard(): ReportesDashboard {
       { key: "venta_retenida", label: "Vta. Retenida", diasPromedio: 0, cantidad: 0 },
       { key: "medicion", label: "Medición", diasPromedio: 0, cantidad: 0 },
       { key: "produccion", label: "Producción", diasPromedio: 0, cantidad: 0 },
-      { key: "logistica", label: "Logística", diasPromedio: 0, cantidad: 0 },
+      { key: "logistica", label: "Instalaciones", diasPromedio: 0, cantidad: 0 },
     ],
     presupuestosPorDia: DOW_LABELS.map((label, dow) => ({ dow, label, count: 0 })),
     ticketPromedioUsd: 0,
@@ -482,7 +482,7 @@ export async function fetchReportesDashboard(
     },
     {
       key: "logistica",
-      label: "Logística",
+      label: "Instalaciones",
       diasPromedio: avg(buckets.logistica),
       cantidad: buckets.logistica.length,
     },
