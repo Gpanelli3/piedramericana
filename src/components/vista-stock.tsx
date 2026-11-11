@@ -57,7 +57,7 @@ export function VistaStock() {
   const [historialOpen, setHistorialOpen] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState<StockProductoUnidad | null>(null);
   const [productoOpen, setProductoOpen] = useState(false);
-  const [stockTab, setStockTab] = useState("inventario");
+  const [stockTab, setStockTab] = useState("placas");
 
   const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -190,9 +190,11 @@ export function VistaStock() {
                 </span>
               ) : null}
             </h1>
-            {stockTab === "inventario" ? null : (
+            {stockTab === "placas" ? null : (
               <p className="mt-1 text-sm text-muted-foreground">
-                {stockTab === "listas"
+                {stockTab === "productos"
+                  ? "Materiales por unidad que salen de Cantera (no planchas)."
+                  : stockTab === "listas"
                   ? "Precios de mármoles, planchas y bachas por lista."
                   : stockTab === "bloqueados"
                     ? "Pedazos rotos, fuera de venta, para recortar o reponer."
@@ -200,7 +202,7 @@ export function VistaStock() {
               </p>
             )}
           </div>
-          {stockTab === "inventario" ? (
+          {stockTab === "placas" ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" className="h-10 gap-1.5" onClick={() => setRemitoOpen(true)}>
                 <Truck className="h-4 w-4" />
@@ -237,27 +239,29 @@ export function VistaStock() {
       <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
         <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
           <TabsList>
-            <TabsTrigger value="inventario">Inventario</TabsTrigger>
+            <TabsTrigger value="placas">Placas</TabsTrigger>
+            <TabsTrigger value="productos">Productos</TabsTrigger>
             <TabsTrigger value="bloqueados">Pedazos bloqueados</TabsTrigger>
             <TabsTrigger value="bachas">Bachas</TabsTrigger>
             <TabsTrigger value="listas">Listas de precio</TabsTrigger>
           </TabsList>
-          <TabsContent value="inventario" className="space-y-4">
-        <StockMaterialesAgregadosTab
-          chapas={chapas}
-          materiales={materialesCatalogo}
-          onOpenMaterial={openDisponibilidad}
-        />
-
-        <StockProductosUnidadesTab
-          productos={productosUnidades}
-          loading={productosLoading}
-          error={productosError}
-          onOpenProducto={(p) => {
-            setProductoDetalle(p);
-            setProductoOpen(true);
-          }}
-        />
+          <TabsContent value="placas" className="space-y-4">
+            <StockMaterialesAgregadosTab
+              chapas={chapas}
+              materiales={materialesCatalogo}
+              onOpenMaterial={openDisponibilidad}
+            />
+          </TabsContent>
+          <TabsContent value="productos">
+            <StockProductosUnidadesTab
+              productos={productosUnidades}
+              loading={productosLoading}
+              error={productosError}
+              onOpenProducto={(p) => {
+                setProductoDetalle(p);
+                setProductoOpen(true);
+              }}
+            />
           </TabsContent>
           <TabsContent value="bloqueados">
             <PedazosBloqueadosTab />

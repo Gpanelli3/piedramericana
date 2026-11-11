@@ -8,15 +8,10 @@ import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
 import { tabProduccionDesdeOt } from "@/lib/clients-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  avanzarEtapaOt,
-  coalesceEtapaOt,
   getOtsAgrupadas,
-  marcarOtEntregada,
-  siguienteEtapaOt,
   type OtProduccionItem,
   type VentaGrupoOt,
 } from "@/lib/produccion-api";
-import { frenaAvancePorBacha } from "@/lib/bacha-reglas";
 import { cn } from "@/lib/utils";
 import {
   PRODUCCION_OT_LABELS,
@@ -30,43 +25,55 @@ type FiltroGeneral = Exclude<ProduccionOtFiltro, "general">;
 const FILTROS_GENERAL: {
   key: FiltroGeneral;
   className: string;
+  label: string;
   numero: string;
+  barra: string;
   activo: string;
 }[] = [
   {
-    key: "venta_retenida",
+    key: "corte",
     className:
-      "border-red-200 bg-red-50 hover:bg-red-100/80 dark:border-red-900 dark:bg-red-950/50 dark:hover:bg-red-950",
-    numero: "text-red-600 dark:text-red-400",
-    activo: "border-orange-400 ring-1 ring-orange-400 dark:border-orange-500 dark:ring-orange-500",
-  },
-  {
-    key: "tecnica",
-    className:
-      "border-sky-200 bg-sky-50 hover:bg-sky-100/80 dark:border-sky-800 dark:bg-sky-950/50 dark:hover:bg-sky-950",
-    numero: "text-sky-800 dark:text-sky-300",
-    activo: "border-sky-500 ring-1 ring-sky-500 dark:border-sky-400 dark:ring-sky-400",
+      "border-sky-300 bg-sky-50 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/50 dark:hover:bg-sky-950",
+    label: "text-sky-800 dark:text-sky-200",
+    numero: "text-sky-700 dark:text-sky-300",
+    barra: "bg-sky-500",
+    activo: "border-sky-500 ring-2 ring-sky-400/70 dark:border-sky-400 dark:ring-sky-500/60",
   },
   {
     key: "produccion",
     className:
-      "border-amber-200/80 bg-amber-50 hover:bg-amber-100/70 dark:border-amber-900 dark:bg-amber-950/40 dark:hover:bg-amber-950",
-    numero: "text-amber-900 dark:text-amber-200",
-    activo: "border-amber-500 ring-1 ring-amber-500 dark:border-amber-400 dark:ring-amber-400",
+      "border-orange-300 bg-orange-50 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/50 dark:hover:bg-orange-950",
+    label: "text-orange-900 dark:text-orange-200",
+    numero: "text-orange-700 dark:text-orange-300",
+    barra: "bg-orange-500",
+    activo: "border-orange-500 ring-2 ring-orange-400/70 dark:border-orange-400 dark:ring-orange-500/60",
   },
   {
     key: "logistica",
     className:
-      "border-yellow-200 bg-yellow-50 hover:bg-yellow-100/80 dark:border-yellow-900 dark:bg-yellow-950/40 dark:hover:bg-yellow-950",
-    numero: "text-yellow-800 dark:text-yellow-200",
-    activo: "border-yellow-500 ring-1 ring-yellow-500 dark:border-yellow-400 dark:ring-yellow-400",
+      "border-violet-300 bg-violet-50 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:hover:bg-violet-950",
+    label: "text-violet-800 dark:text-violet-200",
+    numero: "text-violet-700 dark:text-violet-300",
+    barra: "bg-violet-500",
+    activo: "border-violet-500 ring-2 ring-violet-400/70 dark:border-violet-400 dark:ring-violet-500/60",
   },
   {
     key: "entregadas",
     className:
-      "border-emerald-200 bg-emerald-50 hover:bg-emerald-100/80 dark:border-emerald-900 dark:bg-emerald-950/40 dark:hover:bg-emerald-950",
+      "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:hover:bg-emerald-950",
+    label: "text-emerald-800 dark:text-emerald-200",
     numero: "text-emerald-700 dark:text-emerald-300",
-    activo: "border-emerald-500 ring-1 ring-emerald-500 dark:border-emerald-400 dark:ring-emerald-400",
+    barra: "bg-emerald-500",
+    activo: "border-emerald-500 ring-2 ring-emerald-400/70 dark:border-emerald-400 dark:ring-emerald-500/60",
+  },
+  {
+    key: "venta_retenida",
+    className:
+      "border-rose-300 bg-rose-50 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:hover:bg-rose-950",
+    label: "text-rose-800 dark:text-rose-200",
+    numero: "text-rose-700 dark:text-rose-400",
+    barra: "bg-rose-500",
+    activo: "border-rose-500 ring-2 ring-rose-400/70 dark:border-rose-400 dark:ring-rose-500/60",
   },
 ];
 
@@ -82,7 +89,6 @@ function bucketOt(item: OtProduccionItem): ProduccionOtFiltro {
 export function VistaProduccion() {
   const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
   const [loading, setLoading] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<FiltroGeneral | null>(null);
 
   const refresh = useCallback(async () => {
@@ -110,7 +116,7 @@ export function VistaProduccion() {
   const conteos = useMemo(() => {
     const acc: Record<FiltroGeneral, number> = {
       venta_retenida: 0,
-      tecnica: 0,
+      corte: 0,
       produccion: 0,
       logistica: 0,
       entregadas: 0,
@@ -131,6 +137,9 @@ export function VistaProduccion() {
       .filter((g) => g.ots.length > 0);
   }, [grupos, filtro]);
 
+  const ventasVisibles = gruposFiltrados.length;
+  const otsVisibles = gruposFiltrados.reduce((acc, g) => acc + g.ots.length, 0);
+
   const hoyFmt = new Date().toLocaleDateString("es-AR", {
     weekday: "short",
     day: "2-digit",
@@ -138,54 +147,40 @@ export function VistaProduccion() {
     year: "numeric",
   });
 
-  const onAvanzar = async (item: OtProduccionItem) => {
-    setBusyId(item.orden.id);
-    const res = await avanzarEtapaOt(item.orden.id);
-    setBusyId(null);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Etapa avanzada.");
-    await refresh();
-  };
-
-  const onEntregar = async (item: OtProduccionItem) => {
-    setBusyId(item.orden.id);
-    const res = await marcarOtEntregada(item.orden.id);
-    setBusyId(null);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("OT marcada como entregada.");
-    await refresh();
-  };
-
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo · General</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Todas las ventas con OT, agrupadas (incluye entregadas)
-            </p>
-          </div>
+          <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo</h1>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 shrink-0" />
               <span className="capitalize">{hoyFmt}</span>
             </div>
             <Badge variant="outline" className="text-sm font-medium">
-              {grupos.length} ventas · {totalOts} OTs
+              {ventasVisibles} ventas · {otsVisibles} OTs
             </Badge>
           </div>
         </div>
       </header>
 
       <main className="p-4 sm:p-6">
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <button
+            type="button"
+            aria-pressed={filtro === null}
+            onClick={() => setFiltro(null)}
+            className={cn(
+              "relative overflow-hidden rounded-xl border border-border bg-white px-3 py-2.5 pl-4 text-left transition-colors hover:bg-muted/40 dark:bg-background",
+              filtro === null && "border-foreground/40 ring-2 ring-foreground/15",
+            )}
+          >
+            <span className="absolute inset-y-0 left-0 w-1.5 bg-foreground/45" aria-hidden />
+            <p className="truncate text-xs font-semibold text-foreground">General</p>
+            <p className="mt-0.5 text-2xl font-bold tabular-nums leading-none text-foreground">
+              {totalOts}
+            </p>
+          </button>
           {FILTROS_GENERAL.map((f) => {
             const activo = filtro === f.key;
             return (
@@ -193,14 +188,15 @@ export function VistaProduccion() {
                 key={f.key}
                 type="button"
                 aria-pressed={activo}
-                onClick={() => setFiltro((prev) => (prev === f.key ? null : f.key))}
+                onClick={() => setFiltro(f.key)}
                 className={cn(
-                  "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  "relative overflow-hidden rounded-xl border px-3 py-2.5 pl-4 text-left transition-colors",
                   f.className,
                   activo && f.activo,
                 )}
               >
-                <p className="truncate text-xs font-medium text-foreground/80">
+                <span className={cn("absolute inset-y-0 left-0 w-1.5", f.barra)} aria-hidden />
+                <p className={cn("truncate text-xs font-semibold", f.label)}>
                   {PRODUCCION_OT_LABELS[f.key]}
                 </p>
                 <p className={cn("mt-0.5 text-2xl font-bold tabular-nums leading-none", f.numero)}>
@@ -216,7 +212,7 @@ export function VistaProduccion() {
           emptyText={
             filtro
               ? `No hay OTs en ${PRODUCCION_OT_LABELS[filtro].toLowerCase()}.`
-              : "No hay órdenes de trabajo. Se generan cuando registrás la primera seña sobre un presupuesto aprobado en Ventas."
+              : "No hay órdenes de trabajo confirmadas. Aparecen acá cuando se confirman las medidas en Medición."
           }
           onChanged={() => void refresh()}
           renderRow={(item, { onVer }) => (
@@ -224,32 +220,10 @@ export function VistaProduccion() {
               key={item.orden.id}
               item={item}
               onVer={onVer}
-              primaryAction={
-                item.orden.estado === "done"
-                  ? undefined
-                  : coalesceEtapaOt(item.orden.etapa) === "despacho"
-                    ? {
-                        label: "Entregar",
-                        disabled:
-                          busyId === item.orden.id ||
-                          Boolean(item.orden.bloqueada) ||
-                          Boolean(item.orden.pausada),
-                        onClick: () => void onEntregar(item),
-                      }
-                    : {
-                        label: "Avanzar",
-                        disabled:
-                          busyId === item.orden.id ||
-                          Boolean(item.orden.bloqueada) ||
-                          Boolean(item.orden.pausada) ||
-                          frenaAvancePorBacha({
-                            bachaRequerida: Boolean(item.orden.bacha_requerida),
-                            bachaAsignada: Boolean(item.orden.bacha_id),
-                            nextEtapa: siguienteEtapaOt(coalesceEtapaOt(item.orden.etapa)),
-                          }),
-                        onClick: () => void onAvanzar(item),
-                      }
-              }
+              primaryAction={{
+                label: "Abrir",
+                onClick: onVer,
+              }}
             />
           )}
         />

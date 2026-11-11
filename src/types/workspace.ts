@@ -18,14 +18,14 @@ export const WORKSPACE_TABS = [
 
 export type WorkspaceTab = (typeof WORKSPACE_TABS)[number];
 
-/** Filtros de OT tipo Cero, bajo Órdenes de Trabajo (`?ot=`). */
+/** Filtros de OT tipo Cero, bajo Órdenes de Trabajo (`?ot=`). Medición no es OT todavía. */
 export const PRODUCCION_OT_FILTROS = [
   "general",
-  "venta_retenida",
-  "tecnica",
+  "corte",
   "produccion",
   "logistica",
   "entregadas",
+  "venta_retenida",
 ] as const;
 
 export type ProduccionOtFiltro = (typeof PRODUCCION_OT_FILTROS)[number];
@@ -33,7 +33,7 @@ export type ProduccionOtFiltro = (typeof PRODUCCION_OT_FILTROS)[number];
 export const PRODUCCION_OT_LABELS: Record<ProduccionOtFiltro, string> = {
   general: "General",
   venta_retenida: "Venta Retenida",
-  tecnica: "Técnica",
+  corte: "Corte",
   produccion: "Producción",
   logistica: "Logística",
   entregadas: "Entregadas",

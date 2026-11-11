@@ -21,9 +21,6 @@ type Props = {
 export function StockProductosUnidadesTab({ productos, loading, error, onOpenProducto }: Props) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">Productos</p>
-      </div>
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

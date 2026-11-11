@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -8,32 +9,17 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { OtDetalleDialog } from "@/components/produccion/OtDetalleDialog";
-import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { chipClaseEtapaOt, etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { leerRetornoOt } from "@/lib/retorno-ot-dialog";
 import type { OtProduccionItem, VentaGrupoOt } from "@/lib/produccion-api";
 import type { JobStatus } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 
-const ETAPA_CHIP: Record<string, string> = {
-  medicion:
-    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200",
-  corte:
-    "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200",
-  produccion:
-    "border-accent/50 bg-accent/20 text-foreground",
-  despacho:
-    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
-  done: "border-border bg-muted text-foreground",
-  cancelled:
-    "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
-  sin: "border-border bg-muted text-muted-foreground",
-};
-
 function chipEtapa(etapa: string | null, estado: JobStatus | null) {
-  if (estado === "done") return { key: "done", className: ETAPA_CHIP.done };
-  if (estado === "cancelled") return { key: "cancelled", className: ETAPA_CHIP.cancelled };
-  const key = etapa && etapa in ETAPA_CHIP ? etapa : "sin";
-  return { key, className: ETAPA_CHIP[key] ?? ETAPA_CHIP.sin };
+  const key =
+    estado === "done" ? "done" : estado === "cancelled" ? "cancelled" : etapa || "sin";
+  return { key, className: chipClaseEtapaOt(etapa, estado) };
 }
 
 type Props = {
@@ -53,10 +39,31 @@ export function OtsGruposAccordion({
   onChanged,
   permitirEntregar = true,
 }: Props) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [navIndex, setNavIndex] = useState(0);
   const allOts = grupos.flatMap((g) => g.ots);
+  const reabrirOtId = leerRetornoOt(location.state)?.reabrirOtId ?? null;
+
+  useEffect(() => {
+    if (!reabrirOtId || allOts.length === 0) return;
+    const idx = allOts.findIndex((o) => o.orden.id === reabrirOtId);
+    if (idx < 0) return;
+    setNavIndex(idx);
+    setDetalleOpen(true);
+    const grupo = grupos.find((g) => g.ots.some((o) => o.orden.id === reabrirOtId));
+    if (grupo) {
+      setOpenIds((prev) => {
+        if (prev.has(grupo.ventaId)) return prev;
+        const next = new Set(prev);
+        next.add(grupo.ventaId);
+        return next;
+      });
+    }
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [reabrirOtId, grupos, navigate, location.pathname, location.search]);
 
   if (loading) {
     return <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>;

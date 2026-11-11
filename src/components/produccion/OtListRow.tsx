@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { otTituloDisplay } from "@/components/produccion/ot-ui";
 import type { OtProduccionItem } from "@/lib/produccion-api";
 import { avisoBachaPendiente } from "@/lib/bacha-reglas";
-import { ArrowRight } from "lucide-react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 
 type Props = {
@@ -46,10 +45,12 @@ export function OtListRow({ item, onVer, primaryAction, extra }: Props) {
       tabIndex={0}
       onClick={onRowClick}
       onKeyDown={onRowKeyDown}
-      className="flex cursor-pointer flex-col gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between"
+      className="group flex cursor-pointer flex-col gap-3 border-b border-border/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0 flex-1 space-y-1.5">
-        <p className="truncate text-sm font-medium text-foreground">{otTituloDisplay(item)}</p>
+        <p className="truncate text-sm font-medium text-foreground underline-offset-2 group-hover:underline">
+          {otTituloDisplay(item)}
+        </p>
         <p className="truncate text-xs text-muted-foreground">
           {item.cliente}
           <span className="mx-1.5 text-border">·</span>
@@ -74,7 +75,6 @@ export function OtListRow({ item, onVer, primaryAction, extra }: Props) {
             onClick={primaryAction.onClick}
           >
             {primaryAction.label}
-            <ArrowRight className="ml-1 h-3.5 w-3.5" />
           </Button>
         </div>
       ) : null}

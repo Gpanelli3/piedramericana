@@ -339,7 +339,7 @@ async function consolidarReposicionesAbiertas(): Promise<void> {
   }
 }
 
-/** Vista General: todas las OTs de venta (incluye entregadas; excluye canceladas). */
+/** Vista General: OTs confirmadas (sin medición pendiente; incluye entregadas; excluye canceladas). */
 export async function getOtsAgrupadas(): Promise<{
   data: VentaGrupoOt[];
   error: Error | null;
@@ -351,6 +351,7 @@ export async function getOtsAgrupadas(): Promise<{
     .select("*")
     .not("venta_id", "is", null)
     .neq("estado", "cancelled")
+    .neq("etapa", "medicion")
     .order("creado_en", { ascending: false });
 
   if (error) return { data: [], error: new Error(error.message) };
@@ -376,11 +377,11 @@ export async function getOtsPorFiltro(
   }
 
   if (filtro === "venta_retenida") {
-    q = q.or("bloqueada.eq.true,pausada.eq.true");
-  } else if (filtro === "tecnica") {
-    q = q.eq("etapa", "medicion");
+    q = q.or("bloqueada.eq.true,pausada.eq.true").neq("etapa", "medicion");
+  } else if (filtro === "corte") {
+    q = q.eq("etapa", "corte");
   } else if (filtro === "produccion") {
-    q = q.in("etapa", ["corte", "produccion"]);
+    q = q.eq("etapa", "produccion");
   } else if (filtro === "logistica") {
     q = q.eq("etapa", "despacho");
   }

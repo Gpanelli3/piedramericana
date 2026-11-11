@@ -39,6 +39,7 @@ type Props = {
   onChanged?: () => void;
   onPausada?: () => void;
   onReanudada?: () => void;
+  soloLectura?: boolean;
 };
 
 function momentoDeEtapa(etapa: string): RoturaMomento {
@@ -55,6 +56,7 @@ export function OtRoturaEstado({
   onChanged,
   onPausada,
   onReanudada,
+  soloLectura = false,
 }: Props) {
   const { user } = useAuth();
   const [placas, setPlacas] = useState<ChapaInventarioRow[]>([]);
@@ -169,40 +171,8 @@ export function OtRoturaEstado({
     await reload();
   };
 
-  return (
-    <div className="space-y-2 border-t border-border pt-4">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-        Rotura de placa
-      </p>
-      {loading ? (
-        <p className="text-xs text-muted-foreground">Cargando…</p>
-      ) : esperaReponer ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-foreground">La placa se rompió.</p>
-          <Button type="button" size="sm" disabled={busy} onClick={() => void abrirReemplazo()}>
-            Elegir reemplazo
-          </Button>
-        </div>
-      ) : placa ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="min-w-0 truncate font-mono text-xs text-muted-foreground">{placa.bulto}</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => {
-              setMotivo("");
-              setMarcarOpen(true);
-            }}
-          >
-            Marcar rotura
-          </Button>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">Esta orden no tiene una placa asignada.</p>
-      )}
-
+  const dialogs = (
+    <>
       <Dialog open={marcarOpen} onOpenChange={setMarcarOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
           <DialogHeader>
@@ -291,6 +261,50 @@ export function OtRoturaEstado({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+
+  if (loading) {
+    return soloLectura ? null : (
+      <p className="text-xs text-muted-foreground">Cargando…</p>
+    );
+  }
+
+  if (esperaReponer) {
+    return (
+      <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900 dark:bg-red-950/30">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-red-900 dark:text-red-100">La placa se rompió</p>
+          {soloLectura ? null : (
+            <Button type="button" size="sm" disabled={busy} onClick={() => void abrirReemplazo()}>
+              Elegir reemplazo
+            </Button>
+          )}
+        </div>
+        {dialogs}
+      </div>
+    );
+  }
+
+  if (soloLectura || !placa) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-border pt-4">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => {
+          setMotivo("");
+          setMarcarOpen(true);
+        }}
+      >
+        Marcar rotura de placa
+      </Button>
+      {dialogs}
     </div>
   );
 }

@@ -265,8 +265,8 @@ export function tabProduccionDesdeOt(ot: {
 }): ProduccionOtFiltro {
   if (ot.estado === "done") return "entregadas";
   if (ot.bloqueada || ot.pausada) return "venta_retenida";
-  if (ot.etapa === "medicion") return "tecnica";
-  if (ot.etapa === "corte" || ot.etapa === "produccion") return "produccion";
+  if (ot.etapa === "corte") return "corte";
+  if (ot.etapa === "produccion") return "produccion";
   if (ot.etapa === "despacho") return "logistica";
   return "general";
 }

@@ -19,7 +19,6 @@ import { confirmarMedicion } from "@/lib/medicion-api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   etiquetaVersionPresupuesto,
-  formatDifMetraje,
   formatMetraje,
   parseDecimalInput,
 } from "@/lib/presupuesto-calculos";
@@ -180,9 +179,6 @@ export function OtMedidasPanel({
 
   const mostrarForm = editando || (destacado && !confirmadas);
   const m2ObraMostrado = mostrarForm ? items.reduce((s, it) => s + it.m2Approx, 0) : m2Obra;
-  const m2Dif = m2ObraMostrado - m2Venta;
-  const totalDif = totalVigente - totalVenta;
-  const deltaSignificativo = m2CambioSignificativo(m2Venta, m2ObraMostrado);
 
   return (
     <div
@@ -205,14 +201,6 @@ export function OtMedidasPanel({
               Opcional
             </Badge>
           ) : null}
-          {deltaSignificativo ? (
-            <Badge
-              variant="outline"
-              className="border-amber-200 bg-amber-50 text-[10px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-            >
-              Revisar $
-            </Badge>
-          ) : null}
         </div>
       </div>
 
@@ -225,24 +213,18 @@ export function OtMedidasPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
-        <div className="grid grid-cols-3 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="grid grid-cols-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           <span>Cotizado</span>
-          <span className="text-center">Medido en obra</span>
-          <span className="text-right">Diferencia</span>
+          <span className="text-right">Medido en obra</span>
         </div>
-        <div className="grid grid-cols-3 items-baseline gap-y-1 px-3 py-2 tabular-nums">
+        <div className="grid grid-cols-2 items-baseline gap-y-1 px-3 py-2 tabular-nums">
           <span className="text-muted-foreground">{formatMetraje(m2Venta)} m²</span>
-          <span className="text-center font-medium text-foreground">
+          <span className="text-right font-medium text-foreground">
             {formatMetraje(m2ObraMostrado)} m²
           </span>
-          <span className="text-right text-muted-foreground">{formatDifMetraje(m2Dif)} m²</span>
           <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
-          <span className="text-center font-medium text-foreground">
+          <span className="text-right font-medium text-foreground">
             {formatMonto(totalVigente, moneda)}
-          </span>
-          <span className="text-right text-muted-foreground">
-            {totalDif >= 0 ? "+" : ""}
-            {formatMonto(totalDif, moneda)}
           </span>
         </div>
       </div>

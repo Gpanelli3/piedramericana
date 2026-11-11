@@ -362,123 +362,123 @@ export function OtStockPanel({
     );
   }
 
-  return (
-    <div className="space-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
-      {mostrarBacha ? (
-        <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Package className="h-3.5 w-3.5" />
-            Bacha
+  const bachaBlock = mostrarBacha ? (
+    <div className="space-y-2 rounded-md border border-border bg-card px-3 py-2">
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Package className="h-3.5 w-3.5" />
+        Bacha
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          {bachaColocacion ? etiquetaTipoColocacion(bachaColocacion) : "Colocación sin definir"}
+        </p>
+        <Select
+          value={origen}
+          disabled={busy}
+          onValueChange={(v) => void onCambiarOrigen(v)}
+        >
+          <SelectTrigger className="h-8 w-full text-xs sm:w-40" aria-label="Origen de la bacha">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="propia">Nuestra</SelectItem>
+            <SelectItem value="cliente">Del cliente</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {bachaAsignada ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 text-xs">
+            <span className="font-medium">
+              {bachaAsignada.modelo?.trim() || "Asignada"}
+            </span>
+            {bachaAsignada.origen === "cliente" ? (
+              <span className="text-muted-foreground">
+                {" "}
+                · {bachaAsignada.cliente_nombre} · no vendible
+              </span>
+            ) : null}
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              {bachaColocacion ? etiquetaTipoColocacion(bachaColocacion) : "Colocación sin definir"}
-            </p>
-            <Select
-              value={origen}
+          <div className="flex gap-1">
+            <Badge variant="secondary" className="text-[10px]">
+              Asignada
+            </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-xs"
               disabled={busy}
-              onValueChange={(v) => void onCambiarOrigen(v)}
+              onClick={() => void onLiberarBacha()}
             >
-              <SelectTrigger className="h-8 w-full text-xs sm:w-40" aria-label="Origen de la bacha">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="propia">Nuestra</SelectItem>
-                <SelectItem value="cliente">Del cliente</SelectItem>
-              </SelectContent>
-            </Select>
+              Liberar
+            </Button>
           </div>
-          {bachaAsignada ? (
-            <div className="flex items-center justify-between gap-2">
-              <p className="min-w-0 text-xs">
-                <span className="font-medium">
-                  {bachaAsignada.modelo?.trim() || "Asignada"}
-                </span>
-                {bachaAsignada.origen === "cliente" ? (
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · {bachaAsignada.cliente_nombre} · no vendible
-                  </span>
-                ) : null}
-              </p>
-              <div className="flex gap-1">
-                <Badge variant="secondary" className="text-[10px]">
-                  Asignada
-                </Badge>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-xs"
-                  disabled={busy}
-                  onClick={() => void onLiberarBacha()}
-                >
-                  Liberar
-                </Button>
-              </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+            Bacha pendiente
+          </p>
+          {bachasDisponibles.length > 0 ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select value={bachaSelectId} onValueChange={setBachaSelectId}>
+                <SelectTrigger className="h-8 w-full text-xs sm:flex-1">
+                  <SelectValue placeholder="Elegir del stock…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bachasDisponibles.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {(b.modelo?.trim() || "Sin modelo") +
+                        (b.origen === "cliente"
+                          ? ` · ${b.cliente_nombre} (no vendible)`
+                          : " · nuestra")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={busy || !bachaSelectId}
+                onClick={() => void onAsignarBacha(bachaSelectId)}
+              >
+                Asignar
+              </Button>
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                Bacha pendiente
-              </p>
-              {bachasDisponibles.length > 0 ? (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Select value={bachaSelectId} onValueChange={setBachaSelectId}>
-                    <SelectTrigger className="h-8 w-full text-xs sm:flex-1">
-                      <SelectValue placeholder="Elegir del stock…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bachasDisponibles.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {(b.modelo?.trim() || "Sin modelo") +
-                            (b.origen === "cliente"
-                              ? ` · ${b.cliente_nombre} (no vendible)`
-                              : " · nuestra")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-8 text-xs"
-                    disabled={busy || !bachaSelectId}
-                    onClick={() => void onAsignarBacha(bachaSelectId)}
-                  >
-                    Asignar
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No hay bachas disponibles
-                  {origen === "cliente" ? " de este cliente" : " en stock"}.
-                </p>
-              )}
-              {origen === "cliente" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 w-full text-xs"
-                  disabled={busy}
-                  onClick={() => {
-                    setRegistrarModelo(bachaTipo ?? "");
-                    setRegistrarClienteOpen(true);
-                  }}
-                >
-                  Registró llegada
-                </Button>
-              ) : null}
-            </div>
+            <p className="text-xs text-muted-foreground">
+              No hay bachas disponibles
+              {origen === "cliente" ? " de este cliente" : " en stock"}.
+            </p>
           )}
+          {origen === "cliente" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 w-full text-xs"
+              disabled={busy}
+              onClick={() => {
+                setRegistrarModelo(bachaTipo ?? "");
+                setRegistrarClienteOpen(true);
+              }}
+            >
+              Registró llegada
+            </Button>
+          ) : null}
         </div>
-      ) : null}
+      )}
+    </div>
+  ) : null;
 
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-muted/20 px-3 py-3">
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Layers className="h-3.5 w-3.5" />
-          Placas / stock
+          Placas
         </p>
         {reservadas.length === 0 && usadas.length === 0 && previstos.length === 0 && !esperaReponer ? (
           <Button
@@ -598,6 +598,8 @@ export function OtStockPanel({
           ))}
         </ul>
       )}
+
+      {bachaBlock}
 
       {movimientos.length > 0 ? (
         <div className="space-y-1.5 border-t border-border/60 pt-2">

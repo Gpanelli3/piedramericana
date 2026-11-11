@@ -7,6 +7,7 @@ import { HojaTrabajoPrintPage } from "./pages/HojaTrabajoPrintPage";
 import { CobrosComprobantePrintPage } from "./pages/CobrosComprobantePrintPage";
 import { ObrasCobrosPrintPage } from "./pages/ObrasCobrosPrintPage";
 import { OtRotuloPrintPage } from "./pages/OtRotuloPrintPage";
+import { OtPlanoPage } from "./pages/OtPlanoPage";
 import { RemitoRotulosPrintPage } from "./pages/RemitoRotulosPrintPage";
 import { RequireAuth } from "./routes/RequireAuth";
 
@@ -26,6 +27,7 @@ export default function App() {
             />
             <Route path="/obras-cobros/imprimir" element={<ObrasCobrosPrintPage />} />
             <Route path="/ordenes-trabajo/:id/rotulo" element={<OtRotuloPrintPage />} />
+            <Route path="/ordenes-trabajo/:id/plano" element={<OtPlanoPage />} />
             <Route path="/remitos/:id/rotulos" element={<RemitoRotulosPrintPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

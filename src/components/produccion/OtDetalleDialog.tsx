@@ -14,13 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { OtMedidasPanel } from "@/components/produccion/OtMedidasPanel";
 import { OtRoturaEstado } from "@/components/produccion/OtRoturaEstado";
 import { OtStockPanel } from "@/components/produccion/OtStockPanel";
@@ -52,15 +45,11 @@ import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileImage,
-  FileText,
-  Layers,
   MapPin,
   Printer,
-  Ruler,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -203,7 +192,7 @@ export function OtDetalleDialog({
   onNavChange,
   mostrarRotulo = false,
 }: Props) {
-  const { irARotulo, abrirPlano, busyPlanoId } = useAccionesRotuloOt();
+  const { irARotulo, irAPlano } = useAccionesRotuloOt();
   const [fechaLocal, setFechaLocal] = useState("");
   const [savingFecha, setSavingFecha] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -217,6 +206,7 @@ export function OtDetalleDialog({
   const [notaLocal, setNotaLocal] = useState("");
   const [motivoLocal, setMotivoLocal] = useState("");
   const [savingEstado, setSavingEstado] = useState(false);
+  const [editandoEstado, setEditandoEstado] = useState(false);
   const [pinned, setPinned] = useState<OtProduccionItem | null>(null);
   const [etapaOverride, setEtapaOverride] = useState<EtapaOtId | null>(null);
   const [vista, setVista] = useState<VistaOt>("resumen");
@@ -226,6 +216,7 @@ export function OtDetalleDialog({
       setPinned(null);
       setEtapaOverride(null);
       setVista("resumen");
+      setEditandoEstado(false);
       return;
     }
     if (!itemProp) return;
@@ -276,6 +267,7 @@ export function OtDetalleDialog({
     setEstadoLocal(esBloqueada ? "bloqueada" : esPausada ? "pausada" : "activa");
     setNotaLocal(item.orden.notas ?? "");
     setMotivoLocal(item.orden.motivo_bloqueo ?? "");
+    setEditandoEstado(false);
     const ventaId = item.ventaId;
     const otId = item.orden.id;
     let cancelled = false;
@@ -349,6 +341,7 @@ export function OtDetalleDialog({
       return;
     }
     toast.success("Estado guardado.");
+    setEditandoEstado(false);
     refresh();
   };
 
@@ -384,6 +377,18 @@ export function OtDetalleDialog({
   });
 
   const estadoGuardado: EstadoOtLocal = bloqueada ? "bloqueada" : pausada ? "pausada" : "activa";
+  const opcionesEstado = [
+    { id: "activa" as const, label: "Activa", on: "border-emerald-700 bg-emerald-700 text-white" },
+    { id: "bloqueada" as const, label: "Bloqueada", on: "border-red-700 bg-red-700 text-white" },
+    { id: "pausada" as const, label: "Pausada", on: "border-slate-600 bg-slate-600 text-white" },
+  ];
+  const opcionEstado = opcionesEstado.find((o) => o.id === estadoLocal) ?? opcionesEstado[0];
+  const cancelarEdicionEstado = () => {
+    setEstadoLocal(estadoGuardado);
+    setNotaLocal(item.orden.notas ?? "");
+    setMotivoLocal(item.orden.motivo_bloqueo ?? "");
+    setEditandoEstado(false);
+  };
   const estadoOtDirty =
     estadoLocal !== estadoGuardado ||
     (notaLocal.trim() || "") !== (item.orden.notas ?? "").trim() ||
@@ -538,6 +543,68 @@ export function OtDetalleDialog({
             />
           </div>
 
+          <div className="flex shrink-0 items-stretch gap-2 border-b border-border pl-2 pr-3">
+            <div
+              role="tablist"
+              className="flex min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden"
+            >
+              {(
+                [
+                  { id: "resumen" as const, label: "Resumen" },
+                  { id: "medidas" as const, label: "Medidas" },
+                  { id: "stock" as const, label: "Materiales y stock" },
+                  ...(!done ? [{ id: "estado" as const, label: "Estado y notas" }] : []),
+                ]
+              ).map((sec) => {
+                const activo = vista === sec.id;
+                return (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activo}
+                    onClick={() => setVista(sec.id)}
+                    className={cn(
+                      "-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors",
+                      activo
+                        ? "border-foreground text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {sec.label}
+                      {sec.id === "stock" && stockPendiente ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {mostrarRotulo ? (
+              <div className="flex shrink-0 items-center gap-1.5 py-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => irARotulo(item.orden.id)}
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Rótulo
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => irAPlano(item.orden.id)}
+                >
+                  <FileImage className="h-3.5 w-3.5" />
+                  Plano
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {vista === "resumen" ? (
             <div className="px-5 py-4">
@@ -550,9 +617,9 @@ export function OtDetalleDialog({
                     <h3 className="text-lg font-semibold leading-tight text-foreground">
                       {item.materialLabel}
                     </h3>
-                    {item.m2Venta > 0 ? (
+                    {item.m2Obra > 0 ? (
                       <span className="text-sm tabular-nums text-muted-foreground">
-                        {formatMetraje(item.m2Venta)} m²
+                        {formatMetraje(item.m2Obra)} m²
                       </span>
                     ) : null}
                   </div>
@@ -561,23 +628,46 @@ export function OtDetalleDialog({
                   ) : medidaItems.length > 0 ? (
                     <ul className="mt-3 divide-y divide-border/70 overflow-hidden rounded-lg border border-border bg-background">
                       {grupos.flatMap((g, gi) =>
-                        g.items.map((it, ii) => (
-                          <li
-                            key={`${gi}-${ii}`}
-                            className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm"
-                          >
-                            <span className="min-w-0 truncate text-foreground">
-                              {it.articuloLabel}
-                            </span>
-                            <span className="shrink-0 tabular-nums text-muted-foreground">
-                              {it.m2Approx > 0
-                                ? `${formatMetraje(it.m2Approx)} m²`
-                                : it.cantidad
-                                  ? `${it.cantidad} u`
-                                  : "—"}
-                            </span>
-                          </li>
-                        )),
+                        g.items.map((it, ii) => {
+                          const tieneMedidas = it.muestraAlto || it.muestraAncho;
+                          let medidaTexto = "";
+                          if (tieneMedidas) {
+                            const alto = parseDecimalInput(it.altoM);
+                            const ancho = parseDecimalInput(it.anchoM);
+                            if (alto > 0 && ancho > 0) {
+                              medidaTexto = `${alto.toFixed(2)} × ${ancho.toFixed(2)} m`;
+                            } else if (alto > 0) {
+                              medidaTexto = `${alto.toFixed(2)} m`;
+                            }
+                          }
+
+                          return (
+                            <li
+                              key={`${gi}-${ii}`}
+                              className="px-3 py-2.5 text-sm"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium text-foreground">
+                                    {it.articuloLabel}
+                                  </p>
+                                  {medidaTexto ? (
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                      {medidaTexto}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <span className="shrink-0 tabular-nums text-muted-foreground">
+                                  {it.m2Approx > 0
+                                    ? `${formatMetraje(it.m2Approx)} m²`
+                                    : it.cantidad
+                                      ? `${it.cantidad} u`
+                                      : "—"}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        }),
                       )}
                     </ul>
                   ) : (
@@ -677,30 +767,25 @@ export function OtDetalleDialog({
             {vista === "estado" && !done ? (
                   <div className="space-y-4 px-5 py-3">
                   <div className="space-y-4 rounded-lg border border-border bg-muted/20 px-4 py-4">
-                    <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
                       <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                         Estado
                       </p>
+                      {editandoEstado ? null : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditandoEstado(true)}
+                        >
+                          Editar
+                        </Button>
+                      )}
+                    </div>
+
+                    {editandoEstado ? (
                       <div className="grid grid-cols-3 gap-2">
-                        {(
-                          [
-                            {
-                              id: "activa" as const,
-                              label: "Activa",
-                              on: "border-emerald-700 bg-emerald-700 text-white",
-                            },
-                            {
-                              id: "bloqueada" as const,
-                              label: "Bloqueada",
-                              on: "border-red-700 bg-red-700 text-white",
-                            },
-                            {
-                              id: "pausada" as const,
-                              label: "Pausada",
-                              on: "border-slate-600 bg-slate-600 text-white",
-                            },
-                          ] as const
-                        ).map((opt) => {
+                        {opcionesEstado.map((opt) => {
                           const active = estadoLocal === opt.id;
                           return (
                             <button
@@ -719,20 +804,35 @@ export function OtDetalleDialog({
                           );
                         })}
                       </div>
-                    </div>
+                    ) : (
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full border px-3 py-1.5 text-sm font-medium",
+                          opcionEstado.on,
+                        )}
+                      >
+                        {opcionEstado.label}
+                      </span>
+                    )}
 
                     {estadoLocal === "bloqueada" ? (
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                           Motivo del bloqueo
                         </Label>
-                        <Textarea
-                          rows={2}
-                          className="resize-none text-sm"
-                          placeholder="Ej. Falta seña, bacha del cliente, medidas incompletas…"
-                          value={motivoLocal}
-                          onChange={(e) => setMotivoLocal(e.target.value)}
-                        />
+                        {editandoEstado ? (
+                          <Textarea
+                            rows={2}
+                            className="resize-none text-sm"
+                            placeholder="Ej. Falta seña, bacha del cliente, medidas incompletas…"
+                            value={motivoLocal}
+                            onChange={(e) => setMotivoLocal(e.target.value)}
+                          />
+                        ) : (
+                          <p className="text-sm text-foreground">
+                            {motivoLocal.trim() || "Sin motivo"}
+                          </p>
+                        )}
                       </div>
                     ) : null}
 
@@ -741,49 +841,46 @@ export function OtDetalleDialog({
                       etapa={etapa}
                       materialHint={item.materialLabel}
                       clienteNombre={item.cliente}
+                      soloLectura={!editandoEstado}
                       onChanged={refresh}
                       onPausada={() => setEstadoLocal("pausada")}
                       onReanudada={() => setEstadoLocal("activa")}
                     />
 
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 border-t border-border pt-4">
                       <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                        <span className="flex items-center gap-1.5">
-                          <FileText className="h-3 w-3" />
-                          Nota interna
-                          <span className="normal-case font-normal text-muted-foreground/70">
-                            (solo equipo, no se comparte)
-                          </span>
-                        </span>
+                        Nota interna
                       </Label>
-                      <Textarea
-                        rows={2}
-                        className="resize-none text-sm"
-                        placeholder="Contexto para el historial — no lo ve el cliente"
-                        value={notaLocal}
-                        onChange={(e) => setNotaLocal(e.target.value)}
-                      />
+                      {editandoEstado ? (
+                        <Textarea
+                          rows={2}
+                          className="resize-none text-sm"
+                          placeholder="Contexto para el historial — no lo ve el cliente"
+                          value={notaLocal}
+                          onChange={(e) => setNotaLocal(e.target.value)}
+                        />
+                      ) : (
+                        <p className="whitespace-pre-wrap text-sm text-foreground">
+                          {notaLocal.trim() || "Sin nota"}
+                        </p>
+                      )}
                     </div>
 
-                    {estadoOtDirty ? (
+                    {editandoEstado ? (
                       <div className="flex justify-end gap-2">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           disabled={savingEstado}
-                          onClick={() => {
-                            setEstadoLocal(estadoGuardado);
-                            setNotaLocal(item.orden.notas ?? "");
-                            setMotivoLocal(item.orden.motivo_bloqueo ?? "");
-                          }}
+                          onClick={cancelarEdicionEstado}
                         >
                           Cancelar
                         </Button>
                         <Button
                           type="button"
                           size="sm"
-                          disabled={savingEstado}
+                          disabled={savingEstado || !estadoOtDirty}
                           onClick={() => void onGuardarEstado()}
                         >
                           Guardar estado
@@ -797,17 +894,7 @@ export function OtDetalleDialog({
 
           <div className="shrink-0 border-t border-border bg-background px-4 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
-              {vista !== "resumen" ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setVista("resumen")}
-                >
-                  <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-                  Volver
-                </Button>
-              ) : puedeNavegar ? (
+              {puedeNavegar ? (
                 <div className="flex items-center gap-0.5">
                   <Button
                     type="button"
@@ -843,55 +930,6 @@ export function OtDetalleDialog({
               )}
 
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" size="sm" variant="outline">
-                      Más
-                      <ChevronDown className="ml-1 h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setVista("medidas")}>
-                      <Ruler className="h-4 w-4" />
-                      Medidas
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setVista("stock")}>
-                      <Layers className="h-4 w-4" />
-                      Materiales y stock
-                      {stockPendiente ? (
-                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-500" />
-                      ) : null}
-                    </DropdownMenuItem>
-                    {!done ? (
-                      <DropdownMenuItem onSelect={() => setVista("estado")}>
-                        <FileText className="h-4 w-4" />
-                        Estado y notas
-                      </DropdownMenuItem>
-                    ) : null}
-                    {mostrarRotulo ? (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            onOpenChange(false);
-                            irARotulo(item.orden.id);
-                          }}
-                        >
-                          <Printer className="h-4 w-4" />
-                          Rótulo
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={busyPlanoId === item.orden.id}
-                          onSelect={() => void abrirPlano(item)}
-                        >
-                          <FileImage className="h-4 w-4" />
-                          Plano
-                        </DropdownMenuItem>
-                      </>
-                    ) : null}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
                 {!done && nextEtapa ? (
                   <Button
                     type="button"

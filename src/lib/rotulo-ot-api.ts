@@ -220,39 +220,65 @@ export async function fetchRotuloOt(
   };
 }
 
-export async function abrirPlanoOt(
+export type PlanoOtArchivo = {
+  url: string;
+  mime: string;
+  name: string;
+};
+
+export async function resolverPlanoOt(
   presupuestoId: string | null | undefined,
   ordenKey: string | null | undefined,
-): Promise<{ sinPlano: boolean; error: Error | null }> {
+): Promise<{ data: PlanoOtArchivo | null; sinPlano: boolean; error: Error | null }> {
   const presId = presupuestoId?.trim() ?? "";
   const key = ordenKey?.trim() ?? "";
   if (!presId || !key) {
-    return { sinPlano: true, error: null };
+    return { data: null, sinPlano: true, error: null };
   }
 
   const pres = await getPresupuestoById(presId);
   if (pres.error) {
-    return { sinPlano: false, error: new Error(pres.error.message) };
+    return { data: null, sinPlano: false, error: new Error(pres.error.message) };
   }
   const raw = pres.data?.payload;
   if (!raw || !isPresupuestoPayloadV1(raw)) {
-    return { sinPlano: true, error: null };
+    return { data: null, sinPlano: true, error: null };
   }
   const payload = hydratePresupuestoPayloadV1(raw);
   const ot = payload.ordenes.find((o) => o.key === key);
   const path = ot?.planoAdjunto?.storagePath?.trim() ?? "";
   if (!path) {
-    return { sinPlano: true, error: null };
+    return { data: null, sinPlano: true, error: null };
   }
 
   const signed = await getPlanoSignedUrl(path);
   if (signed.error || !signed.url) {
     return {
+      data: null,
       sinPlano: false,
       error: signed.error ?? new Error("No se pudo abrir el plano."),
     };
   }
-  const opened = window.open(signed.url, "_blank", "noopener,noreferrer");
+  return {
+    data: {
+      url: signed.url,
+      mime: ot?.planoAdjunto?.mime ?? "",
+      name: ot?.planoAdjunto?.name?.trim() || "Plano",
+    },
+    sinPlano: false,
+    error: null,
+  };
+}
+
+export async function abrirPlanoOt(
+  presupuestoId: string | null | undefined,
+  ordenKey: string | null | undefined,
+): Promise<{ sinPlano: boolean; error: Error | null }> {
+  const res = await resolverPlanoOt(presupuestoId, ordenKey);
+  if (res.sinPlano || res.error || !res.data) {
+    return { sinPlano: res.sinPlano, error: res.error };
+  }
+  const opened = window.open(res.data.url, "_blank", "noopener,noreferrer");
   if (!opened) {
     return {
       sinPlano: false,

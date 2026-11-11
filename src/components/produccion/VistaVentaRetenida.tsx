@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OtListRow } from "@/components/produccion/OtListRow";
+import { OtSeccionHeader } from "@/components/produccion/OtFiltroActivoPill";
 import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import {
@@ -69,19 +69,7 @@ export function VistaVentaRetenida() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo · Venta Retenida</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              OTs bloqueadas o pausadas (plata, bacha, rotura u otro motivo)
-            </p>
-          </div>
-          <Badge variant="outline" className="w-fit text-sm font-medium">
-            {totalOts} retenidas
-          </Badge>
-        </div>
-      </header>
+      <OtSeccionHeader filtro="venta_retenida" count={`${totalOts} retenidas`} />
 
       <main className="p-4 sm:p-6">
         <OtsGruposAccordion

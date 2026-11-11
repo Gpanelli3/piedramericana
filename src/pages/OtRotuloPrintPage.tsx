@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RotuloOtDocumento } from "@/components/produccion/RotuloOtDocumento";
+import { leerRetornoOt } from "@/lib/retorno-ot-dialog";
 import { fetchRotuloOt, type RotuloOtDatos } from "@/lib/rotulo-ot-api";
 
 export function OtRotuloPrintPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [cargando, setCargando] = useState(true);
   const [datos, setDatos] = useState<RotuloOtDatos | null>(null);
 
@@ -40,9 +42,14 @@ export function OtRotuloPrintPage() {
   }, [id]);
 
   const volver = useCallback(() => {
+    const back = leerRetornoOt(location.state);
+    if (back?.otDialogReturn && back.reabrirOtId) {
+      navigate(back.otDialogReturn, { state: { reabrirOtId: back.reabrirOtId } });
+      return;
+    }
     if (window.history.length > 1) navigate(-1);
     else navigate("/?ws=produccion");
-  }, [navigate]);
+  }, [location.state, navigate]);
 
   return (
     <div className="min-h-dvh bg-neutral-100 text-foreground print:bg-white">
