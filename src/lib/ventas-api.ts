@@ -1070,6 +1070,47 @@ export async function loadOtKanbanView(): Promise<{ data: OtTarjeta[]; error: Er
   return { data: merged, error: null };
 }
 
+export type OtPanelResumen = {
+  id: string;
+  titulo: string;
+  estado: JobStatus;
+  etapa: string;
+  pausada: boolean;
+  bloqueada: boolean;
+  motivo_bloqueo: string | null;
+  medidas_confirmadas: boolean;
+  fecha_programada: string | null;
+  tipo: "normal" | "reposicion";
+};
+
+export async function listOtsPorVenta(
+  ventaId: string,
+): Promise<{ data: OtPanelResumen[]; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("ordenes_trabajo")
+    .select(
+      "id, titulo, estado, etapa, pausada, bloqueada, motivo_bloqueo, medidas_confirmadas, fecha_programada, tipo",
+    )
+    .eq("venta_id", ventaId)
+    .order("creado_en", { ascending: true });
+  if (error) return { data: [], error: new Error(error.message) };
+  return {
+    data: (data ?? []).map((row) => ({
+      id: row.id,
+      titulo: row.titulo?.trim() || "Sin título",
+      estado: (row.estado as JobStatus) ?? "pending",
+      etapa: typeof row.etapa === "string" ? row.etapa : "",
+      pausada: Boolean(row.pausada),
+      bloqueada: Boolean(row.bloqueada),
+      motivo_bloqueo: row.motivo_bloqueo ?? null,
+      medidas_confirmadas: Boolean(row.medidas_confirmadas),
+      fecha_programada: row.fecha_programada,
+      tipo: row.tipo === "reposicion" ? "reposicion" : "normal",
+    })),
+    error: null,
+  };
+}
+
 export async function listPagosVenta(
   ventaId: string,
 ): Promise<{ data: Database["public"]["Tables"]["ventas_pagos"]["Row"][]; error: Error | null }> {

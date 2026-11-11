@@ -10,7 +10,6 @@ import {
   Download,
   Eye,
   FileText,
-  Link2,
   Paperclip,
   Pencil,
   Printer,
@@ -67,7 +66,7 @@ import {
   isPresupuestoPayloadV1,
   type PresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
-import type { Database } from "@/types/database";
+import type { Database, VentaEstado } from "@/types/database";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
@@ -86,6 +85,16 @@ import {
   formatMoneyCard,
 } from "@/lib/presupuesto-detalle";
 import { descargarElementoComoPdf } from "@/lib/descargar-pdf";
+import { cn } from "@/lib/utils";
+import { etiquetaMetodo } from "@/lib/finanzas-api";
+import { chipClaseEtapaOt, etiquetaEtapaOt } from "@/lib/etiquetas-ot";
+import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
+import {
+  getVentaPorPresupuesto,
+  listOtsPorVenta,
+  listPagosVenta,
+  type OtPanelResumen,
+} from "@/lib/ventas-api";
 
 type PresupuestoRow = Database["public"]["Tables"]["presupuestos"]["Row"];
 
@@ -101,6 +110,7 @@ type Props = {
 };
 
 type DocVista = "pdf" | "hoja" | null;
+type SeccionPanel = "presupuesto" | "venta" | "ots";
 
 export function PresupuestoDetallePanel({
   open,
@@ -129,6 +139,7 @@ export function PresupuestoDetallePanel({
   const [archivos, setArchivos] = useState<ArchivoPresupuesto[]>([]);
   const [ventaId, setVentaId] = useState<string | null>(null);
   const [otsCount, setOtsCount] = useState(0);
+  const [seccion, setSeccion] = useState<SeccionPanel>("presupuesto");
   const [docVista, setDocVista] = useState<DocVista>(null);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -150,6 +161,7 @@ export function PresupuestoDetallePanel({
       setArchivos([]);
       setVentaId(null);
       setOtsCount(0);
+      setSeccion("presupuesto");
       setDocVista(null);
       return;
     }
@@ -157,6 +169,7 @@ export function PresupuestoDetallePanel({
     let cancelled = false;
     async function load(id: string) {
       setCargando(true);
+      setSeccion("presupuesto");
       setViendoNro(null);
       setPayloadHistorico(null);
       const [pres, vers, vinc] = await Promise.all([
@@ -425,16 +438,30 @@ export function PresupuestoDetallePanel({
           </SheetHeader>
 
           <div className="flex items-center justify-center gap-1 px-4 pr-12 pt-3 pb-1 shrink-0">
-            <span className="rounded-full bg-zinc-900 text-white px-3.5 py-1.5 text-xs font-semibold">
+            <button
+              type="button"
+              className={cn(
+                "rounded-full px-3.5 py-1.5 text-xs font-semibold",
+                seccion === "presupuesto"
+                  ? "bg-zinc-900 text-white"
+                  : "font-medium text-muted-foreground hover:bg-muted",
+              )}
+              onClick={() => setSeccion("presupuesto")}
+            >
               Presupuesto {fila?.numero ?? "…"}
-            </span>
+            </button>
             {ventaId ? (
               <button
                 type="button"
-                className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium",
+                  seccion === "venta"
+                    ? "bg-zinc-900 font-semibold text-white"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
                 onClick={() => {
-                  onClose();
-                  navigate("/?ws=administracion");
+                  setDocVista(null);
+                  setSeccion("venta");
                 }}
               >
                 Venta
@@ -443,10 +470,15 @@ export function PresupuestoDetallePanel({
             {otsCount > 0 ? (
               <button
                 type="button"
-                className="rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted"
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-xs font-medium",
+                  seccion === "ots"
+                    ? "bg-zinc-900 font-semibold text-white"
+                    : "text-muted-foreground hover:bg-muted",
+                )}
                 onClick={() => {
-                  onClose();
-                  navigate("/?ws=produccion");
+                  setDocVista(null);
+                  setSeccion("ots");
                 }}
               >
                 OTs {otsCount}
@@ -455,7 +487,11 @@ export function PresupuestoDetallePanel({
           </div>
 
           <div className="overflow-y-auto px-5 pb-5 pt-2 space-y-5">
-            {cargando || historicoCargando || !fila ? (
+            {seccion === "venta" && fila ? (
+              <SeccionVenta presupuestoId={fila.id} total={fila.total} moneda={fila.moneda} />
+            ) : seccion === "ots" && ventaId ? (
+              <SeccionOts ventaId={ventaId} />
+            ) : cargando || historicoCargando || !fila ? (
               <p className="py-16 text-center text-sm text-muted-foreground">Cargando…</p>
             ) : !payload || !vista ? (
               <p className="py-16 text-center text-sm text-muted-foreground">
@@ -539,33 +575,9 @@ export function PresupuestoDetallePanel({
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-2xl font-bold tracking-tight">
-                      {payload.clienteNombre || fila.cliente}
-                    </h2>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        onClose();
-                        navigate("/?ws=clientes");
-                      }}
-                    >
-                      <Link2 className="h-3.5 w-3.5" />
-                      Vincular
-                    </button>
-                    {fila.client_id ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <ClipboardList className="h-3.5 w-3.5" />
-                        En el CRM · {aprobado ? "Convertido" : "Interesado"}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {origenLabel && origenLabel !== "Elegir origen…" ? `${origenLabel} · ` : null}
-                    Fechado el {formatFechaLarga(fila.created_at)}
-                    {enviadoEvento ? ` · enviado ${formatFechaLarga(enviadoEvento.created_at)}` : null}
-                  </p>
+                  <h2 className="text-2xl font-bold tracking-tight">
+                    {payload.clienteNombre || fila.cliente}
+                  </h2>
                   {pendiente && !enviadoEvento ? (
                     <Button
                       type="button"
@@ -826,7 +838,7 @@ export function PresupuestoDetallePanel({
             )}
           </div>
 
-          {pendiente && fila && !cargando ? (
+          {pendiente && fila && !cargando && seccion === "presupuesto" ? (
             <div className="shrink-0 border-t bg-stone-50 px-5 py-3 space-y-2">
               <Button
                 type="button"
@@ -981,6 +993,205 @@ function Dato({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="font-medium">{value}</p>
+    </div>
+  );
+}
+
+function SeccionVenta({
+  presupuestoId,
+  total,
+  moneda,
+}: {
+  presupuestoId: string;
+  total: number;
+  moneda: "ars" | "usd";
+}) {
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [estado, setEstado] = useState<VentaEstado | null>(null);
+  const [creada, setCreada] = useState<string | null>(null);
+  const [medidas, setMedidas] = useState<string | null>(null);
+  const [notas, setNotas] = useState("");
+  const [pagos, setPagos] = useState<Database["public"]["Tables"]["ventas_pagos"]["Row"][]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setCargando(true);
+      setError(null);
+      const venta = await getVentaPorPresupuesto(presupuestoId);
+      if (cancelled) return;
+      if (venta.error) {
+        setError(venta.error.message);
+        setCargando(false);
+        return;
+      }
+      if (!venta.data) {
+        setError("Este presupuesto todavía no tiene venta.");
+        setCargando(false);
+        return;
+      }
+      const pagosRes = await listPagosVenta(venta.data.id);
+      if (cancelled) return;
+      if (pagosRes.error) {
+        setError(pagosRes.error.message);
+        setCargando(false);
+        return;
+      }
+      setEstado(venta.data.estado);
+      setCreada(venta.data.created_at);
+      setMedidas(venta.data.fecha_confirmacion_medidas);
+      setNotas(venta.data.notas_medicion?.trim() ?? "");
+      setPagos(pagosRes.data);
+      setCargando(false);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [presupuestoId]);
+
+  if (cargando) {
+    return <p className="py-16 text-center text-sm text-muted-foreground">Cargando venta…</p>;
+  }
+  if (error) {
+    return <p className="py-16 text-center text-sm text-destructive">{error}</p>;
+  }
+
+  const cobrado = pagos.reduce((sum, p) => {
+    if (p.moneda !== moneda) return sum;
+    const monto = Number(p.monto);
+    return Number.isFinite(monto) ? sum + monto : sum;
+  }, 0);
+  const saldo = total - cobrado;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold tracking-tight">Venta</h2>
+        <Badge variant="outline">{etiquetaVentaEstado(estado)}</Badge>
+      </div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+        <Dato label="Creada" value={creada ? formatFechaLarga(creada) : "—"} />
+        <Dato
+          label="Medidas confirmadas"
+          value={medidas ? formatFechaCorta(medidas) : "Todavía no"}
+        />
+        <Dato label="Total" value={formatMoneyAr(total, moneda)} />
+        <Dato label="Cobrado" value={formatMoneyAr(cobrado, moneda)} />
+        <Dato label="Saldo" value={formatMoneyAr(Math.max(0, saldo), moneda)} />
+      </div>
+      {notas ? (
+        <p className="rounded-lg border bg-white px-3 py-2 text-sm text-muted-foreground">{notas}</p>
+      ) : null}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold">Cobros</h3>
+        {pagos.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Todavía no hay cobros.</p>
+        ) : (
+          <ul className="space-y-2">
+            {pagos.map((p) => {
+              const monto = Number(p.monto);
+              return (
+                <li key={p.id} className="rounded-lg border bg-white px-3 py-2">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-medium">{etiquetaMetodo(p.metodo)}</p>
+                    <p className="text-sm font-semibold tabular-nums">
+                      {formatMoneyAr(Number.isFinite(monto) ? monto : 0, p.moneda)}
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFechaCorta(p.fecha)}
+                    {p.nota?.trim() ? ` · ${p.nota.trim()}` : ""}
+                    {p.retencion_monto > 0
+                      ? ` · retención ${formatMoneyAr(p.retencion_monto, p.moneda)}`
+                      : ""}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SeccionOts({ ventaId }: { ventaId: string }) {
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [ots, setOts] = useState<OtPanelResumen[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setCargando(true);
+      setError(null);
+      const res = await listOtsPorVenta(ventaId);
+      if (cancelled) return;
+      if (res.error) setError(res.error.message);
+      else setOts(res.data);
+      setCargando(false);
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ventaId]);
+
+  if (cargando) {
+    return <p className="py-16 text-center text-sm text-muted-foreground">Cargando órdenes…</p>;
+  }
+  if (error) {
+    return <p className="py-16 text-center text-sm text-destructive">{error}</p>;
+  }
+  if (ots.length === 0) {
+    return (
+      <p className="py-16 text-center text-sm text-muted-foreground">
+        Esta venta todavía no tiene órdenes de trabajo.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold tracking-tight">Órdenes de trabajo</h2>
+      <ul className="space-y-2">
+        {ots.map((ot) => {
+          const etapa = ot.pausada ? "Venta retenida" : etiquetaEtapaOt(ot.etapa, ot.estado);
+          return (
+            <li key={ot.id} className="rounded-lg border bg-white px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{ot.titulo}</p>
+                  {ot.tipo === "reposicion" ? (
+                    <p className="text-xs text-muted-foreground">Reposición</p>
+                  ) : null}
+                </div>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    ot.pausada
+                      ? "border-rose-300 bg-rose-50 text-rose-800"
+                      : chipClaseEtapaOt(ot.etapa, ot.estado),
+                  )}
+                >
+                  {etapa}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {ot.medidas_confirmadas ? "Medidas confirmadas" : "Medidas sin confirmar"}
+                {ot.fecha_programada ? ` · programada ${formatFechaCorta(ot.fecha_programada)}` : ""}
+              </p>
+              {ot.bloqueada ? (
+                <p className="mt-1 text-xs text-rose-700">
+                  Bloqueada{ot.motivo_bloqueo?.trim() ? `: ${ot.motivo_bloqueo.trim()}` : ""}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

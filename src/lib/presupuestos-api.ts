@@ -21,12 +21,58 @@ export type PresupuestoRowLista = {
   id: string;
   numero: string;
   cliente: string;
+  /** Persona de contacto del presupuesto, o del cliente si el presupuesto no la tiene. */
+  contacto: string;
+  /** Teléfono del presupuesto, o del cliente si el presupuesto no lo tiene. */
+  tel: string;
   total: number;
   moneda: "ars" | "usd";
   status: PresupuestoEstado;
   created_at: string;
   updated_at: string;
 };
+
+type ClienteMaestroMini = {
+  contact_name: string | null;
+  phone: string | null;
+};
+
+type PresupuestoListaDb = {
+  id: string;
+  numero: string;
+  cliente: string;
+  total: number;
+  moneda: "ars" | "usd";
+  status: PresupuestoEstado;
+  created_at: string;
+  updated_at: string;
+  contacto: string | null;
+  tel: string | null;
+  clients: ClienteMaestroMini | ClienteMaestroMini[] | null;
+};
+
+function textoContacto(value: string | null | undefined): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function maestroDe(
+  rel: ClienteMaestroMini | ClienteMaestroMini[] | null,
+): ClienteMaestroMini | null {
+  if (!rel) return null;
+  return Array.isArray(rel) ? (rel[0] ?? null) : rel;
+}
+
+/** El teléfono y el contacto cargados en el presupuesto pisan los del cliente. */
+export function armarContactoLista(input: {
+  contactoPayload: string | null;
+  telPayload: string | null;
+  maestro: ClienteMaestroMini | null;
+}): { contacto: string; tel: string } {
+  return {
+    contacto: textoContacto(input.contactoPayload) || textoContacto(input.maestro?.contact_name),
+    tel: textoContacto(input.telPayload) || textoContacto(input.maestro?.phone),
+  };
+}
 
 /** Días sin confirmar (sigue en pendiente) para pasar a Dormidos. */
 export const DIAS_PARA_DORMIR_PRESUPUESTO = 7;
@@ -53,10 +99,32 @@ export async function listPresupuestosLista(): Promise<{
 }> {
   const { data, error } = await supabase
     .from("presupuestos")
-    .select("id, numero, cliente, total, moneda, status, created_at, updated_at")
-    .order("created_at", { ascending: false });
+    .select(
+      "id, numero, cliente, total, moneda, status, created_at, updated_at, contacto:payload->>contacto, tel:payload->>tel, clients(contact_name, phone)",
+    )
+    .order("created_at", { ascending: false })
+    .returns<PresupuestoListaDb[]>();
   if (error) return { data: null, error: new Error(error.message) };
-  return { data: data as PresupuestoRowLista[], error: null };
+  const filas: PresupuestoRowLista[] = (data ?? []).map((row) => {
+    const contacto = armarContactoLista({
+      contactoPayload: row.contacto,
+      telPayload: row.tel,
+      maestro: maestroDe(row.clients),
+    });
+    return {
+      id: row.id,
+      numero: row.numero,
+      cliente: row.cliente,
+      contacto: contacto.contacto,
+      tel: contacto.tel,
+      total: row.total,
+      moneda: row.moneda,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  });
+  return { data: filas, error: null };
 }
 
 export type PresupuestoRowList = PresupuestoRowLista &
@@ -103,6 +171,8 @@ export async function listPresupuestosResumen(): Promise<{
 
     const withVendedor: PresupuestoRowList[] = merged.map((r) => ({
       ...r,
+      contacto: textoContacto(r.contacto),
+      tel: textoContacto(r.tel),
       created_by: r.created_by ?? null,
       vendedor_nombre: r.created_by ? nombrePorId.get(r.created_by) ?? null : null,
     }));
