@@ -402,14 +402,18 @@ export function CrearRemitoDialog({
             toast.error(`El bulto ${bulto} ya existe.`);
             return;
           }
+          const puLocal =
+            draft.precio.trim() === "" ? null : Number(draft.precio.replace(",", "."));
           nuevas.push({
             bulto,
             material: x.label,
+            materialId: draft.material_id,
             largoCm: Number(m.largo_cm.replace(",", ".")),
             anchoCm: Number(m.ancho_cm.replace(",", ".")),
             estado: "Disponible",
             loteCodigo: draft.lote_codigo.trim(),
             origenPlaca: origenPlaca,
+            precioM2: puLocal != null && Number.isFinite(puLocal) ? puLocal : null,
           });
         }
       } else {
@@ -422,14 +426,18 @@ export function CrearRemitoDialog({
             toast.error(`El bulto ${bulto} ya existe.`);
             return;
           }
+          const puLocal =
+            draft.precio.trim() === "" ? null : Number(draft.precio.replace(",", "."));
           nuevas.push({
             bulto,
             material: x.label,
+            materialId: draft.material_id,
             largoCm: largo,
             anchoCm: ancho,
             estado: "Disponible",
             loteCodigo: draft.lote_codigo.trim(),
             origenPlaca: origenPlaca,
+            precioM2: puLocal != null && Number.isFinite(puLocal) ? puLocal : null,
           });
         }
       }
@@ -762,7 +770,7 @@ export function CrearRemitoDialog({
                   )}
 
                   <div className="space-y-1.5">
-                    <Label>Precio unitario (opcional)</Label>
+                    <Label>Precio por m² (opcional)</Label>
                     <Input
                       inputMode="decimal"
                       placeholder="0"

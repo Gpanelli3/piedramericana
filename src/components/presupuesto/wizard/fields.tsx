@@ -27,6 +27,7 @@ import type { ArticuloConPrecio } from "@/types/articulos";
 import type { ClientePresupuesto } from "@/lib/clients-api";
 import { labelUnidad } from "@/lib/presupuesto-calculos";
 import type { UnidadArticuloDb } from "@/types/database";
+import type { PlanchaBuscadorRow } from "@/lib/stock-api";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 function labelTipoUnidad(unidad: UnidadArticuloDb): string {
@@ -364,37 +365,92 @@ function formatPrecioMaterial(n: number): string {
   });
 }
 
-/** Campo de texto que filtra el catálogo y permite un material escrito a mano. */
+export type SeleccionMaterialOt = {
+  materialId: string;
+  materialLibre: string;
+  chapaSugeridaId: string | null;
+  chapaSugeridaBulto: string;
+  chapaSugeridaLabel: string;
+};
+
+export function etiquetaPlanchaBuscador(p: {
+  familia: string | null;
+  materialLabel: string;
+  largoCm: number;
+  anchoCm: number;
+}): string {
+  const fam = (p.familia ?? "").trim();
+  const name = p.materialLabel.trim();
+  const titulo =
+    fam && fam.toLowerCase() !== name.toLowerCase() ? `${fam} · ${name}` : name;
+  return `${titulo} · ${p.largoCm}×${p.anchoCm} cm`;
+}
+
+function etiquetaEspesorPlancha(p: PlanchaBuscadorRow): string | null {
+  if (p.espesorCm != null && p.espesorCm > 0) {
+    const n = Number.isInteger(p.espesorCm) ? String(p.espesorCm) : String(p.espesorCm);
+    return `${n} cm`;
+  }
+  if (p.espesorMm != null && p.espesorMm > 0) return `${p.espesorMm} mm`;
+  return null;
+}
+
+function seleccionDePlancha(p: PlanchaBuscadorRow): SeleccionMaterialOt {
+  return {
+    materialId: p.materialId ?? "",
+    materialLibre: p.materialId ? "" : p.materialLabel,
+    chapaSugeridaId: p.id,
+    chapaSugeridaBulto: p.bulto,
+    chapaSugeridaLabel: etiquetaPlanchaBuscador(p),
+  };
+}
+
+function seleccionTextoLibre(texto: string): SeleccionMaterialOt {
+  return {
+    materialId: "",
+    materialLibre: texto,
+    chapaSugeridaId: null,
+    chapaSugeridaBulto: "",
+    chapaSugeridaLabel: "",
+  };
+}
+
+/** Lista planchas Disponibles de Stock y permite un material escrito a mano. */
 export function BuscadorMaterial({
   materials,
+  planchas = [],
   value,
+  chapaSugeridaId = null,
   textoLibre = "",
   onChange,
-  precios,
   moneda = "usd",
   loading,
   soloTextoLibre = false,
 }: {
   materials: MaterialWizardRowLite[];
+  planchas?: PlanchaBuscadorRow[];
   value: string;
+  chapaSugeridaId?: string | null;
   textoLibre?: string;
-  onChange: (next: { materialId: string; materialLibre: string }) => void;
-  precios?: Record<string, number>;
+  onChange: (next: SeleccionMaterialOt) => void;
   moneda?: "ars" | "usd";
   loading?: boolean;
-  /** La piedra la trae el cliente: se anota el nombre, sin catálogo ni precio de lista. */
+  /** La piedra la trae el cliente: se anota el nombre, sin catálogo ni precio de plancha. */
   soloTextoLibre?: boolean;
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const selected = materials.find((m) => m.id === value);
-  const etiqueta = selected?.name ?? textoLibre;
+  const selectedPlancha = planchas.find((p) => p.id === chapaSugeridaId);
+  const selectedMaterial = materials.find((m) => m.id === value);
+  const etiqueta = selectedPlancha
+    ? etiquetaPlanchaBuscador(selectedPlancha)
+    : (selectedMaterial?.name ?? textoLibre);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(etiqueta);
   const [editado, setEditado] = useState(false);
   const [active, setActive] = useState(0);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 320 });
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 420 });
   const queryRef = useRef(query);
   const editadoRef = useRef(editado);
   queryRef.current = query;
@@ -406,19 +462,23 @@ export function BuscadorMaterial({
 
   const filtrados = useMemo(() => {
     const q = textoBusqueda(query);
-    if (!q) return materials;
-    return materials.filter((m) => {
+    if (!q) return planchas;
+    return planchas.filter((p) => {
       const blob = textoBusqueda(
-        `${m.name} ${m.codigo ?? ""} ${m.familia ?? ""} ${m.unit ?? ""}`,
+        `${p.familia ?? ""} ${p.materialLabel} ${p.bulto} ${p.proveedor ?? ""} ${p.largoCm} ${p.anchoCm}`,
       );
       return blob.includes(q);
     });
-  }, [materials, query]);
+  }, [planchas, query]);
 
   const qTrim = query.trim();
-  const coincideExacto = materials.some(
-    (m) => textoBusqueda(m.name) === textoBusqueda(qTrim),
-  );
+  const coincideExacto = planchas.some((p) => {
+    const q = textoBusqueda(qTrim);
+    return (
+      textoBusqueda(etiquetaPlanchaBuscador(p)) === q ||
+      textoBusqueda(p.materialLabel) === q
+    );
+  });
   const ofreceLibre = qTrim.length > 0 && !coincideExacto;
   const totalOpciones = filtrados.length + (ofreceLibre ? 1 : 0);
 
@@ -428,16 +488,25 @@ export function BuscadorMaterial({
 
   function aplicarTexto(texto: string) {
     const q = texto.trim();
-    const exact = materials.find((m) => textoBusqueda(m.name) === textoBusqueda(q));
-    if (exact) {
-      onChange({ materialId: exact.id, materialLibre: "" });
+    const exactEtiqueta = planchas.find(
+      (p) => textoBusqueda(etiquetaPlanchaBuscador(p)) === textoBusqueda(q),
+    );
+    if (exactEtiqueta) {
+      onChange(seleccionDePlancha(exactEtiqueta));
       return;
     }
-    onChange({ materialId: "", materialLibre: q });
+    const exactName = planchas.filter(
+      (p) => textoBusqueda(p.materialLabel) === textoBusqueda(q),
+    );
+    if (exactName.length === 1 && exactName[0]) {
+      onChange(seleccionDePlancha(exactName[0]));
+      return;
+    }
+    onChange(seleccionTextoLibre(q));
   }
 
-  function elegirCatalogo(id: string) {
-    onChange({ materialId: id, materialLibre: "" });
+  function elegirPlancha(p: PlanchaBuscadorRow) {
+    onChange(seleccionDePlancha(p));
     setEditado(false);
     setOpen(false);
   }
@@ -452,7 +521,7 @@ export function BuscadorMaterial({
     const el = inputRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = rect.width;
+    const width = Math.min(Math.max(rect.width, 420), window.innerWidth - 16);
     const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
     setPos({ top: rect.bottom + 4, left, width });
   }
@@ -476,12 +545,12 @@ export function BuscadorMaterial({
       window.removeEventListener("resize", mover);
       window.removeEventListener("scroll", mover, true);
     };
-  }, [open]);
+  }, [open, planchas]);
 
   function elegirIndice(index: number) {
     if (index < filtrados.length) {
       const item = filtrados[index];
-      if (item) elegirCatalogo(item.id);
+      if (item) elegirPlancha(item);
       return;
     }
     if (ofreceLibre) elegirLibre();
@@ -497,7 +566,7 @@ export function BuscadorMaterial({
         placeholder="Piedra que trae el cliente"
         className="h-8 w-72 rounded-md border border-white/20 bg-white px-2.5 text-xs text-zinc-900 shadow-none outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-white/70"
         value={textoLibre}
-        onChange={(e) => onChange({ materialId: "", materialLibre: e.target.value })}
+        onChange={(e) => onChange(seleccionTextoLibre(e.target.value))}
       />
     );
   }
@@ -511,9 +580,9 @@ export function BuscadorMaterial({
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-label="Buscar material"
+        aria-label="Buscar plancha"
         disabled={loading}
-        placeholder={loading ? "Cargando materiales…" : "Buscar material o texto libre..."}
+        placeholder={loading ? "Cargando planchas…" : "Buscar plancha o texto libre..."}
         className="h-8 w-72 rounded-md border border-white/20 bg-white px-2.5 text-xs text-zinc-900 shadow-none outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-60"
         value={open ? query : etiqueta}
         onMouseDown={() => {
@@ -557,52 +626,69 @@ export function BuscadorMaterial({
               className={menuPanelClass}
               style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
             >
-        <ul ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto">
+        <ul ref={listRef} id={listId} role="listbox" className="max-h-80 overflow-y-auto">
           {filtrados.length === 0 && !ofreceLibre ? (
             <li className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {materials.length === 0
-                ? "Sin materiales. Cargalos en Stock → Materiales."
+              {planchas.length === 0
+                ? "Sin planchas disponibles en Stock."
                 : "Sin coincidencias."}
             </li>
           ) : null}
-          {filtrados.map((m, index) => {
-            const precio = precios?.[m.id];
+          {filtrados.map((p, index) => {
             const activo = index === active;
+            const espesor = etiquetaEspesorPlancha(p);
+            const titulo =
+              p.familia &&
+              p.familia.trim().toLowerCase() !== p.materialLabel.trim().toLowerCase()
+                ? `${p.familia} · ${p.materialLabel}`
+                : p.materialLabel;
             return (
-              <li key={m.id} role="option" aria-selected={value === m.id}>
+              <li key={p.id} role="option" aria-selected={chapaSugeridaId === p.id}>
                 <button
                   type="button"
                   className={cn(
                     menuItemClass,
-                    "gap-3",
+                    "items-start gap-3 py-2",
                     activo ? menuItemActiveClass : menuItemIdleClass,
                   )}
                   onMouseEnter={() => setActive(index)}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    elegirCatalogo(m.id);
+                    elegirPlancha(p);
                   }}
                 >
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="truncate text-sm font-medium">{m.name}</span>
-                    {m.espesor_mm != null && m.espesor_mm > 0 ? (
-                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                        {m.espesor_mm} mm
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-medium">{titulo}</span>
+                      {espesor ? (
+                        <span className="shrink-0 rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-800">
+                          {espesor}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground tabular-nums">
+                      {p.bulto} · {p.largoCm}×{p.anchoCm} cm
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right leading-tight">
+                    {p.precioM2 != null ? (
+                      <>
+                        <span className="block text-sm font-semibold tabular-nums">
+                          {prefijo}
+                          {formatPrecioMaterial(p.precioM2)}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground">/ m²</span>
+                      </>
+                    ) : (
+                      <span className="block text-[11px] text-muted-foreground">s/precio</span>
+                    )}
+                    {p.proveedor ? (
+                      <span className="mt-0.5 block max-w-[9rem] truncate text-[10px] text-muted-foreground">
+                        {p.proveedor}
                       </span>
                     ) : null}
                   </span>
-                  {precio != null ? (
-                    <span className="shrink-0 text-right leading-tight">
-                      <span className="block text-sm font-semibold tabular-nums">
-                        {prefijo}
-                        {formatPrecioMaterial(precio)}
-                      </span>
-                      <span className="block text-[10px] text-muted-foreground">
-                        / {m.unit || "m2"}
-                      </span>
-                    </span>
-                  ) : null}
                 </button>
               </li>
             );

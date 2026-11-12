@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -17,20 +16,38 @@ import {
 } from "@/components/ui/table";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
 import { ClienteFicha } from "@/components/clientes/ClienteFicha";
+import { BarraFiltrosLista } from "@/components/lista/BarraFiltrosLista";
 import {
   getClientById,
   listClients,
   type ClientePresupuesto,
 } from "@/lib/clients-api";
+import {
+  listPresupuestosResumen,
+  type PresupuestoRowList,
+} from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import {
+  clientePasaFiltros,
+  FILTROS_LISTA_VACIOS,
+  hayFiltrosPresupuestoParaCliente,
+  opcionesVendedores,
+  ORDEN_LISTA_DEFAULT,
+  ordenarClientes,
+  type FiltrosLista,
+  type OrdenLista,
+} from "@/lib/lista-filtros";
 
 export function ClientesCatalogo() {
   const [searchParams, setSearchParams] = useSearchParams();
   const cid = searchParams.get("cid");
 
   const [filas, setFilas] = useState<ClientePresupuesto[]>([]);
+  const [presupuestos, setPresupuestos] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
+  const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
+  const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editando, setEditando] = useState<ClientePresupuesto | null>(null);
   const [ficha, setFicha] = useState<ClientePresupuesto | null>(null);
@@ -38,16 +55,23 @@ export function ClientesCatalogo() {
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setFilas([]);
+      setPresupuestos([]);
       setCargando(false);
       return;
     }
     setCargando(true);
-    const { data, error } = await listClients();
-    if (error) {
-      toast.error(`No se pudieron cargar los clientes: ${error.message}`);
+    const [cli, pres] = await Promise.all([listClients(), listPresupuestosResumen()]);
+    if (cli.error) {
+      toast.error(`No se pudieron cargar los clientes: ${cli.error.message}`);
       setFilas([]);
     } else {
-      setFilas(data);
+      setFilas(cli.data);
+    }
+    if (pres.error) {
+      toast.error(pres.error.message);
+      setPresupuestos([]);
+    } else {
+      setPresupuestos(pres.data ?? []);
     }
     setCargando(false);
   }, []);
@@ -94,18 +118,26 @@ export function ClientesCatalogo() {
     };
   }, [cid, filas, cargando, setSearchParams]);
 
+  const vendedoresOpciones = useMemo(
+    () => opcionesVendedores(presupuestos),
+    [presupuestos],
+  );
+
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return filas;
-    return filas.filter(
-      (c) =>
-        c.nombre.toLowerCase().includes(q) ||
-        c.contacto.toLowerCase().includes(q) ||
-        c.tel.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q) ||
-        c.direccion.toLowerCase().includes(q),
-    );
-  }, [busqueda, filas]);
+    const porFiltro = filas.filter((c) => clientePasaFiltros(c, presupuestos, filtros));
+    const buscadas = !q
+      ? porFiltro
+      : porFiltro.filter(
+          (c) =>
+            c.nombre.toLowerCase().includes(q) ||
+            c.contacto.toLowerCase().includes(q) ||
+            c.tel.toLowerCase().includes(q) ||
+            c.email.toLowerCase().includes(q) ||
+            c.direccion.toLowerCase().includes(q),
+        );
+    return ordenarClientes(buscadas, presupuestos, orden, filtros);
+  }, [busqueda, filas, presupuestos, filtros, orden]);
 
   const abrirFicha = (c: ClientePresupuesto) => {
     setFicha(c);
@@ -168,21 +200,27 @@ export function ClientesCatalogo() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-md flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-9 pl-9"
-            placeholder="Buscar por nombre, contacto, tel…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
-        </div>
-        <Button type="button" className="gap-1.5 shrink-0" onClick={abrirNuevo}>
-          <Plus className="h-4 w-4" />
-          Nuevo cliente
-        </Button>
-      </div>
+      <BarraFiltrosLista
+        busqueda={busqueda}
+        onBusqueda={setBusqueda}
+        placeholder="Buscar por nombre, contacto, tel…"
+        ariaLabel="Buscar clientes"
+        filtros={filtros}
+        onFiltrosChange={setFiltros}
+        orden={orden}
+        onOrdenChange={setOrden}
+        vendedores={vendedoresOpciones.lista}
+        haySinVendedor={vendedoresOpciones.haySinVendedor}
+        clientes={[]}
+        mostrarCliente={false}
+        idPrefix="clientes"
+        trailing={
+          <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo}>
+            <Plus className="h-4 w-4" />
+            Nuevo cliente
+          </Button>
+        }
+      />
 
       {!isSupabaseConfigured ? (
         <p className="text-sm text-muted-foreground">
@@ -212,7 +250,9 @@ export function ClientesCatalogo() {
                   <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay clientes. Creá el primero o desde un presupuesto."
-                      : "Ningún cliente coincide con la búsqueda."}
+                      : busqueda.trim() || hayFiltrosPresupuestoParaCliente(filtros)
+                        ? "Ningún cliente coincide con los filtros."
+                        : "Ningún cliente coincide con la búsqueda."}
                   </TableCell>
                 </TableRow>
               ) : (

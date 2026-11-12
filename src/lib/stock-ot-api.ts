@@ -280,6 +280,7 @@ export async function consumirChapasConRetazos(opts: {
           remito_line_id: c.remito_line_id,
           chapa_origen_id: c.id,
           origen_placa: c.origen_placa,
+          precio_m2: c.precio_m2,
           motivo_estado: `Retazo de ${c.bulto}`,
         })
         .select("id")
@@ -545,6 +546,7 @@ export async function recortarPedazoBloqueado(opts: {
         remito_line_id: c.remito_line_id,
         chapa_origen_id: c.id,
         origen_placa: c.origen_placa,
+        precio_m2: c.precio_m2,
         motivo_estado: `Retazo recortado de ${c.bulto}`,
       })
       .select("id")

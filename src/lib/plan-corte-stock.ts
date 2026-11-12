@@ -146,6 +146,7 @@ export async function crearSobrantesPrevistosDePlan(opts: {
           remito_line_id: origen.remito_line_id,
           chapa_origen_id: origen.id,
           origen_placa: origen.origen_placa,
+          precio_m2: origen.precio_m2,
           ot_reserva_id: opts.otId,
           motivo_estado: `Sobrante previsto de ${origen.bulto}`,
         })
@@ -316,6 +317,7 @@ export async function confirmarCorteDeOt(opts: {
           remito_line_id: origen.remito_line_id,
           chapa_origen_id: origen.id,
           origen_placa: origen.origen_placa,
+          precio_m2: origen.precio_m2,
           motivo_estado: `Retazo de ${origen.bulto}`,
         })
         .select("id")

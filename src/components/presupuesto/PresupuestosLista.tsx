@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -11,10 +10,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { BarraFiltrosLista } from "@/components/lista/BarraFiltrosLista";
 import type { PresupuestoEstado } from "@/types/database";
 import { presupuestoEstaDormido, type PresupuestoRowLista } from "@/lib/presupuestos-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { etiquetaMedicionEstado } from "@/lib/medicion-reglas";
+import {
+  FILTROS_LISTA_VACIOS,
+  filaPasaFiltros,
+  filaPasaTab,
+  hayFiltrosActivos,
+  opcionesClientes,
+  opcionesVendedores,
+  ORDEN_LISTA_DEFAULT,
+  ordenarFilas,
+  type FiltrosLista,
+  type OrdenLista,
+} from "@/lib/lista-filtros";
 import { cn } from "@/lib/utils";
 import { urlWhatsapp } from "@/lib/whatsapp";
 
@@ -72,11 +84,6 @@ function statusLabel(s: PresupuestoEstado): string {
     default:
       return s;
   }
-}
-
-function estadoDesdeTab(tab: PresupuestoFiltroTab): PresupuestoEstado | undefined {
-  if (tab === "aprobados") return "aprobado";
-  return undefined;
 }
 
 function etiquetaEstado(row: PresupuestoRowLista): string {
@@ -155,28 +162,33 @@ export function PresupuestosLista({
   medicionPorId,
 }: Props) {
   const [q, setQ] = useState("");
-  const estadoFiltro = estadoDesdeTab(tab);
+  const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
+  const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
+
+  const vendedoresOpciones = useMemo(() => opcionesVendedores(rows), [rows]);
+  const clientesOpciones = useMemo(() => opcionesClientes(rows), [rows]);
 
   const visibles = useMemo(() => {
-    const porEstado =
-      tab === "dormidos"
-        ? rows.filter((r) => presupuestoEstaDormido(r))
-        : estadoFiltro === undefined
-          ? rows
-          : rows.filter((r) => r.status === estadoFiltro);
-    const needle = q.trim().toLowerCase();
-    if (!needle) return porEstado;
-    return porEstado.filter(
-      (r) =>
-        r.numero.toLowerCase().includes(needle) ||
-        r.cliente.toLowerCase().includes(needle) ||
-        r.contacto.toLowerCase().includes(needle) ||
-        r.tel.toLowerCase().includes(needle),
+    const filtradas = rows.filter(
+      (r) => filaPasaTab(r, tab) && filaPasaFiltros(r, filtros),
     );
-  }, [rows, estadoFiltro, tab, q]);
+    const needle = q.trim().toLowerCase();
+    const buscadas = !needle
+      ? filtradas
+      : filtradas.filter(
+          (r) =>
+            r.numero.toLowerCase().includes(needle) ||
+            r.cliente.toLowerCase().includes(needle) ||
+            r.contacto.toLowerCase().includes(needle) ||
+            r.tel.toLowerCase().includes(needle),
+        );
+    return ordenarFilas(buscadas, orden);
+  }, [rows, tab, filtros, q, orden]);
 
   const estadoVacioMsj = (): string => {
-    if (q.trim()) return "Ningún presupuesto coincide con la búsqueda.";
+    if (q.trim() || hayFiltrosActivos(filtros)) {
+      return "Ningún presupuesto coincide con los filtros.";
+    }
     if (tab === "dormidos") return "No hay presupuestos dormidos. Entran acá si pasan 7 días sin confirmarse.";
     if (tab === "aprobados") return "Todavía no hay presupuestos aprobados.";
     return "No hay presupuestos cargados.";
@@ -184,20 +196,24 @@ export function PresupuestosLista({
 
   return (
     <div className="flex flex-1 flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold tracking-tight text-foreground">
           {tituloFiltro(tab)}
         </h2>
-        <div className="w-full sm:max-w-xs">
-          <Input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por número, cliente o teléfono…"
-            className="h-9"
-            aria-label="Buscar presupuestos"
-          />
-        </div>
+        <BarraFiltrosLista
+          busqueda={q}
+          onBusqueda={setQ}
+          placeholder="Buscar por número, cliente o teléfono…"
+          ariaLabel="Buscar presupuestos"
+          filtros={filtros}
+          onFiltrosChange={setFiltros}
+          orden={orden}
+          onOrdenChange={setOrden}
+          vendedores={vendedoresOpciones.lista}
+          haySinVendedor={vendedoresOpciones.haySinVendedor}
+          clientes={clientesOpciones}
+          idPrefix="presupuestos"
+        />
       </div>
 
       {loading ? (

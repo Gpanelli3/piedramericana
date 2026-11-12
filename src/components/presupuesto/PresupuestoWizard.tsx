@@ -49,6 +49,7 @@ import {
   labelUnidad,
   materialPesoEstimadoDesdeOt,
   monedaDeListaPrecio,
+  precioMaterialDeOrden,
   precioSugeridoLinea,
   reponerPreciosSugeridosOrdenes,
   todasOtsExcluyenMec,
@@ -83,7 +84,11 @@ import {
   planificarCorte,
 } from "@/lib/plan-corte";
 import { listChapasCandidatasPlan } from "@/lib/plan-corte-stock";
-import { esChapaRetazo } from "@/lib/stock-api";
+import {
+  esChapaRetazo,
+  listPlanchasBuscador,
+  type PlanchaBuscadorRow,
+} from "@/lib/stock-api";
 
 export type { LineaItemOT } from "./wizard/types";
 
@@ -272,7 +277,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     {},
   );
   const [preciosMaterialEpoch, setPreciosMaterialEpoch] = useState(0);
-  const catalogoCargando = materialesCargando || articulosCargando;
+  const [planchas, setPlanchas] = useState<PlanchaBuscadorRow[]>([]);
+  const [planchasListas, setPlanchasListas] = useState(!isSupabaseConfigured);
+  const catalogoCargando =
+    materialesCargando || articulosCargando || !planchasListas;
 
   const [ordenes, setOrdenes] = useState<OrdenTrabajoWizard[]>(() => [
     newOrdenTrabajo(""),
@@ -390,18 +398,69 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   );
   const monedaPresupuesto = monedaDeListaPrecio(listaPrecioActual, monedaFallback);
 
+  const extraChapaKey = useMemo(
+    () =>
+      [...new Set(ordenes.map((o) => o.chapaSugeridaId).filter((id): id is string => Boolean(id)))]
+        .sort()
+        .join(","),
+    [ordenes],
+  );
+
+  const preciosPlancha = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of planchas) {
+      if (p.precioM2 != null && Number.isFinite(p.precioM2)) map[p.id] = p.precioM2;
+    }
+    return map;
+  }, [planchas]);
+
+  useEffect(() => {
+    if (presupuestoId && editCargando) return;
+    let cancelled = false;
+    void listPlanchasBuscador({
+      extraIds: extraChapaKey ? extraChapaKey.split(",") : [],
+    }).then(
+      (rows) => {
+        if (cancelled) return;
+        setPlanchas(rows);
+        setPlanchasListas(true);
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudieron cargar las planchas de Stock.",
+        );
+        setPlanchasListas(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [extraChapaKey, editCargando, presupuestoId]);
+
   useEffect(() => {
     if (editCargando) return;
     if (articulosBd.length === 0) return;
+    if (!planchasListas) return;
     if (omitirSyncPreciosRef.current) {
       if (listaPrecioId && preciosMaterialEpoch === 0) return;
       omitirSyncPreciosRef.current = false;
       return;
     }
     setOrdenes((prev) =>
-      reponerPreciosSugeridosOrdenes(prev, articulosBd, preciosMaterial),
+      reponerPreciosSugeridosOrdenes(prev, articulosBd, preciosMaterial, preciosPlancha),
     );
-  }, [editCargando, articulosBd, preciosMaterial, preciosMaterialEpoch, listaPrecioId]);
+  }, [
+    editCargando,
+    articulosBd,
+    preciosMaterial,
+    preciosMaterialEpoch,
+    listaPrecioId,
+    preciosPlancha,
+    planchasListas,
+  ]);
 
   useEffect(() => {
     if (!presupuestoId) {
@@ -552,10 +611,17 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           patch.piedraDelCliente === true && r.piedraDelCliente !== true;
         const materialId = patch.materialId;
         const cambiaMaterial = materialId != null && materialId !== r.materialId;
-        if (!activaPiedraCliente && !cambiaMaterial) return next;
-        const precioMaterial = next.piedraDelCliente
-          ? null
-          : (preciosMaterial[next.materialId] ?? null);
+        const cambiaChapa =
+          patch.chapaSugeridaId !== undefined &&
+          patch.chapaSugeridaId !== r.chapaSugeridaId;
+        if (!activaPiedraCliente && !cambiaMaterial && !cambiaChapa) return next;
+        const precioMaterial = precioMaterialDeOrden({
+          piedraDelCliente: next.piedraDelCliente,
+          materialId: next.materialId,
+          chapaSugeridaId: next.chapaSugeridaId,
+          preciosMaterial,
+          preciosPlancha,
+        });
         next.items = next.items.map((linea) => {
           const articulo = articulosBd.find((a) => a.id === linea.articuloId);
           if (!articulo || !esArticuloCobraMaterial(articulo.codigo)) return linea;
@@ -775,8 +841,15 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       precioUnitario: precioSugeridoLinea({
         codigoArticulo: artBd.codigo,
         precioTrabajo: artBd.precio,
-        precioMaterial:
-          ot?.piedraDelCliente ? null : ot ? (preciosMaterial[ot.materialId] ?? null) : null,
+        precioMaterial: ot
+          ? precioMaterialDeOrden({
+              piedraDelCliente: ot.piedraDelCliente,
+              materialId: ot.materialId,
+              chapaSugeridaId: ot.chapaSugeridaId,
+              preciosMaterial,
+              preciosPlancha,
+            })
+          : null,
       }),
       cantidad: "1",
       altoM: "0",
@@ -1349,8 +1422,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               catalogoCargando={catalogoCargando}
               ordenes={ordenes}
               materials={materials}
-              materialesCargando={materialesCargando}
-              preciosMaterial={preciosMaterial}
+              planchas={planchas}
+              materialesCargando={materialesCargando || !planchasListas}
               monedaMaterial={monedaPresupuesto}
               patchOrden={patchOrden}
               addOrdenTrabajo={addOrdenTrabajo}

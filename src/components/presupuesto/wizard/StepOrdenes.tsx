@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { MaterialWizardRow } from "@/types/material-catalog";
+import type { PlanchaBuscadorRow } from "@/lib/stock-api";
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OtUbicacionYPlano } from "./OtUbicacionYPlano";
@@ -42,8 +43,8 @@ export type StepOrdenesProps = {
   catalogoCargando: boolean;
   ordenes: OrdenTrabajoWizard[];
   materials: MaterialWizardRow[];
+  planchas?: PlanchaBuscadorRow[];
   materialesCargando?: boolean;
-  preciosMaterial?: Record<string, number>;
   monedaMaterial?: "ars" | "usd";
   patchOrden: (key: string, patch: Partial<OrdenTrabajoWizard>) => void;
   addOrdenTrabajo: () => void;
@@ -63,8 +64,8 @@ export function StepOrdenes({
   catalogoCargando,
   ordenes,
   materials,
+  planchas = [],
   materialesCargando = false,
-  preciosMaterial,
   monedaMaterial = "usd",
   patchOrden,
   addOrdenTrabajo,
@@ -145,19 +146,20 @@ export function StepOrdenes({
                       />
                       <BuscadorMaterial
                         materials={materials}
+                        planchas={planchas}
                         value={ot.materialId}
+                        chapaSugeridaId={ot.chapaSugeridaId}
                         textoLibre={ot.materialLibre ?? ""}
                         loading={materialesCargando}
-                        precios={preciosMaterial}
                         moneda={monedaMaterial}
                         soloTextoLibre={ot.piedraDelCliente === true}
-                            onChange={(next) =>
+                        onChange={(next) =>
                           patchOrden(ot.key, {
                             materialId: next.materialId,
                             materialLibre: next.materialLibre,
-                            chapaSugeridaId: null,
-                            chapaSugeridaBulto: "",
-                            chapaSugeridaLabel: "",
+                            chapaSugeridaId: next.chapaSugeridaId,
+                            chapaSugeridaBulto: next.chapaSugeridaBulto,
+                            chapaSugeridaLabel: next.chapaSugeridaLabel,
                             planCorte: null,
                           })
                         }

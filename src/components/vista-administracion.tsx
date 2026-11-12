@@ -5,7 +5,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -21,23 +20,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Banknote,
   Wallet,
   TrendingUp,
   ChevronDown,
-  Search,
   Download,
   FileSpreadsheet,
   FileText,
   Printer,
-  X,
 } from "lucide-react";
 import {
   listPresupuestosResumen,
@@ -47,11 +37,18 @@ import { isSupabaseConfigured } from "@/lib/supabase";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { exportVentasCsv } from "@/lib/reportes-export-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
-import { FechaInput } from "@/components/ui/fecha-input";
-import { fechaEnRango, rangoFechasInvertido } from "@/lib/fecha-rango";
-
-const VENDEDOR_TODOS = "__all__";
-const VENDEDOR_SIN = "__none__";
+import { BarraFiltrosLista } from "@/components/lista/BarraFiltrosLista";
+import {
+  FILTROS_LISTA_VACIOS,
+  filaPasaFiltros,
+  hayFiltrosActivos,
+  opcionesClientes,
+  opcionesVendedores,
+  ORDEN_LISTA_DEFAULT,
+  ordenarFilas,
+  type FiltrosLista,
+  type OrdenLista,
+} from "@/lib/lista-filtros";
 
 function formatMonto(n: number, moneda: "ars" | "usd") {
   const opts: Intl.NumberFormatOptions = {
@@ -82,9 +79,8 @@ export function VistaAdministracion() {
   const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
-  const [vendedorId, setVendedorId] = useState("");
+  const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
+  const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
   const [cobrosAbierto, setCobrosAbierto] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [filaCobros, setFilaCobros] = useState<PresupuestoRowList | null>(null);
@@ -137,46 +133,27 @@ export function VistaAdministracion() {
     limpiarPid();
   }, [cargando, filas, searchParams, limpiarPid]);
 
-  const vendedoresOpciones = useMemo(() => {
-    const map = new Map<string, string>();
-    let haySinVendedor = false;
-    for (const r of filas) {
-      if (!r.created_by) {
-        haySinVendedor = true;
-        continue;
-      }
-      const nombre = r.vendedor_nombre?.trim() || "Sin nombre";
-      if (!map.has(r.created_by)) map.set(r.created_by, nombre);
-    }
-    const lista = [...map.entries()]
-      .map(([id, nombre]) => ({ id, nombre }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-    return { lista, haySinVendedor };
-  }, [filas]);
+  const vendedoresOpciones = useMemo(() => opcionesVendedores(filas), [filas]);
+  const clientesOpciones = useMemo(() => opcionesClientes(filas), [filas]);
 
-  const rangoInvertido = rangoFechasInvertido(fechaDesde, fechaHasta);
-
-  const hayFiltrosActivos =
-    Boolean(busqueda.trim()) || Boolean(fechaDesde) || Boolean(fechaHasta) || Boolean(vendedorId);
+  const hayRecorte =
+    Boolean(busqueda.trim()) || hayFiltrosActivos(filtros);
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return filas.filter((r) => {
-      if (!fechaEnRango(r.created_at, fechaDesde, fechaHasta)) return false;
-      if (vendedorId === VENDEDOR_SIN) {
-        if (r.created_by) return false;
-      } else if (vendedorId && r.created_by !== vendedorId) {
-        return false;
-      }
-      if (!q) return true;
-      const etapa = etiquetaEtapaOt(r.ot_etapa, r.ot_estado).toLowerCase();
-      return (
-        r.numero.toLowerCase().includes(q) ||
-        r.cliente.toLowerCase().includes(q) ||
-        etapa.includes(q)
-      );
-    });
-  }, [filas, busqueda, fechaDesde, fechaHasta, vendedorId]);
+    const porFiltro = filas.filter((r) => filaPasaFiltros(r, filtros));
+    const buscadas = !q
+      ? porFiltro
+      : porFiltro.filter((r) => {
+          const etapa = etiquetaEtapaOt(r.ot_etapa, r.ot_estado).toLowerCase();
+          return (
+            r.numero.toLowerCase().includes(q) ||
+            r.cliente.toLowerCase().includes(q) ||
+            etapa.includes(q)
+          );
+        });
+    return ordenarFilas(buscadas, orden);
+  }, [filas, busqueda, filtros, orden]);
 
   const kpis = useMemo(() => {
     let saldoUsd = 0;
@@ -208,17 +185,10 @@ export function VistaAdministracion() {
     };
   }, [filtradas]);
 
-  function limpiarFiltros() {
-    setBusqueda("");
-    setFechaDesde("");
-    setFechaHasta("");
-    setVendedorId("");
-  }
-
   function paramsRango(): URLSearchParams {
     const p = new URLSearchParams();
-    if (fechaDesde) p.set("desde", fechaDesde);
-    if (fechaHasta) p.set("hasta", fechaHasta);
+    if (filtros.fechaDesde) p.set("desde", filtros.fechaDesde);
+    if (filtros.fechaHasta) p.set("hasta", filtros.fechaHasta);
     return p;
   }
 
@@ -229,7 +199,10 @@ export function VistaAdministracion() {
 
   async function onExportExcel() {
     setExportBusy(true);
-    const res = await exportVentasCsv({ desde: fechaDesde, hasta: fechaHasta });
+    const res = await exportVentasCsv({
+      desde: filtros.fechaDesde,
+      hasta: filtros.fechaHasta,
+    });
     setExportBusy(false);
     if (res.error) toast.error(res.error.message);
     else toast.success("Excel descargado.");
@@ -310,7 +283,7 @@ export function VistaAdministracion() {
                   {cargando ? "…" : kpis.totalAprob}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {hayFiltrosActivos ? "Según filtros activos" : "Presupuestos en estado aprobado"}
+                  {hayRecorte ? "Según filtros activos" : "Presupuestos en estado aprobado"}
                 </p>
               </div>
             </CardContent>
@@ -333,7 +306,7 @@ export function VistaAdministracion() {
                   }
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {hayFiltrosActivos ? "Según filtros activos" : "Suma de los totales aprobados"}
+                  {hayRecorte ? "Según filtros activos" : "Suma de los totales aprobados"}
                 </p>
               </div>
             </CardContent>
@@ -367,82 +340,20 @@ export function VistaAdministracion() {
           </Card>
         </div>
 
-        <div className="flex flex-1 flex-wrap gap-2">
-            <div className="relative max-w-md min-w-[200px] flex-1">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="h-9 pl-9 pr-9"
-                placeholder="Buscar por obra, cliente o etapa…"
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                aria-label="Buscar en obras y cobros"
-              />
-              {busqueda.trim() ? (
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => setBusqueda("")}
-                  aria-label="Limpiar búsqueda"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              ) : null}
-            </div>
-            <div className="w-[160px] shrink-0">
-              <FechaInput
-                id="ventas-fecha-desde"
-                value={fechaDesde}
-                onChange={setFechaDesde}
-                placeholder="Desde"
-                className="h-9"
-              />
-            </div>
-            <div className="w-[160px] shrink-0">
-              <FechaInput
-                id="ventas-fecha-hasta"
-                value={fechaHasta}
-                onChange={setFechaHasta}
-                placeholder="Hasta"
-                className="h-9"
-              />
-            </div>
-            <Select
-              value={vendedorId || VENDEDOR_TODOS}
-              onValueChange={(v) => setVendedorId(v === VENDEDOR_TODOS ? "" : v)}
-            >
-              <SelectTrigger className="h-9 w-48">
-                <SelectValue placeholder="Todos los vendedores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={VENDEDOR_TODOS}>Todos los vendedores</SelectItem>
-                {vendedoresOpciones.haySinVendedor ? (
-                  <SelectItem value={VENDEDOR_SIN}>Sin vendedor</SelectItem>
-                ) : null}
-                {vendedoresOpciones.lista.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.nombre}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {hayFiltrosActivos ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-9 gap-1.5 text-muted-foreground"
-                onClick={limpiarFiltros}
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-                Limpiar
-              </Button>
-            ) : null}
-            {rangoInvertido ? (
-              <p className="w-full text-xs text-destructive">
-                La fecha desde es posterior a hasta.
-              </p>
-            ) : null}
-          </div>
+        <BarraFiltrosLista
+          busqueda={busqueda}
+          onBusqueda={setBusqueda}
+          placeholder="Buscar por obra, cliente o etapa…"
+          ariaLabel="Buscar en obras y cobros"
+          filtros={filtros}
+          onFiltrosChange={setFiltros}
+          orden={orden}
+          onOrdenChange={setOrden}
+          vendedores={vendedoresOpciones.lista}
+          haySinVendedor={vendedoresOpciones.haySinVendedor}
+          clientes={clientesOpciones}
+          idPrefix="ventas"
+        />
 
         <Card className="border-border shadow-sm">
           <CardContent className="p-0">
@@ -486,7 +397,7 @@ export function VistaAdministracion() {
                   ) : filtradas.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
-                        {hayFiltrosActivos ?
+                        {hayRecorte ?
                           "Ninguna venta coincide con los filtros."
                         : "No hay presupuestos aprobados."}
                       </TableCell>

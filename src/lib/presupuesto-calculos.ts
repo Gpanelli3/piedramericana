@@ -113,12 +113,12 @@ export function esUnidadPorCantidad(u: UnidadArticuloDb): boolean {
   return u === "UNI" || u === "PIEZA" || u === "KG" || u === "TON";
 }
 
-/** Sub-ítem "Pieza": cobra la piedra (m² × lista del material), no el precio fijo de Trabajos. */
+/** Sub-ítem "Pieza": cobra la piedra (m² × precio de la plancha), no el precio fijo de Trabajos. */
 export function esArticuloCobraMaterial(codigo: string): boolean {
   return codigo.trim().toUpperCase() === "PIEZA";
 }
 
-/** Precio inicial de una línea: Pieza usa lista del material; el resto, precio fijo del trabajo. */
+/** Precio inicial de una línea: Pieza usa la plancha (o lista si no hay chapa); el resto, precio fijo del trabajo. */
 export function precioSugeridoLinea(opts: {
   codigoArticulo: string;
   precioTrabajo: number | null | undefined;
@@ -134,6 +134,23 @@ export function precioSugeridoLinea(opts: {
     : "";
 }
 
+/** $/m² de Pieza: plancha elegida si hay; si no, lista de materiales. */
+export function precioMaterialDeOrden(opts: {
+  piedraDelCliente?: boolean;
+  materialId: string;
+  chapaSugeridaId: string | null;
+  preciosMaterial: Record<string, number>;
+  preciosPlancha?: Record<string, number>;
+}): number | null {
+  if (opts.piedraDelCliente) return null;
+  if (opts.chapaSugeridaId) {
+    const dePlancha = opts.preciosPlancha?.[opts.chapaSugeridaId];
+    return dePlancha != null && Number.isFinite(dePlancha) ? dePlancha : null;
+  }
+  const deLista = opts.preciosMaterial[opts.materialId];
+  return deLista != null && Number.isFinite(deLista) ? deLista : null;
+}
+
 /** Moneda del presupuesto = moneda de la lista. Sin lista, el fallback. */
 export function monedaDeListaPrecio(
   lista: { moneda?: string | null } | null | undefined,
@@ -144,11 +161,12 @@ export function monedaDeListaPrecio(
   return fallback;
 }
 
-/** Reemplaza precios de línea por los sugeridos de catálogo / lista de materiales. */
+/** Reemplaza precios de línea por los sugeridos de plancha / catálogo. */
 export function reponerPreciosSugeridosOrdenes(
   ordenes: OrdenTrabajoWizard[],
   articulos: ArticuloConPrecio[],
   preciosMaterial: Record<string, number>,
+  preciosPlancha: Record<string, number> = {},
 ): OrdenTrabajoWizard[] {
   let changed = false;
   const next = ordenes.map((orden) => ({
@@ -160,9 +178,13 @@ export function reponerPreciosSugeridosOrdenes(
       const precioUnitario = precioSugeridoLinea({
         codigoArticulo: articulo.codigo,
         precioTrabajo: articulo.precio,
-        precioMaterial: orden.piedraDelCliente
-          ? null
-          : (preciosMaterial[orden.materialId] ?? null),
+        precioMaterial: precioMaterialDeOrden({
+          piedraDelCliente: orden.piedraDelCliente,
+          materialId: orden.materialId,
+          chapaSugeridaId: orden.chapaSugeridaId,
+          preciosMaterial,
+          preciosPlancha,
+        }),
       });
       if (linea.precioUnitario === precioUnitario) return linea;
       changed = true;

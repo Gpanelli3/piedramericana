@@ -1310,6 +1310,7 @@ export interface Database {
           rotura_momento: RoturaMomentoDb | null;
           ot_rotura_id: string | null;
           cliente_rotura: string | null;
+          precio_m2: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -1332,6 +1333,7 @@ export interface Database {
           rotura_momento?: RoturaMomentoDb | null;
           ot_rotura_id?: string | null;
           cliente_rotura?: string | null;
+          precio_m2?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1354,6 +1356,7 @@ export interface Database {
           rotura_momento?: RoturaMomentoDb | null;
           ot_rotura_id?: string | null;
           cliente_rotura?: string | null;
+          precio_m2?: number | null;
           created_at?: string;
           updated_at?: string;
         };

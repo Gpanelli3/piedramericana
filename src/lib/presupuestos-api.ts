@@ -21,6 +21,7 @@ export type PresupuestoRowLista = {
   id: string;
   numero: string;
   cliente: string;
+  client_id: string | null;
   /** Persona de contacto del presupuesto, o del cliente si el presupuesto no la tiene. */
   contacto: string;
   /** Teléfono del presupuesto, o del cliente si el presupuesto no lo tiene. */
@@ -30,6 +31,9 @@ export type PresupuestoRowLista = {
   status: PresupuestoEstado;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
+  vendedor_nombre: string | null;
+  saldo_misma_moneda: number | null;
 };
 
 type ClienteMaestroMini = {
@@ -41,11 +45,13 @@ type PresupuestoListaDb = {
   id: string;
   numero: string;
   cliente: string;
+  client_id: string | null;
   total: number;
   moneda: "ars" | "usd";
   status: PresupuestoEstado;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
   contacto: string | null;
   tel: string | null;
   clients: ClienteMaestroMini | ClienteMaestroMini[] | null;
@@ -93,6 +99,39 @@ export function presupuestoEstaDormido(
   return creado <= new Date(limitePresupuestoDormido(ahora)).getTime();
 }
 
+async function nombresVendedoresPorIds(
+  ids: Array<string | null | undefined>,
+): Promise<Map<string, string>> {
+  const creatorIds = [
+    ...new Set(
+      ids.filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  const nombrePorId = new Map<string, string>();
+  if (creatorIds.length === 0) return nombrePorId;
+  const { data: usuarios, error: uErr } = await supabase
+    .from("usuarios")
+    .select("id, full_name")
+    .in("id", creatorIds);
+  if (!uErr && usuarios) {
+    for (const u of usuarios) {
+      const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
+      if (u.id && name) nombrePorId.set(u.id, name);
+    }
+  }
+  return nombrePorId;
+}
+
+function conNombreVendedor<T extends { created_by: string | null }>(
+  rows: T[],
+  nombrePorId: Map<string, string>,
+): Array<T & { vendedor_nombre: string | null }> {
+  return rows.map((r) => ({
+    ...r,
+    vendedor_nombre: r.created_by ? nombrePorId.get(r.created_by) ?? null : null,
+  }));
+}
+
 export async function listPresupuestosLista(): Promise<{
   data: PresupuestoRowLista[] | null;
   error: Error | null;
@@ -100,12 +139,12 @@ export async function listPresupuestosLista(): Promise<{
   const { data, error } = await supabase
     .from("presupuestos")
     .select(
-      "id, numero, cliente, total, moneda, status, created_at, updated_at, contacto:payload->>contacto, tel:payload->>tel, clients(contact_name, phone)",
+      "id, numero, cliente, client_id, total, moneda, status, created_at, updated_at, created_by, contacto:payload->>contacto, tel:payload->>tel, clients(contact_name, phone)",
     )
     .order("created_at", { ascending: false })
     .returns<PresupuestoListaDb[]>();
   if (error) return { data: null, error: new Error(error.message) };
-  const filas: PresupuestoRowLista[] = (data ?? []).map((row) => {
+  const base = (data ?? []).map((row) => {
     const contacto = armarContactoLista({
       contactoPayload: row.contacto,
       telPayload: row.tel,
@@ -115,6 +154,7 @@ export async function listPresupuestosLista(): Promise<{
       id: row.id,
       numero: row.numero,
       cliente: row.cliente,
+      client_id: row.client_id ?? null,
       contacto: contacto.contacto,
       tel: contacto.tel,
       total: row.total,
@@ -122,16 +162,38 @@ export async function listPresupuestosLista(): Promise<{
       status: row.status,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      created_by: row.created_by ?? null,
     };
   });
-  return { data: filas, error: null };
+  try {
+    const merged = await mergeVentasResumenIntoPresupuestos(base);
+    const nombrePorId = await nombresVendedoresPorIds(merged.map((r) => r.created_by));
+    const filas: PresupuestoRowLista[] = conNombreVendedor(merged, nombrePorId).map((r) => ({
+      id: r.id,
+      numero: r.numero,
+      cliente: r.cliente,
+      client_id: r.client_id,
+      contacto: r.contacto,
+      tel: r.tel,
+      total: r.total,
+      moneda: r.moneda,
+      status: r.status,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      created_by: r.created_by,
+      vendedor_nombre: r.vendedor_nombre,
+      saldo_misma_moneda: r.saldo_misma_moneda,
+    }));
+    return { data: filas, error: null };
+  } catch (e) {
+    return {
+      data: null,
+      error: e instanceof Error ? e : new Error("No se pudo cargar datos de venta."),
+    };
+  }
 }
 
-export type PresupuestoRowList = PresupuestoRowLista &
-  VentaResumenMerged & {
-    created_by: string | null;
-    vendedor_nombre: string | null;
-  };
+export type PresupuestoRowList = PresupuestoRowLista & VentaResumenMerged;
 
 export async function listPresupuestosResumen(): Promise<{
   data: PresupuestoRowList[] | null;
@@ -139,43 +201,37 @@ export async function listPresupuestosResumen(): Promise<{
 }> {
   const { data, error } = await supabase
     .from("presupuestos")
-    .select("id, numero, cliente, total, moneda, status, created_at, updated_at, created_by")
+    .select(
+      "id, numero, cliente, client_id, total, moneda, status, created_at, updated_at, created_by",
+    )
     .order("created_at", { ascending: false });
   if (error) return { data: null, error: new Error(error.message) };
   try {
-    const base = (data ?? []) as Array<
-      PresupuestoRowLista & { created_by: string | null }
-    >;
-    const merged = await mergeVentasResumenIntoPresupuestos(base);
-
-    const creatorIds = [
-      ...new Set(
-        merged
-          .map((r) => r.created_by)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
-      ),
-    ];
-    const nombrePorId = new Map<string, string>();
-    if (creatorIds.length > 0) {
-      const { data: usuarios, error: uErr } = await supabase
-        .from("usuarios")
-        .select("id, full_name")
-        .in("id", creatorIds);
-      if (!uErr && usuarios) {
-        for (const u of usuarios) {
-          const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
-          if (u.id && name) nombrePorId.set(u.id, name);
-        }
-      }
-    }
-
-    const withVendedor: PresupuestoRowList[] = merged.map((r) => ({
-      ...r,
-      contacto: textoContacto(r.contacto),
-      tel: textoContacto(r.tel),
-      created_by: r.created_by ?? null,
-      vendedor_nombre: r.created_by ? nombrePorId.get(r.created_by) ?? null : null,
+    const base = (data ?? []).map((row) => ({
+      id: row.id,
+      numero: row.numero,
+      cliente: row.cliente,
+      client_id: row.client_id ?? null,
+      contacto: "",
+      tel: "",
+      total: row.total,
+      moneda: row.moneda as "ars" | "usd",
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      created_by: row.created_by ?? null,
     }));
+    const merged = await mergeVentasResumenIntoPresupuestos(base);
+    const nombrePorId = await nombresVendedoresPorIds(merged.map((r) => r.created_by));
+    const withVendedor: PresupuestoRowList[] = conNombreVendedor(merged, nombrePorId).map(
+      (r) => ({
+        ...r,
+        contacto: textoContacto(r.contacto),
+        tel: textoContacto(r.tel),
+        vendedor_nombre: r.vendedor_nombre,
+        saldo_misma_moneda: r.saldo_misma_moneda,
+      }),
+    );
 
     return { data: withVendedor, error: null };
   } catch (e) {

@@ -41,6 +41,14 @@ function formatM2(n: number): string {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
+function etiquetaPrecioM2(precio: number | null | undefined): string | null {
+  if (precio == null || !Number.isFinite(precio)) return null;
+  return `US$ ${precio.toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })} / m²`;
+}
+
 function estadoBadgeClass(estado: ChapaRow["estado"]): string {
   if (estado === "Disponible") {
     return "border border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800";
@@ -330,6 +338,7 @@ export function DisponibilidadMaterialSheet({
                             {c.largoCm} × {c.anchoCm} cm · {formatM2(m2Chapa)} m²
                             {c.espesorCm != null && c.espesorCm > 0 ? ` · ${c.espesorCm} cm` : ""}
                             {c.loteCodigo ? ` · lote ${c.loteCodigo}` : ""}
+                            {etiquetaPrecioM2(c.precioM2) ? ` · ${etiquetaPrecioM2(c.precioM2)}` : ""}
                           </p>
                           {pct != null ? (
                             <div className="space-y-1">
@@ -376,6 +385,9 @@ export function DisponibilidadMaterialSheet({
                                     <span className="text-muted-foreground">
                                       {" "}
                                       · {h.largoCm} × {h.anchoCm} cm · {formatM2(m2(h.largoCm, h.anchoCm))} m²
+                                      {etiquetaPrecioM2(h.precioM2)
+                                        ? ` · ${etiquetaPrecioM2(h.precioM2)}`
+                                        : ""}
                                     </span>
                                   </span>
                                   <Badge variant="secondary" className={cn("shrink-0", estadoBadgeClass(h.estado))}>
@@ -413,6 +425,7 @@ export function DisponibilidadMaterialSheet({
                         <span className="text-muted-foreground">
                           {" "}
                           · {c.largoCm} × {c.anchoCm} cm · {formatM2(m2(c.largoCm, c.anchoCm))} m²
+                          {etiquetaPrecioM2(c.precioM2) ? ` · ${etiquetaPrecioM2(c.precioM2)}` : ""}
                         </span>
                       </span>
                       <Badge variant="secondary" className={estadoBadgeClass(c.estado)}>

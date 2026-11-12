@@ -18,6 +18,7 @@ export type ClientePresupuesto = {
   notes: string;
   esAgenteRetencion: boolean;
   retencionPorcentaje: number | null;
+  created_at: string;
 };
 
 export type ClienteInput = {
@@ -50,6 +51,7 @@ export function clientRowToClientePresupuesto(row: ClientRow): ClientePresupuest
     notes: row.notes ?? "",
     esAgenteRetencion: esAgente,
     retencionPorcentaje: esAgente ? pct : null,
+    created_at: row.created_at,
   };
 }
 

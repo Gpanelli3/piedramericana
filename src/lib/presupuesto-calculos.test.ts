@@ -10,6 +10,7 @@ import {
   formatMetraje,
   importeMecPresupuesto,
   monedaDeListaPrecio,
+  precioMaterialDeOrden,
   precioSugeridoLinea,
   reponerPreciosSugeridosOrdenes,
   trioM2DeOrden,
@@ -338,6 +339,128 @@ describe("reponerPreciosSugeridosOrdenes", () => {
     const next = reponerPreciosSugeridosOrdenes(ordenes, articulos, { "mat-1": 220 });
     expect(next[0]?.items[0]?.precioUnitario).toBe("220");
     expect(next[0]?.items[1]?.precioUnitario).toBe("40");
+  });
+
+  it("usa el precio de la plancha elegida en Pieza", () => {
+    const articulos: ArticuloConPrecio[] = [
+      art({ id: "pieza", codigo: "PIEZA", descripcion: "Pieza", unidad: "M2", precio: 10 }),
+    ];
+    const ordenes: OrdenTrabajoWizard[] = [
+      {
+        key: "ot1",
+        titulo: "Cocina",
+        fecha: "",
+        tecnicoId: "",
+        fechaMedicion: "",
+        fechaEntrega: "",
+        materialId: "mat-1",
+        chapaSugeridaId: "chapa-9",
+        chapaSugeridaBulto: "#9001",
+        chapaSugeridaLabel: "Calacatta",
+        tipoColocacion: "bajo",
+        bachaId: "",
+        llevaBacha: false,
+        bachaOrigen: "propia",
+        nafe: "",
+        items: [
+          {
+            key: "l1",
+            articuloId: "pieza",
+            modoIngreso: "manual",
+            cantidad: "1",
+            precioUnitario: "90",
+            altoM: "",
+            anchoM: "",
+            desperdicioPct: "",
+          },
+        ],
+        direccionObra: "",
+        obraLat: null,
+        obraLng: null,
+        obraFormattedAddress: "",
+        referenciaObra: "",
+        planoAdjunto: null,
+        mMedicion: false,
+        mEntrega: false,
+        mColocacion: false,
+        totalMec: "",
+        excluirMec: false,
+        obsMec: "",
+        panelExpandido: true,
+      },
+    ];
+    const next = reponerPreciosSugeridosOrdenes(
+      ordenes,
+      articulos,
+      { "mat-1": 220 },
+      { "chapa-9": 180 },
+    );
+    expect(next[0]?.items[0]?.precioUnitario).toBe("180");
+  });
+
+  it("deja Pieza vacía si la plancha no tiene precio", () => {
+    expect(
+      precioMaterialDeOrden({
+        materialId: "mat-1",
+        chapaSugeridaId: "chapa-9",
+        preciosMaterial: { "mat-1": 220 },
+        preciosPlancha: {},
+      }),
+    ).toBeNull();
+    const articulos: ArticuloConPrecio[] = [
+      art({ id: "pieza", codigo: "PIEZA", descripcion: "Pieza", unidad: "M2", precio: 10 }),
+    ];
+    const ordenes: OrdenTrabajoWizard[] = [
+      {
+        key: "ot1",
+        titulo: "Cocina",
+        fecha: "",
+        tecnicoId: "",
+        fechaMedicion: "",
+        fechaEntrega: "",
+        materialId: "mat-1",
+        chapaSugeridaId: "chapa-9",
+        chapaSugeridaBulto: "#9001",
+        chapaSugeridaLabel: "Calacatta",
+        tipoColocacion: "bajo",
+        bachaId: "",
+        llevaBacha: false,
+        bachaOrigen: "propia",
+        nafe: "",
+        items: [
+          {
+            key: "l1",
+            articuloId: "pieza",
+            modoIngreso: "manual",
+            cantidad: "1",
+            precioUnitario: "90",
+            altoM: "",
+            anchoM: "",
+            desperdicioPct: "",
+          },
+        ],
+        direccionObra: "",
+        obraLat: null,
+        obraLng: null,
+        obraFormattedAddress: "",
+        referenciaObra: "",
+        planoAdjunto: null,
+        mMedicion: false,
+        mEntrega: false,
+        mColocacion: false,
+        totalMec: "",
+        excluirMec: false,
+        obsMec: "",
+        panelExpandido: true,
+      },
+    ];
+    const next = reponerPreciosSugeridosOrdenes(
+      ordenes,
+      articulos,
+      { "mat-1": 220 },
+      {},
+    );
+    expect(next[0]?.items[0]?.precioUnitario).toBe("");
   });
 });
 

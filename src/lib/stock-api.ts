@@ -27,6 +27,7 @@ export type ChapaRow = {
   motivoEstado?: string | null;
   origenPlaca?: OrigenPlaca | null;
   chapaOrigenId?: string | null;
+  precioM2?: number | null;
 };
 
 export type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
@@ -39,13 +40,19 @@ type ScrapInsert = Database["public"]["Tables"]["stock_scraps"]["Insert"];
 
 /** Inventario inicial si Supabase no está configurado */
 export const STOCK_CHAPAS_INICIAL: ChapaRow[] = [
-  { bulto: "#8890", material: "Granito Negro Brasil Extra 20mm", largoCm: 320, anchoCm: 180, estado: "Disponible" },
-  { bulto: "#8891", material: "Silestone Blanco Stellar", largoCm: 305, anchoCm: 140, estado: "Disponible" },
-  { bulto: "#8876", material: "Cuarcita Blue Roma", largoCm: 290, anchoCm: 165, estado: "Reservada" },
-  { bulto: "#8850", material: "Dekton TRILIUM 12mm", largoCm: 320, anchoCm: 145, estado: "Disponible" },
-  { bulto: "#8851", material: "Dekton TRILIUM 12mm", largoCm: 300, anchoCm: 150, estado: "Reservada" },
-  { bulto: "#8845", material: "Granito Black Cosmic Leather 20mm", largoCm: 310, anchoCm: 175, estado: "Disponible" },
+  { bulto: "#8890", material: "Granito Negro Brasil Extra 20mm", largoCm: 320, anchoCm: 180, estado: "Disponible", precioM2: 95 },
+  { bulto: "#8891", material: "Silestone Blanco Stellar", largoCm: 305, anchoCm: 140, estado: "Disponible", precioM2: 180 },
+  { bulto: "#8876", material: "Cuarcita Blue Roma", largoCm: 290, anchoCm: 165, estado: "Reservada", precioM2: 210 },
+  { bulto: "#8850", material: "Dekton TRILIUM 12mm", largoCm: 320, anchoCm: 145, estado: "Disponible", precioM2: 160 },
+  { bulto: "#8851", material: "Dekton TRILIUM 12mm", largoCm: 300, anchoCm: 150, estado: "Reservada", precioM2: 160 },
+  { bulto: "#8845", material: "Granito Black Cosmic Leather 20mm", largoCm: 310, anchoCm: 175, estado: "Disponible", precioM2: 110 },
 ];
+
+function numOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 export function slabRowToChapa(row: {
   id: string;
@@ -61,6 +68,7 @@ export function slabRowToChapa(row: {
   motivo_estado?: string | null;
   origen_placa?: OrigenPlaca | null;
   chapa_origen_id?: string | null;
+  precio_m2?: number | null;
 }): ChapaRow {
   return {
     id: row.id,
@@ -76,60 +84,71 @@ export function slabRowToChapa(row: {
     motivoEstado: row.motivo_estado ?? null,
     origenPlaca: row.origen_placa ?? null,
     chapaOrigenId: row.chapa_origen_id ?? null,
+    precioM2: numOrNull(row.precio_m2),
   };
+}
+
+const CHAPA_COLS =
+  "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,precio_m2,created_at";
+const CHAPA_COLS_SIN_PRECIO =
+  "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at";
+const CHAPA_COLS_MIN =
+  "id,bulto,material_id,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at";
+
+function mapChapaSelectRow(r: {
+  id: string;
+  bulto: string;
+  material_label: string;
+  material_id: string | null;
+  largo_cm: number;
+  ancho_cm: number;
+  estado: string;
+  lote_codigo: string | null;
+  ot_reserva_id: string | null;
+  motivo_estado?: string | null;
+  chapa_origen_id?: string | null;
+  espesor_cm?: number | null;
+  origen_placa?: OrigenPlaca | null;
+  precio_m2?: number | null;
+}): ChapaRow {
+  return slabRowToChapa({
+    id: r.id,
+    bulto: r.bulto,
+    material_label: r.material_label,
+    material_id: r.material_id,
+    largo_cm: Number(r.largo_cm),
+    ancho_cm: Number(r.ancho_cm),
+    espesor_cm: r.espesor_cm ?? null,
+    estado: r.estado as ChapaRow["estado"],
+    lote_codigo: r.lote_codigo,
+    ot_reserva_id: r.ot_reserva_id,
+    motivo_estado: r.motivo_estado ?? null,
+    origen_placa: r.origen_placa ?? null,
+    chapa_origen_id: r.chapa_origen_id ?? null,
+    precio_m2: r.precio_m2 ?? null,
+  });
 }
 
 export async function fetchInventorySlabs(): Promise<ChapaRow[]> {
   if (!isSupabaseConfigured) return [...STOCK_CHAPAS_INICIAL];
   const { data, error } = await supabase
     .from("chapas_inventario")
-    .select(
-      "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
-    )
+    .select(CHAPA_COLS)
     .order("created_at", { ascending: false });
-  if (error) {
-    // Columna espesor_cm aún no aplicada
-    const fallback = await supabase
-      .from("chapas_inventario")
-      .select(
-        "id,bulto,material_id,material_label,largo_cm,ancho_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
-      )
-      .order("created_at", { ascending: false });
-    if (fallback.error) throw fallback.error;
-    return (fallback.data ?? []).map((r) =>
-      slabRowToChapa({
-        id: r.id,
-        bulto: r.bulto,
-        material_label: r.material_label,
-        material_id: r.material_id,
-        largo_cm: Number(r.largo_cm),
-        ancho_cm: Number(r.ancho_cm),
-        estado: r.estado as ChapaRow["estado"],
-        lote_codigo: r.lote_codigo,
-        ot_reserva_id: r.ot_reserva_id,
-        motivo_estado: r.motivo_estado,
-        origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
-        chapa_origen_id: r.chapa_origen_id ?? null,
-      }),
-    );
-  }
-  return (data ?? []).map((r) =>
-    slabRowToChapa({
-      id: r.id,
-      bulto: r.bulto,
-      material_label: r.material_label,
-      material_id: r.material_id,
-      largo_cm: Number(r.largo_cm),
-      ancho_cm: Number(r.ancho_cm),
-      espesor_cm: (r as { espesor_cm?: number | null }).espesor_cm ?? null,
-      estado: r.estado as ChapaRow["estado"],
-      lote_codigo: r.lote_codigo,
-      ot_reserva_id: r.ot_reserva_id,
-      motivo_estado: r.motivo_estado,
-      origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
-      chapa_origen_id: r.chapa_origen_id ?? null,
-    }),
-  );
+  if (!error) return (data ?? []).map((r) => mapChapaSelectRow(r));
+
+  const sinPrecio = await supabase
+    .from("chapas_inventario")
+    .select(CHAPA_COLS_SIN_PRECIO)
+    .order("created_at", { ascending: false });
+  if (!sinPrecio.error) return (sinPrecio.data ?? []).map((r) => mapChapaSelectRow(r));
+
+  const fallback = await supabase
+    .from("chapas_inventario")
+    .select(CHAPA_COLS_MIN)
+    .order("created_at", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data ?? []).map((r) => mapChapaSelectRow(r));
 }
 
 export async function fetchSuppliers(): Promise<SupplierRow[]> {
@@ -745,29 +764,151 @@ export async function fetchSlabsByMaterialLabel(label: string): Promise<ChapaRow
   if (!isSupabaseConfigured) return STOCK_CHAPAS_INICIAL.filter((c) => c.material === label);
   const { data, error } = await supabase
     .from("chapas_inventario")
-    .select(
-      "id,bulto,material_id,material_label,largo_cm,ancho_cm,espesor_cm,estado,lote_codigo,ot_reserva_id,motivo_estado,origen_placa,chapa_origen_id,created_at",
-    )
+    .select(CHAPA_COLS)
     .eq("material_label", label)
     .order("bulto", { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((r) =>
-    slabRowToChapa({
-      id: r.id,
-      bulto: r.bulto,
-      material_id: r.material_id,
-      material_label: r.material_label,
-      largo_cm: Number(r.largo_cm),
-      ancho_cm: Number(r.ancho_cm),
-      espesor_cm: (r as { espesor_cm?: number | null }).espesor_cm ?? null,
-      estado: r.estado as ChapaRow["estado"],
-      lote_codigo: r.lote_codigo,
-      ot_reserva_id: r.ot_reserva_id,
-      motivo_estado: r.motivo_estado,
-      origen_placa: (r as { origen_placa?: OrigenPlaca }).origen_placa ?? null,
-      chapa_origen_id: r.chapa_origen_id ?? null,
-    }),
+  if (!error) return (data ?? []).map((r) => mapChapaSelectRow(r));
+
+  const sinPrecio = await supabase
+    .from("chapas_inventario")
+    .select(CHAPA_COLS_SIN_PRECIO)
+    .eq("material_label", label)
+    .order("bulto", { ascending: true });
+  if (sinPrecio.error) throw sinPrecio.error;
+  return (sinPrecio.data ?? []).map((r) => mapChapaSelectRow(r));
+}
+
+export type PlanchaBuscadorRow = {
+  id: string;
+  bulto: string;
+  materialId: string | null;
+  materialLabel: string;
+  familia: string | null;
+  espesorCm: number | null;
+  espesorMm: number | null;
+  largoCm: number;
+  anchoCm: number;
+  proveedor: string | null;
+  precioM2: number | null;
+  estado: InventorySlabEstado;
+};
+
+const PLANCHAS_BUSCADOR_SELECT = `
+  id, bulto, material_id, material_label, largo_cm, ancho_cm, espesor_cm, estado, precio_m2,
+  materials ( name, familia, espesor_mm ),
+  remito_lines ( remitos ( suppliers ( name ) ) )
+`;
+
+function firstRel(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    const first = value[0];
+    return first && typeof first === "object"
+      ? (first as Record<string, unknown>)
+      : null;
+  }
+  if (typeof value === "object") return value as Record<string, unknown>;
+  return null;
+}
+
+function mapPlanchaBuscadorRow(r: Record<string, unknown>): PlanchaBuscadorRow {
+  const materials = firstRel(r.materials);
+  const remitoLines = firstRel(r.remito_lines);
+  const remitos = remitoLines ? firstRel(remitoLines.remitos) : null;
+  const suppliers = remitos ? firstRel(remitos.suppliers) : null;
+  const familia =
+    typeof materials?.familia === "string" && materials.familia.trim()
+      ? materials.familia.trim()
+      : null;
+  const proveedor =
+    typeof suppliers?.name === "string" && suppliers.name.trim()
+      ? suppliers.name.trim()
+      : null;
+  return {
+    id: String(r.id),
+    bulto: String(r.bulto ?? ""),
+    materialId: (r.material_id as string | null) ?? null,
+    materialLabel: String(r.material_label ?? materials?.name ?? ""),
+    familia,
+    espesorCm: numOrNull(r.espesor_cm),
+    espesorMm: numOrNull(materials?.espesor_mm),
+    largoCm: Number(r.largo_cm),
+    anchoCm: Number(r.ancho_cm),
+    proveedor,
+    precioM2: numOrNull(r.precio_m2),
+    estado: r.estado as InventorySlabEstado,
+  };
+}
+
+function chapaLocalAPlanchaBuscador(c: ChapaRow): PlanchaBuscadorRow {
+  return {
+    id: c.id ?? c.bulto,
+    bulto: c.bulto,
+    materialId: c.materialId ?? null,
+    materialLabel: c.material,
+    familia: null,
+    espesorCm: c.espesorCm ?? null,
+    espesorMm: null,
+    largoCm: c.largoCm,
+    anchoCm: c.anchoCm,
+    proveedor: null,
+    precioM2: c.precioM2 ?? null,
+    estado: c.estado,
+  };
+}
+
+export async function listPlanchasBuscador(opts?: {
+  extraIds?: string[];
+}): Promise<PlanchaBuscadorRow[]> {
+  if (!isSupabaseConfigured) {
+    return STOCK_CHAPAS_INICIAL.filter((c) => c.estado === "Disponible").map(
+      chapaLocalAPlanchaBuscador,
+    );
+  }
+
+  async function queryPlanchas(ids?: string[]) {
+    const nested = ids?.length
+      ? supabase.from("chapas_inventario").select(PLANCHAS_BUSCADOR_SELECT).in("id", ids)
+      : supabase
+          .from("chapas_inventario")
+          .select(PLANCHAS_BUSCADOR_SELECT)
+          .eq("estado", "Disponible")
+          .order("material_label", { ascending: true })
+          .order("bulto", { ascending: true });
+    const first = await nested;
+    if (!first.error) return first.data ?? [];
+
+    const plainSelect =
+      "id, bulto, material_id, material_label, largo_cm, ancho_cm, espesor_cm, estado, precio_m2";
+    const plain = ids?.length
+      ? await supabase.from("chapas_inventario").select(plainSelect).in("id", ids)
+      : await supabase
+          .from("chapas_inventario")
+          .select(plainSelect)
+          .eq("estado", "Disponible")
+          .order("material_label", { ascending: true })
+          .order("bulto", { ascending: true });
+    if (plain.error) throw new Error(plain.error.message);
+    return plain.data ?? [];
+  }
+
+  const byId = new Map<string, PlanchaBuscadorRow>();
+  for (const row of await queryPlanchas()) {
+    const mapped = mapPlanchaBuscadorRow(row as Record<string, unknown>);
+    byId.set(mapped.id, mapped);
+  }
+
+  const extraIds = [...new Set((opts?.extraIds ?? []).filter(Boolean))].filter(
+    (id) => !byId.has(id),
   );
+  if (extraIds.length > 0) {
+    for (const row of await queryPlanchas(extraIds)) {
+      const mapped = mapPlanchaBuscadorRow(row as Record<string, unknown>);
+      byId.set(mapped.id, mapped);
+    }
+  }
+
+  return [...byId.values()];
 }
 
 export async function fetchOtTitulosByIds(ids: string[]): Promise<Map<string, string>> {
