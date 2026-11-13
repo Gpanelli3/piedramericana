@@ -27,6 +27,7 @@ import {
   type PresupuestoRowList,
 } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { urlWhatsapp } from "@/lib/whatsapp";
 import {
   clientePasaFiltros,
   FILTROS_LISTA_VACIOS,
@@ -276,7 +277,26 @@ export function ClientesCatalogo() {
                     <TableCell className="text-muted-foreground">
                       {c.contacto && c.contacto !== c.nombre ? c.contacto : "—"}
                     </TableCell>
-                    <TableCell>{c.tel || "—"}</TableCell>
+                    <TableCell>
+                      {c.tel ? (
+                        <a
+                          href={urlWhatsapp(c.tel) || "#"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!urlWhatsapp(c.tel)) {
+                              e.preventDefault();
+                            }
+                          }}
+                        >
+                          {c.tel}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell">{c.email || "—"}</TableCell>
                     <TableCell className="hidden max-w-[14rem] truncate lg:table-cell">
                       {c.direccion || "—"}

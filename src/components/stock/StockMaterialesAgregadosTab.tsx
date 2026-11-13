@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -30,7 +31,6 @@ type SortKey =
 type Props = {
   chapas: ChapaRow[];
   materiales: MaterialCatalogLookup[];
-  onOpenMaterial: (materialLabel: string) => void;
 };
 
 function formatM2(n: number) {
@@ -51,8 +51,8 @@ function dash(v: string | null | undefined) {
 export function StockMaterialesAgregadosTab({
   chapas,
   materiales,
-  onOpenMaterial,
 }: Props) {
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("materialLabel");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -147,20 +147,17 @@ export function StockMaterialesAgregadosTab({
               <SortHead label="Material" column="materialLabel" />
               <SortHead label="Familia" column="familia" />
               <SortHead label="Código" column="codigo" />
-              <SortHead label="Disp." column="planchasDisponibles" align="right" />
-              <SortHead label="Reserv." column="planchasReservadas" align="right" />
-              <SortHead label="M² disp." column="m2Disponibles" align="right" />
-              <SortHead label="M² res." column="m2Reservados" align="right" />
-              <SortHead label="M² retazo" column="m2Retazo" align="right" />
+              <SortHead label="Enteras" column="planchasDisponibles" align="right" />
               <SortHead label="Retazos" column="retazosCount" align="right" />
-              <SortHead label="Sobrante previsto" column="m2SobrantePrevisto" align="right" />
+              <SortHead label="m² disp." column="m2Disponibles" align="right" />
+              <SortHead label="m² res." column="m2Reservados" align="right" />
               <SortHead label="Costo USD" column="costoUsdTotal" align="right" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                   {q.trim() ? `No hay resultados para «${q}».` : "Sin materiales en stock."}
                 </TableCell>
               </TableRow>
@@ -169,7 +166,7 @@ export function StockMaterialesAgregadosTab({
                 <TableRow
                   key={row.materialLabel}
                   className="cursor-pointer hover:bg-muted/40"
-                  onClick={() => onOpenMaterial(row.materialLabel)}
+                  onClick={() => navigate(`/stock/material/${encodeURIComponent(row.materialLabel)}`)}
                 >
                   <TableCell className="pl-4 text-sm">
                     <span className="inline-flex items-center gap-2 font-medium text-foreground">
@@ -193,22 +190,13 @@ export function StockMaterialesAgregadosTab({
                     {row.planchasDisponibles}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                    {row.planchasReservadas > 0 ? row.planchasReservadas : "—"}
+                    {row.retazosCount > 0 ? row.retazosCount : "—"}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums font-semibold">
                     {formatM2(row.m2Disponibles)}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
                     {row.m2Reservados > 0 ? formatM2(row.m2Reservados) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                    {row.m2Retazo > 0 ? formatM2(row.m2Retazo) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                    {row.retazosCount > 0 ? row.retazosCount : "—"}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
-                    {row.m2SobrantePrevisto > 0 ? formatM2(row.m2SobrantePrevisto) : "—"}
                   </TableCell>
                   <TableCell className="pr-4 text-right text-sm tabular-nums font-medium">
                     {formatUsd(row.costoUsdTotal)}

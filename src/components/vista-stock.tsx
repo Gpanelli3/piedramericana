@@ -27,7 +27,6 @@ import { MaterialesCatalogoTab } from "@/components/stock/MaterialesCatalogoTab"
 import { StockMaterialesAgregadosTab } from "@/components/stock/StockMaterialesAgregadosTab";
 import { StockProductosUnidadesTab } from "@/components/stock/StockProductosUnidadesTab";
 import { BachasInventarioTab } from "@/components/stock/BachasClientesTab";
-import { DisponibilidadMaterialSheet } from "@/components/stock/DisponibilidadMaterialSheet";
 import { DisponibilidadProductoSheet } from "@/components/stock/DisponibilidadProductoSheet";
 import {
   aggregateChapasPorMaterial,
@@ -45,8 +44,6 @@ export function VistaStock() {
   const { user } = useAuth();
   const { chapas, setChapas, reloadChapas, slabsLoading } = useStock();
   const [remitoOpen, setRemitoOpen] = useState(false);
-  const [disponibilidadOpen, setDisponibilidadOpen] = useState(false);
-  const [materialDisponibilidad, setMaterialDisponibilidad] = useState<string | null>(null);
   const [materialesCatalogo, setMaterialesCatalogo] = useState<MaterialOption[]>([]);
   const [productosUnidades, setProductosUnidades] = useState<StockProductoUnidad[]>([]);
   const [productosLoading, setProductosLoading] = useState(false);
@@ -137,11 +134,6 @@ export function VistaStock() {
             ]),
           ).values(),
         ];
-
-  const openDisponibilidad = (nombre: string) => {
-    setMaterialDisponibilidad(nombre);
-    setDisponibilidadOpen(true);
-  };
 
   const exportCsv = () => {
     const rows = aggregateChapasPorMaterial(chapas, materialesCatalogo);
@@ -249,7 +241,6 @@ export function VistaStock() {
             <StockMaterialesAgregadosTab
               chapas={chapas}
               materiales={materialesCatalogo}
-              onOpenMaterial={openDisponibilidad}
             />
           </TabsContent>
           <TabsContent value="productos">
@@ -283,16 +274,6 @@ export function VistaStock() {
           refreshRemitos={reloadRemitosHistoria}
           setChapas={setChapas}
           existingBultosLower={existingBultosLower}
-        />
-
-        <DisponibilidadMaterialSheet
-          materialLabel={materialDisponibilidad}
-          open={disponibilidadOpen}
-          onOpenChange={(o) => {
-            setDisponibilidadOpen(o);
-            if (!o) setMaterialDisponibilidad(null);
-          }}
-          chapasLocales={chapas}
         />
 
         <DisponibilidadProductoSheet

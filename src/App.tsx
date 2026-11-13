@@ -9,6 +9,7 @@ import { ObrasCobrosPrintPage } from "./pages/ObrasCobrosPrintPage";
 import { OtRotuloPrintPage } from "./pages/OtRotuloPrintPage";
 import { OtPlanoPage } from "./pages/OtPlanoPage";
 import { RemitoRotulosPrintPage } from "./pages/RemitoRotulosPrintPage";
+import { MaterialFichaPage } from "./pages/MaterialFichaPage";
 import { RequireAuth } from "./routes/RequireAuth";
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<RequireAuth />}>
             <Route path="/" element={<MainWorkspace />} />
+            <Route path="/stock/material/:materialLabel" element={<MaterialFichaPage />} />
             <Route path="/presupuestos/:id/imprimir" element={<PresupuestoPrintPage />} />
             <Route path="/presupuestos/:id/hoja-trabajo" element={<HojaTrabajoPrintPage />} />
             <Route

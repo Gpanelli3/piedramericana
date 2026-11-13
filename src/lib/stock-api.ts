@@ -11,6 +11,7 @@ export type ModoMedidasRemito = "iguales" | "distintas";
 export type RemitoMedidaChapa = {
   largo_cm: number;
   ancho_cm: number;
+  espesor_cm?: number | null;
 };
 
 export type ChapaRow = {
@@ -175,6 +176,8 @@ export type RemitoLineInput = {
   largo_cm?: number | null;
   /** Requerido si modo_medidas = iguales */
   ancho_cm?: number | null;
+  /** Opcional: espesor en cm */
+  espesor_cm?: number | null;
   bulto_numero_inicio: number;
   precio_unitario?: number | null;
   lote_codigo: string;
@@ -251,6 +254,7 @@ export async function createRemitoWithSlabsViaRpc(payload: CreateRemitoPayload):
         qty_slabs: l.qty_slabs,
         largo_cm: modo === "iguales" ? l.largo_cm : null,
         ancho_cm: modo === "iguales" ? l.ancho_cm : null,
+        espesor_cm: modo === "iguales" ? (l.espesor_cm ?? null) : null,
         bulto_numero_inicio: l.bulto_numero_inicio,
         precio_unitario: l.precio_unitario ?? null,
         lote_codigo: l.lote_codigo.trim(),

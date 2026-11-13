@@ -41,6 +41,7 @@ type MedidaDraft = {
   key: string;
   largo_cm: string;
   ancho_cm: string;
+  espesor_cm: string;
 };
 
 type LineDraft = {
@@ -52,6 +53,7 @@ type LineDraft = {
   qty_slabs: string;
   largo_cm: string;
   ancho_cm: string;
+  espesor_cm: string;
   medidas: MedidaDraft[];
   bulto_inicio: string;
   precio: string;
@@ -65,7 +67,7 @@ function newLineKey() {
 }
 
 function blankMedida(): MedidaDraft {
-  return { key: newLineKey(), largo_cm: "", ancho_cm: "" };
+  return { key: newLineKey(), largo_cm: "", ancho_cm: "", espesor_cm: "" };
 }
 
 function blankLine(): LineDraft {
@@ -78,6 +80,7 @@ function blankLine(): LineDraft {
     qty_slabs: "1",
     largo_cm: "",
     ancho_cm: "",
+    espesor_cm: "",
     medidas: [blankMedida()],
     bulto_inicio: "",
     precio: "",
@@ -325,10 +328,14 @@ export function CrearRemitoDialog({
           draft.precio.trim() === "" ? null : Number(draft.precio.replace(",", "."));
 
         if (draft.modo_medidas === "distintas") {
-          const medidas = draft.medidas.map((m) => ({
-            largo_cm: Number(m.largo_cm.replace(",", ".")),
-            ancho_cm: Number(m.ancho_cm.replace(",", ".")),
-          }));
+          const medidas = draft.medidas.map((m) => {
+            const esp = m.espesor_cm.trim() ? Number(m.espesor_cm.replace(",", ".")) : null;
+            return {
+              largo_cm: Number(m.largo_cm.replace(",", ".")),
+              ancho_cm: Number(m.ancho_cm.replace(",", ".")),
+              espesor_cm: esp !== null && Number.isFinite(esp) && esp > 0 ? esp : null,
+            };
+          });
           return {
             material_id: draft.material_id,
             material_label: x.label,
@@ -344,12 +351,14 @@ export function CrearRemitoDialog({
         }
 
         const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
+        const espesor = draft.espesor_cm.trim() ? Number(draft.espesor_cm.replace(",", ".")) : null;
         return {
           material_id: draft.material_id,
           material_label: x.label,
           qty_slabs: qty,
           largo_cm: Number(draft.largo_cm.replace(",", ".")),
           ancho_cm: Number(draft.ancho_cm.replace(",", ".")),
+          espesor_cm: espesor !== null && Number.isFinite(espesor) && espesor > 0 ? espesor : null,
           bulto_numero_inicio: ini,
           precio_unitario: pu !== null && Number.isFinite(pu) ? pu : null,
           lote_codigo: draft.lote_codigo.trim(),
@@ -404,12 +413,14 @@ export function CrearRemitoDialog({
           }
           const puLocal =
             draft.precio.trim() === "" ? null : Number(draft.precio.replace(",", "."));
+          const espesorLocal = m.espesor_cm.trim() ? Number(m.espesor_cm.replace(",", ".")) : null;
           nuevas.push({
             bulto,
             material: x.label,
             materialId: draft.material_id,
             largoCm: Number(m.largo_cm.replace(",", ".")),
             anchoCm: Number(m.ancho_cm.replace(",", ".")),
+            espesorCm: espesorLocal != null && Number.isFinite(espesorLocal) && espesorLocal > 0 ? espesorLocal : null,
             estado: "Disponible",
             loteCodigo: draft.lote_codigo.trim(),
             origenPlaca: origenPlaca,
@@ -420,6 +431,7 @@ export function CrearRemitoDialog({
         const qty = parseInt(draft.qty_slabs.replace(/\s/g, ""), 10);
         const largo = Number(draft.largo_cm.replace(",", "."));
         const ancho = Number(draft.ancho_cm.replace(",", "."));
+        const espesor = draft.espesor_cm.trim() ? Number(draft.espesor_cm.replace(",", ".")) : null;
         for (let i = 0; i < qty; i++) {
           const bulto = `#${ini + i}`;
           if (existingBultosLower.has(bulto.toLowerCase())) {
@@ -434,6 +446,7 @@ export function CrearRemitoDialog({
             materialId: draft.material_id,
             largoCm: largo,
             anchoCm: ancho,
+            espesorCm: espesor != null && Number.isFinite(espesor) && espesor > 0 ? espesor : null,
             estado: "Disponible",
             loteCodigo: draft.lote_codigo.trim(),
             origenPlaca: origenPlaca,
@@ -460,7 +473,7 @@ export function CrearRemitoDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[min(40rem,94vh)] w-full max-w-[min(28rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
           <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 pb-2.5 pt-4 pr-12 text-left sm:px-5">
-            <DialogTitle>Cargar chapas</DialogTitle>
+            <DialogTitle>Carga manual</DialogTitle>
           </DialogHeader>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
@@ -624,39 +637,33 @@ export function CrearRemitoDialog({
                       <Button
                         type="button"
                         variant={ln.modo_medidas === "iguales" ? "default" : "outline"}
-                        className="h-auto flex-col items-start gap-0 px-3 py-2 text-left"
+                        className="h-9"
                         onClick={() => patchLine(idx, { modo_medidas: "iguales" })}
                       >
-                        <span className="text-sm font-medium">Iguales</span>
-                        <span className="text-[10px] font-normal opacity-80">
-                          China / sintético
-                        </span>
+                        Iguales
                       </Button>
                       <Button
                         type="button"
                         variant={ln.modo_medidas === "distintas" ? "default" : "outline"}
-                        className="h-auto flex-col items-start gap-0 px-3 py-2 text-left"
+                        className="h-9"
                         onClick={() => patchLine(idx, { modo_medidas: "distintas" })}
                       >
-                        <span className="text-sm font-medium">Distintas</span>
-                        <span className="text-[10px] font-normal opacity-80">
-                          Cada placa su medida
-                        </span>
+                        Distintas
                       </Button>
                     </div>
                   </div>
 
                   {ln.modo_medidas === "iguales" ? (
                     <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label>Cantidad (placas iguales)</Label>
+                        <Input
+                          inputMode="numeric"
+                          value={ln.qty_slabs}
+                          onChange={(e) => patchLine(idx, { qty_slabs: e.target.value })}
+                        />
+                      </div>
                       <div className="grid grid-cols-3 gap-2">
-                        <div className="space-y-1.5">
-                          <Label>Cantidad</Label>
-                          <Input
-                            inputMode="numeric"
-                            value={ln.qty_slabs}
-                            onChange={(e) => patchLine(idx, { qty_slabs: e.target.value })}
-                          />
-                        </div>
                         <div className="space-y-1.5">
                           <Label>Largo (cm)</Label>
                           <Input
@@ -673,6 +680,15 @@ export function CrearRemitoDialog({
                             placeholder="160"
                             value={ln.ancho_cm}
                             onChange={(e) => patchLine(idx, { ancho_cm: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Esp (cm)</Label>
+                          <Input
+                            inputMode="decimal"
+                            placeholder="2"
+                            value={ln.espesor_cm}
+                            onChange={(e) => patchLine(idx, { espesor_cm: e.target.value })}
                           />
                         </div>
                       </div>
@@ -714,7 +730,7 @@ export function CrearRemitoDialog({
                               <span className="mb-2 w-5 shrink-0 text-xs text-muted-foreground tabular-nums">
                                 {mi + 1}.
                               </span>
-                              <div className="grid min-w-0 flex-1 grid-cols-[1fr_1fr_auto] gap-2">
+                              <div className="grid min-w-0 flex-1 grid-cols-[1fr_1fr_20%_auto] gap-2">
                                 <div className="space-y-1">
                                   {mi === 0 ? <Label className="text-xs">Largo (cm)</Label> : null}
                                   <Input
@@ -734,6 +750,17 @@ export function CrearRemitoDialog({
                                     value={m.ancho_cm}
                                     onChange={(e) =>
                                       setMedidaAt(idx, m.key, { ancho_cm: e.target.value })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  {mi === 0 ? <Label className="text-xs">Esp (cm)</Label> : null}
+                                  <Input
+                                    inputMode="decimal"
+                                    placeholder="2"
+                                    value={m.espesor_cm}
+                                    onChange={(e) =>
+                                      setMedidaAt(idx, m.key, { espesor_cm: e.target.value })
                                     }
                                   />
                                 </div>
