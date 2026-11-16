@@ -19,12 +19,14 @@ import {
   hayCierreEnFecha,
   listMovimientos,
   listTarjetaPendiente,
+  resolverContrapartesMovimientos,
   registrarCierreCaja,
   resumenCajaDelDia,
   resumenMesPorMetodo,
   resumenPorCobrar,
   resumenPorPagarMes,
   etiquetaMetodo,
+  type ContraparteInfo,
   type CuentaFinancieraRow,
   type MovimientoCajaRow,
   type SaldoCuentaRow,
@@ -36,6 +38,7 @@ import {
   esSalida,
   etiquetaCajon,
   formatMonto,
+  subtituloContraparte,
   totalesPorMoneda,
 } from "@/components/finanzas/finanzas-helpers";
 import { cn } from "@/lib/utils";
@@ -83,6 +86,7 @@ export function FinanzasResumen({
 }: Props) {
   const hoy = new Date().toISOString().slice(0, 10);
   const [movimientos, setMovimientos] = useState<MovimientoCajaRow[]>([]);
+  const [contrapartes, setContrapartes] = useState<Map<string, ContraparteInfo>>(new Map());
   const [resumenDia, setResumenDia] = useState<{
     ingresos: number;
     egresos: number;
@@ -116,6 +120,7 @@ export function FinanzasResumen({
     if (tar.error) toast.error(tar.error.message);
     if (cie.error) toast.error(cie.error.message);
     setMovimientos(m.data);
+    setContrapartes(await resolverContrapartesMovimientos(m.data));
     setResumenDia(r.data);
     setPorCobrar(cob.data);
     setPorPagar(pag.data);
@@ -281,6 +286,13 @@ export function FinanzasResumen({
               ) : (
                 movimientos.slice(0, 8).map((m) => {
                   const salida = esSalida(m.tipo);
+                  const cuenta = etiquetaCajon(
+                    cuentas.find((c) => c.id === m.cuenta_id) ?? {
+                      tipo: "otro",
+                      moneda: m.moneda,
+                    },
+                  );
+                  const sub = subtituloContraparte(m, contrapartes);
                   return (
                     <li key={m.id}>
                       <button
@@ -298,16 +310,11 @@ export function FinanzasResumen({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-medium leading-tight">
-                            {contraparteDesdeMovimiento(m, suppliersById)}
+                            {contraparteDesdeMovimiento(m, suppliersById, contrapartes)}
                           </span>
                           <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-                            {etiquetaCajon(
-                              cuentas.find((c) => c.id === m.cuenta_id) ?? {
-                                tipo: "otro",
-                                moneda: m.moneda,
-                              },
-                            )}
-                            {m.descripcion ? ` · ${m.descripcion}` : ""}
+                            {cuenta}
+                            {sub ? ` · ${sub}` : ""}
                           </span>
                         </span>
                         <span

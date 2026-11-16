@@ -25,6 +25,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   listMovimientos,
   etiquetaMetodo,
+  resolverContrapartesMovimientos,
+  type ContraparteInfo,
   type CuentaFinancieraRow,
   type MovimientoCajaRow,
 } from "@/lib/finanzas-api";
@@ -66,6 +68,7 @@ export function FinanzasMovimientos({
   onAcreditado,
 }: Props) {
   const [movimientos, setMovimientos] = useState<MovimientoCajaRow[]>([]);
+  const [contrapartes, setContrapartes] = useState<Map<string, ContraparteInfo>>(new Map());
   const [cargando, setCargando] = useState(true);
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroCuenta, setFiltroCuenta] = useState("todas");
@@ -83,6 +86,7 @@ export function FinanzasMovimientos({
     });
     if (res.error) toast.error(res.error.message);
     setMovimientos(res.data);
+    setContrapartes(await resolverContrapartesMovimientos(res.data));
     setCargando(false);
   }, [filtroCuenta, desde, hasta]);
 
@@ -104,7 +108,7 @@ export function FinanzasMovimientos({
       filtrados.map((m) => [
         m.fecha,
         etiquetaTipoMov(m.tipo),
-        contraparteDesdeMovimiento(m, suppliersById),
+        contraparteDesdeMovimiento(m, suppliersById, contrapartes),
         cuentaPorId.get(m.cuenta_id) ? etiquetaCajon(cuentaPorId.get(m.cuenta_id)!) : "",
         etiquetaMetodo(m.metodo),
         String(m.monto),
@@ -229,7 +233,7 @@ export function FinanzasMovimientos({
                     </TableCell>
                     <TableCell className="max-w-[220px]">
                       <p className="truncate text-sm font-medium">
-                        {contraparteDesdeMovimiento(m, suppliersById)}
+                        {contraparteDesdeMovimiento(m, suppliersById, contrapartes)}
                       </p>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

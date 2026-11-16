@@ -1,4 +1,5 @@
 import type {
+  ContraparteInfo,
   CuentaFinancieraRow,
   MovimientoCajaRow,
   SaldoCuentaRow,
@@ -97,17 +98,24 @@ export function etiquetaOrigen(referenciaTipo: string | null | undefined): strin
 export function contraparteDesdeMovimiento(
   m: MovimientoCajaRow,
   suppliersById: Map<string, string>,
+  contrapartes?: Map<string, ContraparteInfo>,
 ): string {
+  const info = contrapartes?.get(m.id);
+  if (info?.nombre) return info.nombre;
   if (m.supplier_id) {
     return suppliersById.get(m.supplier_id) ?? "Proveedor";
   }
+  if (m.referencia_tipo === "venta_pago") return "Cliente";
   const desc = m.descripcion?.trim() ?? "";
-  if (m.referencia_tipo === "venta_pago" && desc) {
-    const cobro = desc.replace(/^Cobro\s+/i, "").split("·")[0]?.trim();
-    if (cobro) return cobro;
-  }
   if (desc) return desc;
   return etiquetaTipoMov(m.tipo);
+}
+
+export function subtituloContraparte(
+  m: MovimientoCajaRow,
+  contrapartes?: Map<string, ContraparteInfo>,
+): string | null {
+  return contrapartes?.get(m.id)?.subtitulo ?? null;
 }
 
 export function totalesPorMoneda(saldos: SaldoCuentaRow[]): { ars: number; usd: number } {
