@@ -29,6 +29,7 @@ export type ChapaRow = {
   origenPlaca?: OrigenPlaca | null;
   chapaOrigenId?: string | null;
   precioM2?: number | null;
+  created_at?: string | null;
 };
 
 export type SupplierRow = Database["public"]["Tables"]["suppliers"]["Row"];
@@ -70,6 +71,7 @@ export function slabRowToChapa(row: {
   origen_placa?: OrigenPlaca | null;
   chapa_origen_id?: string | null;
   precio_m2?: number | null;
+  created_at?: string | null;
 }): ChapaRow {
   return {
     id: row.id,
@@ -86,6 +88,7 @@ export function slabRowToChapa(row: {
     origenPlaca: row.origen_placa ?? null,
     chapaOrigenId: row.chapa_origen_id ?? null,
     precioM2: numOrNull(row.precio_m2),
+    created_at: row.created_at ?? null,
   };
 }
 
@@ -111,6 +114,7 @@ function mapChapaSelectRow(r: {
   espesor_cm?: number | null;
   origen_placa?: OrigenPlaca | null;
   precio_m2?: number | null;
+  created_at?: string | null;
 }): ChapaRow {
   return slabRowToChapa({
     id: r.id,
@@ -127,6 +131,7 @@ function mapChapaSelectRow(r: {
     origen_placa: r.origen_placa ?? null,
     chapa_origen_id: r.chapa_origen_id ?? null,
     precio_m2: r.precio_m2 ?? null,
+    created_at: r.created_at ?? null,
   });
 }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import type { ChapaRow } from "@/lib/stock-api";
 import { PlacaCard } from "./PlacaCard";
 
