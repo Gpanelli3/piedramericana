@@ -48,7 +48,7 @@ function emptyLista(): ListaPrecioUpsertInput {
   return {
     codigo: "",
     label: "",
-    moneda: "usd",
+    moneda: "ars",
     descripcion: "",
     activa: true,
     sort_order: 0,

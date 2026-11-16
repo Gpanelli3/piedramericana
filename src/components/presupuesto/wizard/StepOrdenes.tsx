@@ -66,7 +66,7 @@ export function StepOrdenes({
   materials,
   planchas = [],
   materialesCargando = false,
-  monedaMaterial = "usd",
+  monedaMaterial = "ars",
   patchOrden,
   addOrdenTrabajo,
   removeOrdenTrabajo,

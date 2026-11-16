@@ -71,17 +71,59 @@ export function equipoSeccionDesdeParam(v: string | null): EquipoSeccion {
 }
 
 /** Secciones de Finanzas (`?fn=`). */
-export const FINANZAS_SECCIONES = ["libro", "gastos_fijos"] as const;
+export const FINANZAS_SECCIONES = [
+  "resumen",
+  "movimientos",
+  "proveedores_cc",
+  "disponibilidad",
+  "comisiones",
+  "flujo_caja",
+  "gastos_fijos",
+] as const;
 
 export type FinanzasSeccion = (typeof FINANZAS_SECCIONES)[number];
 
+/** Tabs visibles en el header de Finanzas (sin gastos fijos). */
+export const FINANZAS_TABS_HEADER = [
+  "resumen",
+  "movimientos",
+  "proveedores_cc",
+  "disponibilidad",
+  "comisiones",
+  "flujo_caja",
+] as const satisfies readonly FinanzasSeccion[];
+
 export const FINANZAS_SECCION_LABELS: Record<FinanzasSeccion, string> = {
-  libro: "Libro",
+  resumen: "Resumen",
+  movimientos: "Movimientos",
+  proveedores_cc: "Proveedores",
+  disponibilidad: "Disponibilidad",
+  comisiones: "Comisiones",
+  flujo_caja: "Flujo de caja",
   gastos_fijos: "Gastos fijos",
 };
 
 export function finanzasSeccionDesdeParam(v: string | null): FinanzasSeccion {
+  if (v === "libro") return "resumen";
   return v && (FINANZAS_SECCIONES as readonly string[]).includes(v)
     ? (v as FinanzasSeccion)
-    : "libro";
+    : "resumen";
+}
+
+/** Sub-tabs de Stock (`?st=`). */
+export const STOCK_TABS = [
+  "placas",
+  "productos",
+  "bloqueados",
+  "bachas",
+  "listas",
+  "trabajos",
+] as const;
+
+export type StockTab = (typeof STOCK_TABS)[number];
+
+export function stockTabDesdeParam(v: string | null): StockTab {
+  return v && (STOCK_TABS as readonly string[]).includes(v)
+    ? (v as StockTab)
+    : "placas";
 }

@@ -13,7 +13,6 @@ import {
   Package,
   Settings,
   Ship,
-  Tags,
   Truck,
   Users,
   UserCog,
@@ -75,12 +74,6 @@ const NAV_ITEMS: NavItemDef[] = [
     roles: ["vendedor", "admin", "administracion"],
   },
   {
-    id: "articulos",
-    label: "Trabajos",
-    icon: <Tags className="h-[18px] w-[18px]" />,
-    roles: ["vendedor", "admin", "administracion"],
-  },
-  {
     id: "administracion",
     label: "Ventas",
     icon: <Wallet className="h-[18px] w-[18px]" />,
@@ -108,7 +101,7 @@ const NAV_ITEMS: NavItemDef[] = [
     id: "stock",
     label: "Stock",
     icon: <Package className="h-[18px] w-[18px]" />,
-    roles: ["admin", "administracion", "produccion"],
+    roles: ["vendedor", "admin", "administracion", "produccion"],
   },
   {
     id: "proveedores",
@@ -197,6 +190,7 @@ function limpiarParamsDeOtrosModulos(n: URLSearchParams, tab: WorkspaceTab) {
   if (tab !== "finanzas") n.delete("fn");
   if (tab !== "clientes") n.delete("cid");
   if (tab !== "administracion") n.delete("pid");
+  if (tab !== "stock") n.delete("st");
 }
 
 type ExpandableNavProps = {
@@ -377,7 +371,7 @@ export function AppSidebar() {
           limpiarParamsDeOtrosModulos(n, tab);
           if (tab === "produccion") n.set("ot", "general");
           if (tab === "equipo") n.set("eq", "empleados");
-          if (tab === "finanzas") n.set("fn", "libro");
+          if (tab === "finanzas") n.set("fn", "resumen");
           return n;
         },
         { replace: true },
@@ -507,7 +501,7 @@ export function AppSidebar() {
 
   const onFinanzasEncabezado = useCallback(() => {
     if (activeTab !== "finanzas") {
-      gotoFinanzasSeccion("libro");
+      gotoFinanzasSeccion("resumen");
       setFinanzasMenuAbierto(true);
       return;
     }

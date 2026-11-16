@@ -627,3 +627,370 @@ export async function acreditarMovimientoTarjeta(opts: {
   }
   return { error: null };
 }
+
+export type ResumenProveedorFinanzas = {
+  supplier_id: string;
+  nombre: string;
+  pagado_ars: number;
+  pagado_usd: number;
+  movimientos: number;
+  ultimo_pago: string | null;
+};
+
+export async function resumenPorProveedor(): Promise<{
+  data: ResumenProveedorFinanzas[];
+  error: Error | null;
+}> {
+  const { data: movs, error } = await supabase
+    .from("movimientos_caja")
+    .select("supplier_id, tipo, monto, moneda, fecha")
+    .not("supplier_id", "is", null);
+  if (error) return { data: [], error: new Error(error.message) };
+
+  const { data: suppliers, error: sErr } = await supabase
+    .from("suppliers")
+    .select("id, name")
+    .eq("activo", true)
+    .order("name");
+  if (sErr) return { data: [], error: new Error(sErr.message) };
+
+  const byId = new Map<string, ResumenProveedorFinanzas>();
+  for (const s of suppliers ?? []) {
+    byId.set(s.id, {
+      supplier_id: s.id,
+      nombre: s.name,
+      pagado_ars: 0,
+      pagado_usd: 0,
+      movimientos: 0,
+      ultimo_pago: null,
+    });
+  }
+
+  for (const m of movs ?? []) {
+    if (!m.supplier_id) continue;
+    let row = byId.get(m.supplier_id);
+    if (!row) {
+      row = {
+        supplier_id: m.supplier_id,
+        nombre: "Proveedor",
+        pagado_ars: 0,
+        pagado_usd: 0,
+        movimientos: 0,
+        ultimo_pago: null,
+      };
+      byId.set(m.supplier_id, row);
+    }
+    row.movimientos += 1;
+    if (m.tipo === "egreso") {
+      const monto = Number(m.monto) || 0;
+      if (m.moneda === "usd") row.pagado_usd += monto;
+      else row.pagado_ars += monto;
+      if (!row.ultimo_pago || m.fecha > row.ultimo_pago) row.ultimo_pago = m.fecha;
+    }
+  }
+
+  const data = [...byId.values()].sort((a, b) => {
+    const totA = a.pagado_ars + a.pagado_usd;
+    const totB = b.pagado_ars + b.pagado_usd;
+    if (totB !== totA) return totB - totA;
+    return a.nombre.localeCompare(b.nombre, "es");
+  });
+  return { data, error: null };
+}
+
+export async function listMovimientosPorProveedor(
+  supplierId: string,
+): Promise<{ data: MovimientoCajaRow[]; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("movimientos_caja")
+    .select("*")
+    .eq("supplier_id", supplierId)
+    .order("fecha", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) return { data: [], error: new Error(error.message) };
+  return { data: (data ?? []) as MovimientoCajaRow[], error: null };
+}
+
+export type ResumenPorCobrar = {
+  usd: number;
+  ars: number;
+  ventasConSaldo: number;
+};
+
+export async function resumenPorCobrar(): Promise<{
+  data: ResumenPorCobrar;
+  error: Error | null;
+}> {
+  const empty: ResumenPorCobrar = { usd: 0, ars: 0, ventasConSaldo: 0 };
+  const [presRes, ventasRes, pagosRes] = await Promise.all([
+    supabase.from("presupuestos").select("id, total, moneda, status").eq("status", "aprobado"),
+    supabase.from("ventas").select("id, presupuesto_id"),
+    supabase.from("ventas_pagos").select("venta_id, monto, moneda"),
+  ]);
+  if (presRes.error) return { data: empty, error: new Error(presRes.error.message) };
+  if (ventasRes.error) return { data: empty, error: new Error(ventasRes.error.message) };
+  if (pagosRes.error) return { data: empty, error: new Error(pagosRes.error.message) };
+
+  const ventaByPres = new Map<string, string>();
+  for (const v of ventasRes.data ?? []) ventaByPres.set(v.presupuesto_id, v.id);
+
+  const pagosPorVentaMoneda = new Map<string, number>();
+  for (const p of pagosRes.data ?? []) {
+    const monto = typeof p.monto === "string" ? parseFloat(p.monto) : Number(p.monto ?? 0);
+    if (!Number.isFinite(monto) || monto <= 0) continue;
+    const key = `${p.venta_id}:${p.moneda}`;
+    pagosPorVentaMoneda.set(key, (pagosPorVentaMoneda.get(key) ?? 0) + monto);
+  }
+
+  let usd = 0;
+  let ars = 0;
+  let ventasConSaldo = 0;
+  for (const p of presRes.data ?? []) {
+    const total = Number(p.total) || 0;
+    const ventaId = ventaByPres.get(p.id);
+    const pagado = ventaId ? (pagosPorVentaMoneda.get(`${ventaId}:${p.moneda}`) ?? 0) : 0;
+    const saldo = Math.max(0, total - pagado);
+    if (saldo <= 0.009) continue;
+    if (p.moneda === "usd") usd += saldo;
+    else ars += saldo;
+    ventasConSaldo += 1;
+  }
+  return { data: { usd, ars, ventasConSaldo }, error: null };
+}
+
+export type ResumenPorPagar = {
+  ars: number;
+  usd: number;
+  cantidad: number;
+};
+
+export async function resumenPorPagarMes(fecha = new Date().toISOString().slice(0, 10)): Promise<{
+  data: ResumenPorPagar;
+  error: Error | null;
+}> {
+  const empty: ResumenPorPagar = { ars: 0, usd: 0, cantidad: 0 };
+  const [y, m] = fecha.split("-");
+  const desde = `${y}-${m}-01`;
+  const last = new Date(Number(y), Number(m), 0).getDate();
+  const hasta = `${y}-${m}-${String(last).padStart(2, "0")}`;
+
+  const [gastosRes, movsRes] = await Promise.all([
+    supabase.from("gastos_fijos").select("id, monto, moneda, activo").eq("activo", true),
+    supabase
+      .from("movimientos_caja")
+      .select("referencia_id")
+      .eq("referencia_tipo", "gasto_fijo")
+      .gte("fecha", desde)
+      .lte("fecha", hasta),
+  ]);
+  if (gastosRes.error) return { data: empty, error: new Error(gastosRes.error.message) };
+  if (movsRes.error) return { data: empty, error: new Error(movsRes.error.message) };
+
+  const yaCargados = new Set((movsRes.data ?? []).map((r) => r.referencia_id).filter(Boolean));
+  let ars = 0;
+  let usd = 0;
+  let cantidad = 0;
+  for (const g of gastosRes.data ?? []) {
+    if (yaCargados.has(g.id)) continue;
+    const monto = Number(g.monto) || 0;
+    if (g.moneda === "usd") usd += monto;
+    else ars += monto;
+    cantidad += 1;
+  }
+  return { data: { ars, usd, cantidad }, error: null };
+}
+
+export type SaldoMesPorMetodo = {
+  metodo: string;
+  moneda: "ars" | "usd";
+  ingresos: number;
+  egresos: number;
+  neto: number;
+};
+
+export async function resumenMesPorMetodo(fecha = new Date().toISOString().slice(0, 10)): Promise<{
+  data: SaldoMesPorMetodo[];
+  error: Error | null;
+}> {
+  const [y, m] = fecha.split("-");
+  const desde = `${y}-${m}-01`;
+  const last = new Date(Number(y), Number(m), 0).getDate();
+  const hasta = `${y}-${m}-${String(last).padStart(2, "0")}`;
+  const { data: movs, error } = await listMovimientos({ desde, hasta, limit: 2000 });
+  if (error) return { data: [], error };
+
+  const map = new Map<string, SaldoMesPorMetodo>();
+  for (const mov of movs) {
+    const key = `${mov.metodo}:${mov.moneda}`;
+    let row = map.get(key);
+    if (!row) {
+      row = { metodo: mov.metodo, moneda: mov.moneda, ingresos: 0, egresos: 0, neto: 0 };
+      map.set(key, row);
+    }
+    const signo = sumaEnSaldoDisponible(mov);
+    const val = Number(mov.monto) || 0;
+    if (signo > 0) row.ingresos += val;
+    else if (signo < 0) row.egresos += val;
+    row.neto = row.ingresos - row.egresos;
+  }
+  return { data: [...map.values()].sort((a, b) => a.metodo.localeCompare(b.metodo, "es")), error: null };
+}
+
+export type OrigenMovimiento = {
+  contraparte: string;
+  presupuestoId: string | null;
+  presupuestoNumero: string | null;
+  ventaId: string | null;
+  otTitulo: string | null;
+  cliente: string | null;
+  totalObra: number | null;
+  cobradoObra: number | null;
+  saldoObra: number | null;
+  monedaObra: "ars" | "usd" | null;
+  registradoPor: string | null;
+};
+
+export async function getOrigenMovimiento(mov: MovimientoCajaRow): Promise<{
+  data: OrigenMovimiento;
+  error: Error | null;
+}> {
+  const empty: OrigenMovimiento = {
+    contraparte: mov.descripcion?.trim() || etiquetaConcepto(mov.concepto),
+    presupuestoId: null,
+    presupuestoNumero: null,
+    ventaId: null,
+    otTitulo: null,
+    cliente: null,
+    totalObra: null,
+    cobradoObra: null,
+    saldoObra: null,
+    monedaObra: null,
+    registradoPor: null,
+  };
+
+  let registradoPor: string | null = null;
+  if (mov.created_by) {
+    const u = await supabase.from("usuarios").select("full_name").eq("id", mov.created_by).maybeSingle();
+    if (!u.error) registradoPor = u.data?.full_name?.trim() || null;
+  }
+
+  if (mov.supplier_id) {
+    const s = await supabase.from("suppliers").select("name").eq("id", mov.supplier_id).maybeSingle();
+    return {
+      data: {
+        ...empty,
+        contraparte: s.data?.name?.trim() || empty.contraparte,
+        registradoPor,
+      },
+      error: s.error ? new Error(s.error.message) : null,
+    };
+  }
+
+  if (mov.referencia_tipo !== "venta_pago" || !mov.referencia_id) {
+    return { data: { ...empty, registradoPor }, error: null };
+  }
+
+  const pagoRes = await supabase
+    .from("ventas_pagos")
+    .select("venta_id")
+    .eq("id", mov.referencia_id)
+    .maybeSingle();
+  if (pagoRes.error) return { data: { ...empty, registradoPor }, error: new Error(pagoRes.error.message) };
+  const ventaId = pagoRes.data?.venta_id ?? null;
+  if (!ventaId) return { data: { ...empty, registradoPor }, error: null };
+
+  const ventaRes = await supabase
+    .from("ventas")
+    .select("presupuesto_id")
+    .eq("id", ventaId)
+    .maybeSingle();
+  if (ventaRes.error) return { data: { ...empty, registradoPor }, error: new Error(ventaRes.error.message) };
+  const presupuestoId = ventaRes.data?.presupuesto_id ?? null;
+  if (!presupuestoId) return { data: { ...empty, registradoPor, ventaId }, error: null };
+
+  const presRes = await supabase
+    .from("presupuestos")
+    .select("id, numero, cliente, total, moneda")
+    .eq("id", presupuestoId)
+    .maybeSingle();
+  if (presRes.error) {
+    return { data: { ...empty, registradoPor, ventaId, presupuestoId }, error: new Error(presRes.error.message) };
+  }
+
+  const pagosRes = await supabase
+    .from("ventas_pagos")
+    .select("monto, moneda")
+    .eq("venta_id", ventaId);
+  if (pagosRes.error) {
+    return { data: { ...empty, registradoPor, ventaId, presupuestoId }, error: new Error(pagosRes.error.message) };
+  }
+
+  const moneda = (presRes.data?.moneda ?? "ars") as "ars" | "usd";
+  const total = Number(presRes.data?.total ?? 0);
+  let cobrado = 0;
+  for (const p of pagosRes.data ?? []) {
+    if (p.moneda !== moneda) continue;
+    const n = typeof p.monto === "string" ? parseFloat(p.monto) : Number(p.monto ?? 0);
+    if (Number.isFinite(n) && n > 0) cobrado += n;
+  }
+
+  const otRes = await supabase
+    .from("ordenes_trabajo")
+    .select("titulo")
+    .eq("venta_id", ventaId)
+    .neq("estado", "cancelled")
+    .order("creado_en", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const cliente = presRes.data?.cliente?.trim() || null;
+  return {
+    data: {
+      contraparte: cliente || empty.contraparte,
+      presupuestoId,
+      presupuestoNumero: presRes.data?.numero ?? null,
+      ventaId,
+      otTitulo: otRes.data?.titulo?.trim() || null,
+      cliente,
+      totalObra: total,
+      cobradoObra: cobrado,
+      saldoObra: total - cobrado,
+      monedaObra: moneda,
+      registradoPor,
+    },
+    error: null,
+  };
+}
+
+export async function hayCierreEnFecha(fecha: string): Promise<{ cerrado: boolean; error: Error | null }> {
+  const { data, error } = await supabase
+    .from("cierres_caja")
+    .select("id")
+    .eq("fecha", fecha)
+    .limit(1);
+  if (error) return { cerrado: false, error: new Error(error.message) };
+  return { cerrado: (data ?? []).length > 0, error: null };
+}
+
+export async function crearCuentaFinanciera(opts: {
+  nombre: string;
+  tipo: CuentaFinancieraRow["tipo"];
+  moneda: "ars" | "usd";
+  saldo_inicial?: number;
+}): Promise<{ id: string | null; error: Error | null }> {
+  const nombre = opts.nombre.trim();
+  if (!nombre) return { id: null, error: new Error("Indicá el nombre de la cuenta.") };
+  const { data, error } = await supabase
+    .from("cuentas_financieras")
+    .insert({
+      nombre,
+      tipo: opts.tipo,
+      moneda: opts.moneda,
+      saldo_inicial: opts.saldo_inicial ?? 0,
+      activa: true,
+    })
+    .select("id")
+    .single();
+  if (error) return { id: null, error: new Error(error.message) };
+  return { id: data?.id ?? null, error: null };
+}

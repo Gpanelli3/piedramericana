@@ -225,7 +225,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const [direccion, setDireccion] = useState("");
   const [obsCabecera, setObsCabecera] = useState("");
   const [listaPrecioId, setListaPrecioId] = useState<string>("");
-  const [monedaFallback, setMonedaFallback] = useState<"ars" | "usd">("usd");
+  const [monedaFallback, setMonedaFallback] = useState<"ars" | "usd">("ars");
 
   // Hook de artículos dinámicos: se recarga cuando cambia la lista de precio
   const {
@@ -234,18 +234,13 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     cargando: articulosCargando,
   } = useArticulos(listaPrecioId);
 
-  // Cuando llegan las listas reales desde BD, inicializar el ID con la primera
+  // Alta nueva: si no hay lista, usar la primera activa. Al editar no reasignar
+  // (el payload puede apuntar a una lista ya inactiva).
   useEffect(() => {
     if (editCargando) return;
+    if (listaPrecioId) return;
     if (listasPrecios.length === 0) return;
-
-    const listaActualSigueDisponible = listasPrecios.some(
-      (lista) => lista.id === listaPrecioId,
-    );
-
-    if (!listaPrecioId || !listaActualSigueDisponible) {
-      setListaPrecioId(listasPrecios[0]!.id);
-    }
+    setListaPrecioId(listasPrecios[0]!.id);
   }, [listaPrecioId, listasPrecios, editCargando]);
 
   useEffect(() => {
@@ -301,7 +296,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       id: "piedra",
       label: "Piedra / chapa del material",
       monto: "0",
-      moneda: "usd",
+      moneda: "ars",
     },
     {
       id: "mo",

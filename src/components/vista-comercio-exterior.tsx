@@ -13,9 +13,6 @@ export function VistaComercioExterior() {
       <header className="border-b border-border bg-white">
         <div className="px-5 pt-5 pb-5 sm:px-6">
           <h1 className="text-xl font-bold tracking-tight text-foreground">Comercio exterior</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Importaciones de mercadería y exportaciones con cliente, banco, factura y cobro.
-          </p>
         </div>
       </header>
       <main className="p-4 sm:p-6 [scrollbar-gutter:stable]">

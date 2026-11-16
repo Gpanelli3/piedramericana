@@ -423,7 +423,7 @@ export function BuscadorMaterial({
   chapaSugeridaId = null,
   textoLibre = "",
   onChange,
-  moneda = "usd",
+  moneda = "ars",
   loading,
   soloTextoLibre = false,
 }: {

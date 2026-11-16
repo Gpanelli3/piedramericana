@@ -273,6 +273,7 @@ describe("monedaDeListaPrecio", () => {
   it("si no hay lista usa el fallback", () => {
     expect(monedaDeListaPrecio(null, "ars")).toBe("ars");
     expect(monedaDeListaPrecio({ moneda: "otra" }, "usd")).toBe("usd");
+    expect(monedaDeListaPrecio(null)).toBe("ars");
   });
 });
 

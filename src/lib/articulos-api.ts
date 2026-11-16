@@ -305,7 +305,7 @@ export async function fetchArticulos(): Promise<{
     const mapped = (data ?? []).map((articulo) => ({
       ...articulo,
       precio: articulo.precio != null ? Number(articulo.precio) : null,
-      moneda: articulo.moneda === "ars" ? "ars" : "usd",
+        moneda: articulo.moneda === "usd" ? "usd" : "ars",
     })) as ArticuloConPrecio[];
 
     return { data: mapped, error: null };
@@ -339,7 +339,7 @@ export async function fetchArticulosConPrecios(
       data: ((data ?? []) as ArticuloConPrecio[]).map((a) => ({
         ...a,
         precio: a.precio != null ? Number(a.precio) : null,
-        moneda: a.moneda === "ars" ? "ars" : "usd",
+        moneda: a.moneda === "usd" ? "usd" : "ars",
       })),
       error: null,
     };
@@ -476,7 +476,7 @@ export async function createArticulo(input: ArticuloUpsertInput): Promise<{
         prefer_modo_manual: input.prefer_modo_manual,
         sort_order: input.sort_order ?? 0,
         precio: input.precio ?? null,
-        moneda: input.moneda ?? "usd",
+        moneda: input.moneda ?? "ars",
       })
       .select(
         "id, codigo, descripcion, unidad, calcula_material, medida_estandar_m2, prefer_modo_manual, sort_order, precio, moneda",
@@ -489,7 +489,7 @@ export async function createArticulo(input: ArticuloUpsertInput): Promise<{
       data: {
         ...row,
         precio: row.precio != null ? Number(row.precio) : null,
-        moneda: row.moneda === "ars" ? "ars" : "usd",
+        moneda: row.moneda === "usd" ? "usd" : "ars",
       },
       error: null,
     };
@@ -517,7 +517,7 @@ export async function updateArticulo(
         prefer_modo_manual: input.prefer_modo_manual,
         sort_order: input.sort_order ?? 0,
         precio: input.precio ?? null,
-        moneda: input.moneda ?? "usd",
+        moneda: input.moneda ?? "ars",
       })
       .eq("id", id);
 

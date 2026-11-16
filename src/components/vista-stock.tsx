@@ -16,9 +16,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Download, History, Plus, Truck } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArticulosCatalogo } from "@/components/articulos/ArticulosCatalogo";
 import { ListasPrecioPanel } from "@/components/articulos/ListasPrecioPanel";
 import { useStock } from "@/contexts/StockContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSearchParams } from "react-router-dom";
+import { stockTabDesdeParam } from "@/types/workspace";
 import { CrearRemitoDialog } from "@/components/stock/CrearRemitoDialog";
 import { HistorialRemitosTab } from "@/components/stock/HistorialRemitosTab";
 import { RecortesPorMaterialTab } from "@/components/stock/RecortesPorMaterialTab";
@@ -54,7 +57,27 @@ export function VistaStock() {
   const [historialOpen, setHistorialOpen] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState<StockProductoUnidad | null>(null);
   const [productoOpen, setProductoOpen] = useState(false);
-  const [stockTab, setStockTab] = useState("placas");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stockTab =
+    searchParams.get("ws") === "articulos"
+      ? "trabajos"
+      : stockTabDesdeParam(searchParams.get("st"));
+
+  const setStockTab = useCallback(
+    (value: string) => {
+      const next = stockTabDesdeParam(value);
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (next === "placas") n.delete("st");
+          else n.set("st", next);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const reloadMateriales = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -182,17 +205,6 @@ export function VistaStock() {
                 </span>
               ) : null}
             </h1>
-            {stockTab === "placas" ? null : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {stockTab === "productos"
-                  ? "Materiales por unidad que salen de Cantera (no planchas)."
-                  : stockTab === "listas"
-                  ? "Precios de mármoles, planchas y bachas por lista."
-                  : stockTab === "bloqueados"
-                    ? "Pedazos rotos, fuera de venta, para recortar o reponer."
-                    : "Bachas propias y del cliente."}
-              </p>
-            )}
           </div>
           {stockTab === "placas" ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -236,6 +248,7 @@ export function VistaStock() {
             <TabsTrigger value="bloqueados">Pedazos bloqueados</TabsTrigger>
             <TabsTrigger value="bachas">Bachas</TabsTrigger>
             <TabsTrigger value="listas">Listas de precio</TabsTrigger>
+            <TabsTrigger value="trabajos">Trabajos</TabsTrigger>
           </TabsList>
           <TabsContent value="placas" className="space-y-4">
             <StockMaterialesAgregadosTab
@@ -262,6 +275,9 @@ export function VistaStock() {
           </TabsContent>
           <TabsContent value="listas">
             <ListasPrecioPanel />
+          </TabsContent>
+          <TabsContent value="trabajos">
+            <ArticulosCatalogo />
           </TabsContent>
         </Tabs>
 

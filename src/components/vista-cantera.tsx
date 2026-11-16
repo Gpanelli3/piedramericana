@@ -128,9 +128,6 @@ export function VistaCantera() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Stock Cantera
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Materia prima a granel: ingresos, procesamiento y estado de lotes
-          </p>
         </div>
         <div className="flex gap-2 self-start">
           <Button variant="accent" className="gap-2" onClick={() => setDialogOpen(true)}>

@@ -25,7 +25,6 @@ type FiltroGeneral = Exclude<ProduccionOtFiltro, "general">;
 const FILTROS_GENERAL: {
   key: FiltroGeneral;
   className: string;
-  label: string;
   numero: string;
   barra: string;
   activo: string;
@@ -34,7 +33,6 @@ const FILTROS_GENERAL: {
     key: "corte",
     className:
       "border-sky-300 bg-sky-50 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/50 dark:hover:bg-sky-950",
-    label: "text-sky-800 dark:text-sky-200",
     numero: "text-sky-700 dark:text-sky-300",
     barra: "bg-sky-500",
     activo: "border-sky-500 ring-2 ring-sky-400/70 dark:border-sky-400 dark:ring-sky-500/60",
@@ -43,7 +41,6 @@ const FILTROS_GENERAL: {
     key: "produccion",
     className:
       "border-orange-300 bg-orange-50 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/50 dark:hover:bg-orange-950",
-    label: "text-orange-900 dark:text-orange-200",
     numero: "text-orange-700 dark:text-orange-300",
     barra: "bg-orange-500",
     activo: "border-orange-500 ring-2 ring-orange-400/70 dark:border-orange-400 dark:ring-orange-500/60",
@@ -52,7 +49,6 @@ const FILTROS_GENERAL: {
     key: "logistica",
     className:
       "border-violet-300 bg-violet-50 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/50 dark:hover:bg-violet-950",
-    label: "text-violet-800 dark:text-violet-200",
     numero: "text-violet-700 dark:text-violet-300",
     barra: "bg-violet-500",
     activo: "border-violet-500 ring-2 ring-violet-400/70 dark:border-violet-400 dark:ring-violet-500/60",
@@ -61,7 +57,6 @@ const FILTROS_GENERAL: {
     key: "entregadas",
     className:
       "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:hover:bg-emerald-950",
-    label: "text-emerald-800 dark:text-emerald-200",
     numero: "text-emerald-700 dark:text-emerald-300",
     barra: "bg-emerald-500",
     activo: "border-emerald-500 ring-2 ring-emerald-400/70 dark:border-emerald-400 dark:ring-emerald-500/60",
@@ -70,7 +65,6 @@ const FILTROS_GENERAL: {
     key: "venta_retenida",
     className:
       "border-rose-300 bg-rose-50 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:hover:bg-rose-950",
-    label: "text-rose-800 dark:text-rose-200",
     numero: "text-rose-700 dark:text-rose-400",
     barra: "bg-rose-500",
     activo: "border-rose-500 ring-2 ring-rose-400/70 dark:border-rose-400 dark:ring-rose-500/60",
@@ -196,7 +190,7 @@ export function VistaProduccion() {
                 )}
               >
                 <span className={cn("absolute inset-y-0 left-0 w-1.5", f.barra)} aria-hidden />
-                <p className={cn("truncate text-xs font-semibold", f.label)}>
+                <p className="truncate text-xs font-semibold text-foreground">
                   {PRODUCCION_OT_LABELS[f.key]}
                 </p>
                 <p className={cn("mt-0.5 text-2xl font-bold tabular-nums leading-none", f.numero)}>

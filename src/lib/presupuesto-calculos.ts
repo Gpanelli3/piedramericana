@@ -154,7 +154,7 @@ export function precioMaterialDeOrden(opts: {
 /** Moneda del presupuesto = moneda de la lista. Sin lista, el fallback. */
 export function monedaDeListaPrecio(
   lista: { moneda?: string | null } | null | undefined,
-  fallback: "ars" | "usd" = "usd",
+  fallback: "ars" | "usd" = "ars",
 ): "ars" | "usd" {
   if (lista?.moneda === "ars") return "ars";
   if (lista?.moneda === "usd") return "usd";

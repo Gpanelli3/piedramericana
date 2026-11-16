@@ -94,7 +94,7 @@ function emptyDraft(): ArticuloUpsertInput {
     prefer_modo_manual: false,
     sort_order: 0,
     precio: null,
-    moneda: "usd",
+    moneda: "ars",
   };
 }
 

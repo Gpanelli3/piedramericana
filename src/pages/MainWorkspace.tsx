@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfigWarning } from "@/components/ConfigWarning";
@@ -6,7 +6,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { VistaDashboard } from "@/components/vista-dashboard";
 import { VistaAdministracion } from "@/components/vista-administracion";
 import { VistaFinanzas } from "@/components/vista-finanzas";
-import { VistaArticulos } from "@/components/vista-articulos";
 import { VistaCantera } from "@/components/vista-cantera";
 import { VistaProduccionShell } from "@/components/vista-produccion-shell";
 import { VistaStock } from "@/components/vista-stock";
@@ -30,11 +29,24 @@ function workspaceDesdeSearchParams(ws: string | null): WorkspaceTab {
 }
 
 export function MainWorkspace() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = useMemo(
     () => workspaceDesdeSearchParams(searchParams.get("ws")),
     [searchParams],
   );
+
+  useEffect(() => {
+    if (activeTab !== "articulos") return;
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set("ws", "stock");
+        n.set("st", "trabajos");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [activeTab, setSearchParams]);
 
   return (
     <StockProvider>
@@ -53,10 +65,9 @@ export function MainWorkspace() {
             {activeTab === "dashboard" && <VistaDashboard />}
             {activeTab === "ventas" && <VistaVentas />}
             {activeTab === "clientes" && <VistaClientes />}
-            {activeTab === "articulos" && <VistaArticulos />}
             {activeTab === "produccion" && <VistaProduccionShell />}
             {activeTab === "cantera" && <VistaCantera />}
-            {activeTab === "stock" && <VistaStock />}
+            {(activeTab === "stock" || activeTab === "articulos") && <VistaStock />}
             {activeTab === "proveedores" && <VistaProveedores />}
             {activeTab === "comercio_exterior" && <VistaComercioExterior />}
             {activeTab === "administracion" && <VistaAdministracion />}
