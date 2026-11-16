@@ -1,5 +1,8 @@
 /** Descarga un elemento HTML como PDF (sin abrir el diálogo de imprimir). */
 
+import html2canvas from "html2canvas-pro";
+import { jsPDF } from "jspdf";
+
 export function nombreArchivoPdf(base: string): string {
   const limpio = base
     .normalize("NFD")
@@ -29,11 +32,6 @@ export async function elementoComoPdfBlob(
   elemento: HTMLElement,
   nombreArchivo: string,
 ): Promise<{ blob: Blob; filename: string }> {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas-pro"),
-    import("jspdf"),
-  ]);
-
   const canvas = await html2canvas(elemento, {
     scale: 2,
     useCORS: true,
@@ -80,4 +78,16 @@ export async function descargarElementoComoPdf(
 ): Promise<void> {
   const { blob, filename } = await elementoComoPdfBlob(elemento, nombreArchivo);
   dispararDescargaBlob(blob, filename);
+}
+
+export function puedeCompartirArchivo(file: File): boolean {
+  const nav = navigator as Navigator & {
+    canShare?: (data: { files?: File[] }) => boolean;
+  };
+  if (typeof nav.canShare !== "function") return false;
+  try {
+    return nav.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
 }

@@ -21,7 +21,11 @@ import {
   loadCobrosComprobante,
   type CobrosComprobanteDatos,
 } from "@/lib/cobros-comprobante";
-import { descargarElementoComoPdf, elementoComoPdfBlob } from "@/lib/descargar-pdf";
+import {
+  descargarElementoComoPdf,
+  elementoComoPdfBlob,
+  puedeCompartirArchivo,
+} from "@/lib/descargar-pdf";
 import { etiquetaMetodo } from "@/lib/finanzas-api";
 import { formatMoneyAr } from "@/lib/presupuesto-detalle";
 import { urlWhatsapp } from "@/lib/whatsapp";
@@ -73,18 +77,6 @@ function nombreArchivo(datos: CobrosComprobanteDatos, tab: TabVista, movimiento:
     return `${prefijo}_${datos.numeroPresupuesto}_${dia}`;
   }
   return `Comprobante_${datos.numeroPresupuesto}`;
-}
-
-function puedeCompartirArchivo(file: File): boolean {
-  const nav = navigator as Navigator & {
-    canShare?: (data: { files?: File[] }) => boolean;
-  };
-  if (typeof nav.canShare !== "function") return false;
-  try {
-    return nav.canShare({ files: [file] });
-  } catch {
-    return false;
-  }
 }
 
 export function ComprobanteCobrosSheet({

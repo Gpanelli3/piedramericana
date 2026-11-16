@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Check, Download, Paperclip, Plus, Printer, X } from "lucide-react";
+import { Check, Download, Paperclip, Plus, Share2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -60,6 +59,18 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
 import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
+import { CobrosComprobanteDocumento } from "@/components/venta/CobrosComprobanteDocumento";
+import {
+  loadCobrosComprobante,
+  type CobrosComprobanteDatos,
+} from "@/lib/cobros-comprobante";
+import {
+  descargarElementoComoPdf,
+  elementoComoPdfBlob,
+  puedeCompartirArchivo,
+} from "@/lib/descargar-pdf";
+import { formatMoneyAr } from "@/lib/presupuesto-detalle";
+import { urlWhatsapp } from "@/lib/whatsapp";
 
 type VentasPagoRow = Database["public"]["Tables"]["ventas_pagos"]["Row"];
 
@@ -168,8 +179,10 @@ export function VentaCobrosDialog({
   rowResumen,
   onDatosCambiaron,
 }: Props) {
-  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [comprobanteDatos, setComprobanteDatos] = useState<CobrosComprobanteDatos | null>(null);
+  const docRef = useRef<HTMLDivElement>(null);
   const [ventaCabecera, setVentaCabecera] = useState<{ id: string; estado: VentaEstado } | null>(null);
   const [pagosVentas, setPagosVentas] = useState<VentasPagoRow[]>([]);
   const [pagoBusy, setPagoBusy] = useState(false);
@@ -270,6 +283,25 @@ export function VentaCobrosDialog({
     setOtEstado(rowResumen?.ot_estado ?? null);
     void cargar(presupuestoId);
   }, [open, presupuestoId, rowResumen?.ot_etapa, rowResumen?.ot_estado, cargar]);
+
+  useEffect(() => {
+    if (!open || !presupuestoId) {
+      setComprobanteDatos(null);
+      return;
+    }
+    let cancelled = false;
+    void loadCobrosComprobante(presupuestoId).then((res) => {
+      if (cancelled) return;
+      if (res.error) {
+        setComprobanteDatos(null);
+        return;
+      }
+      setComprobanteDatos(res.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, presupuestoId, pagosVentas]);
 
   useEffect(() => {
     if (!formPagoOpen) return;
@@ -487,17 +519,67 @@ export function VentaCobrosDialog({
     onDatosCambiaron,
   ]);
 
-  const abrirComprobante = useCallback(
-    (descargar: boolean) => {
-      if (!presupuestoId) {
-        toast.error("No hay presupuesto para generar el comprobante.");
+  const textoCompartir = useCallback(() => {
+    if (!comprobanteDatos) return "";
+    return [
+      `Comprobante de cobros ${comprobanteDatos.numeroPresupuesto}`,
+      comprobanteDatos.clienteNombre,
+      `Cobrado ${formatMoneyAr(comprobanteDatos.cobrado, comprobanteDatos.moneda)}`,
+      `Saldo ${formatMoneyAr(comprobanteDatos.saldo, comprobanteDatos.moneda)}`,
+    ].join(" · ");
+  }, [comprobanteDatos]);
+
+  const descargarPdf = useCallback(async () => {
+    const el = docRef.current;
+    if (!el || !comprobanteDatos) {
+      toast.error("El comprobante todavía no está listo.");
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      await descargarElementoComoPdf(el, `Comprobante_${comprobanteDatos.numeroPresupuesto}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo generar el PDF.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [comprobanteDatos]);
+
+  const compartirPdf = useCallback(async () => {
+    const el = docRef.current;
+    if (!el || !comprobanteDatos) {
+      toast.error("El comprobante todavía no está listo.");
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      const { blob, filename } = await elementoComoPdfBlob(
+        el,
+        `Comprobante_${comprobanteDatos.numeroPresupuesto}`,
+      );
+      const file = new File([blob], filename, { type: "application/pdf" });
+      const texto = textoCompartir();
+      const nav = navigator as Navigator & {
+        share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
+      };
+      if (puedeCompartirArchivo(file) && typeof nav.share === "function") {
+        await nav.share({ files: [file], title: texto, text: texto });
         return;
       }
-      const qs = descargar ? "?descargar=1" : "";
-      navigate(`/presupuestos/${presupuestoId}/cobros/imprimir${qs}`);
-    },
-    [navigate, presupuestoId],
-  );
+      const wa = urlWhatsapp(comprobanteDatos.tel);
+      if (wa) {
+        window.open(`${wa}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+        return;
+      }
+      await navigator.clipboard.writeText(texto);
+      toast.success("Resumen copiado.");
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
+      toast.error(e instanceof Error ? e.message : "No se pudo compartir el comprobante.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [comprobanteDatos, textoCompartir]);
 
   return (
     <>
@@ -545,22 +627,22 @@ export function VentaCobrosDialog({
                   size="sm"
                   variant="outline"
                   className="h-8 gap-1.5 text-xs"
-                  disabled={!presupuestoId || busy}
-                  onClick={() => abrirComprobante(false)}
+                  disabled={!comprobanteDatos || pdfBusy}
+                  onClick={() => void descargarPdf()}
                 >
-                  <Printer className="h-3.5 w-3.5" aria-hidden />
-                  Imprimir
+                  <Download className="h-3.5 w-3.5" aria-hidden />
+                  {pdfBusy ? "Generando…" : "Descargar"}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   className="h-8 gap-1.5 text-xs"
-                  disabled={!presupuestoId || busy}
-                  onClick={() => abrirComprobante(true)}
+                  disabled={!comprobanteDatos || pdfBusy}
+                  onClick={() => void compartirPdf()}
                 >
-                  <Download className="h-3.5 w-3.5" aria-hidden />
-                  PDF
+                  <Share2 className="h-3.5 w-3.5" aria-hidden />
+                  Compartir
                 </Button>
               </div>
             </div>
@@ -657,6 +739,30 @@ export function VentaCobrosDialog({
           )}
         </SheetContent>
       </Sheet>
+      {comprobanteDatos ? (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed top-0 left-[-100vw] z-[-1] w-[210mm] bg-white"
+        >
+          <div ref={docRef}>
+            <CobrosComprobanteDocumento
+              className="bg-white p-5"
+              numeroPresupuesto={comprobanteDatos.numeroPresupuesto}
+              clienteNombre={comprobanteDatos.clienteNombre}
+              contacto={comprobanteDatos.contacto}
+              tel={comprobanteDatos.tel}
+              email={comprobanteDatos.email}
+              etapaLabel={comprobanteDatos.etapaLabel}
+              moneda={comprobanteDatos.moneda}
+              total={comprobanteDatos.total}
+              cobrado={comprobanteDatos.cobrado}
+              saldo={comprobanteDatos.saldo}
+              pagos={comprobanteDatos.pagos}
+              fechaEmision={new Date().toLocaleDateString("es-AR")}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <Dialog
         open={formPagoOpen}
