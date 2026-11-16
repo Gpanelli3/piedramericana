@@ -292,3 +292,158 @@ export function CobrosComprobanteDocumento({
     </div>
   );
 }
+
+export type CobrosComprobanteUnicoProps = {
+  tipo: "pago" | "cargo";
+  numeroPresupuesto: string;
+  clienteNombre: string;
+  contacto?: string;
+  tel?: string;
+  email?: string;
+  fecha: string;
+  moneda: "ars" | "usd";
+  monto: number;
+  metodo?: string | null;
+  nota?: string | null;
+  retencionMonto?: number;
+  retencionPorcentaje?: number | null;
+  totalObra: number;
+  cobradoObra: number;
+  saldoObra: number;
+  className?: string;
+};
+
+/** Recibo de un solo movimiento (pago o cargo) para entregar al cliente. */
+export function CobrosComprobanteUnico({
+  tipo,
+  numeroPresupuesto,
+  clienteNombre,
+  contacto = "",
+  tel = "",
+  email = "",
+  fecha,
+  moneda,
+  monto,
+  metodo,
+  nota,
+  retencionMonto = 0,
+  retencionPorcentaje,
+  totalObra,
+  cobradoObra,
+  saldoObra,
+  className,
+}: CobrosComprobanteUnicoProps) {
+  const esPago = tipo === "pago";
+  const ret = retencionMonto > 0.009 ? retencionMonto : 0;
+  const neto = monto - ret;
+  const fechaDoc = formatoFecha(fecha);
+
+  return (
+    <div
+      className={cn(
+        "bg-white text-neutral-900 text-[12px] leading-snug print:text-[11px]",
+        className,
+      )}
+    >
+      <header className="mb-3 grid grid-cols-[1fr_auto_1fr] gap-3 border border-neutral-800">
+        <div className="flex items-center justify-center bg-neutral-900 px-3 py-4 text-white">
+          <p className="text-center text-sm font-bold uppercase tracking-[0.12em]">
+            Piedra
+            <br />
+            Americana
+          </p>
+        </div>
+        <div className="flex min-w-[10rem] flex-col items-center justify-center border-x border-neutral-800 px-6 py-3">
+          <p className="text-[10px] uppercase tracking-wide text-neutral-500">
+            {esPago ? "Recibo de pago" : "Cargo a cuenta"}
+          </p>
+          <p className="text-base font-bold tabular-nums">
+            {numeroPresupuesto.trim() || "—"}
+          </p>
+          <p className="mt-0.5 text-[11px] tabular-nums text-neutral-600">{fechaDoc}</p>
+        </div>
+        <div className="flex flex-col justify-center space-y-0.5 px-3 py-3 text-[11px] text-neutral-700">
+          <p>
+            <span className="text-neutral-500">Moneda:</span>{" "}
+            {moneda === "usd" ? "Dólares (USD)" : "Pesos (ARS)"}
+          </p>
+          {esPago ? (
+            <p>
+              <span className="text-neutral-500">Método:</span> {etiquetaMetodo(metodo)}
+            </p>
+          ) : (
+            <p>
+              <span className="text-neutral-500">Concepto:</span> Cargo {numeroPresupuesto}
+            </p>
+          )}
+        </div>
+      </header>
+
+      <section className="mb-3 grid grid-cols-1 gap-x-6 gap-y-1 border border-neutral-800 px-3 py-2.5 sm:grid-cols-2">
+        <p>
+          <span className="font-semibold">Cliente:</span> {clienteNombre.trim() || "—"}
+        </p>
+        <p>
+          <span className="font-semibold">Contacto:</span> {contacto.trim() || "—"}
+        </p>
+        <p>
+          <span className="font-semibold">Tel:</span> {tel.trim() || "—"}
+        </p>
+        <p>
+          <span className="font-semibold">Email:</span> {email.trim() || "—"}
+        </p>
+      </section>
+
+      <section className="mb-3 border border-neutral-800 bg-neutral-900 px-4 py-5 text-center text-white">
+        <p className="text-[10px] uppercase tracking-wide text-white/70">
+          {esPago ? "Importe recibido" : "Importe cargado"}
+        </p>
+        <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight">
+          {formatMonto(esPago ? neto : monto, moneda)}
+        </p>
+        {esPago && ret > 0.009 ? (
+          <p className="mt-2 text-[11px] text-white/80">
+            Bruto {formatMonto(monto, moneda)}
+            {" · "}
+            Retención {formatMonto(ret, moneda)}
+            {retencionPorcentaje != null ? ` (${retencionPorcentaje}%)` : ""}
+          </p>
+        ) : null}
+        {esPago && nota?.trim() ? (
+          <p className="mt-2 text-[11px] text-white/80">{nota.trim()}</p>
+        ) : null}
+      </section>
+
+      <section className="mb-3 grid grid-cols-3 gap-0 border border-neutral-800 text-center">
+        <div className="border-r border-neutral-800 px-3 py-3">
+          <p className="text-[10px] uppercase tracking-wide text-neutral-500">Total obra</p>
+          <p className="mt-1 text-sm font-bold tabular-nums">{formatMonto(totalObra, moneda)}</p>
+        </div>
+        <div className="border-r border-neutral-800 px-3 py-3">
+          <p className="text-[10px] uppercase tracking-wide text-neutral-500">Cobrado</p>
+          <p className="mt-1 text-sm font-bold tabular-nums">{formatMonto(cobradoObra, moneda)}</p>
+        </div>
+        <div className="px-3 py-3">
+          <p className="text-[10px] uppercase tracking-wide text-neutral-500">
+            {saldoObra <= 0.009 ? "Saldo" : "Saldo pendiente"}
+          </p>
+          <p className="mt-1 text-sm font-bold tabular-nums">
+            {saldoObra <= 0.009 ? "Pagado" : formatMonto(saldoObra, moneda)}
+          </p>
+        </div>
+      </section>
+
+      <footer className="mt-8 grid grid-cols-2 gap-8 sm:gap-16 print:mt-12">
+        <div className="border-t border-neutral-400 pt-2">
+          <p className="text-xs font-semibold text-neutral-900">Piedra Americana</p>
+          <p className="text-[10px] text-neutral-500">
+            {esPago ? "Recibo de un pago" : "Comprobante de cargo"}
+          </p>
+        </div>
+        <div className="border-t border-neutral-400 pt-2 text-right">
+          <p className="text-[10px] text-neutral-500">Firma / conformidad cliente</p>
+        </div>
+      </footer>
+    </div>
+  );
+}

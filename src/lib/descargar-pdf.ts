@@ -25,10 +25,10 @@ function dispararDescargaBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export async function descargarElementoComoPdf(
+export async function elementoComoPdfBlob(
   elemento: HTMLElement,
   nombreArchivo: string,
-): Promise<void> {
+): Promise<{ blob: Blob; filename: string }> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas-pro"),
     import("jspdf"),
@@ -70,5 +70,14 @@ export async function descargarElementoComoPdf(
     heightLeft -= pageHeight;
   }
 
-  dispararDescargaBlob(pdf.output("blob"), nombreArchivoPdf(nombreArchivo));
+  const filename = nombreArchivoPdf(nombreArchivo);
+  return { blob: pdf.output("blob"), filename };
+}
+
+export async function descargarElementoComoPdf(
+  elemento: HTMLElement,
+  nombreArchivo: string,
+): Promise<void> {
+  const { blob, filename } = await elementoComoPdfBlob(elemento, nombreArchivo);
+  dispararDescargaBlob(blob, filename);
 }

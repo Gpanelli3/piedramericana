@@ -29,6 +29,17 @@ function saludoSegunHora(): string {
   return "Buenas noches";
 }
 
+/** Día de calendario del ISO, sin la hora de almacenamiento. Ej.: "Mié 18 nov". */
+function formatoEntrega(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const weekday = d.toLocaleDateString("es-AR", { weekday: "short" }).replace(/\./g, "");
+  const month = d.toLocaleDateString("es-AR", { month: "short" }).replace(/\./g, "");
+  const dia = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${dia} ${d.getDate()} ${month}`;
+}
+
 type KpiCardProps = {
   label: string;
   value: React.ReactNode;
@@ -239,7 +250,7 @@ export function VistaDashboard() {
                             <p className="truncate text-xs text-muted-foreground">{e.cliente}</p>
                           </div>
                           <div className="shrink-0 text-right text-xs">
-                            <p className="font-medium tabular-nums">{e.fecha}</p>
+                            <p className="font-medium tabular-nums">{formatoEntrega(e.fecha)}</p>
                             <p className="text-muted-foreground">{e.etapa}</p>
                           </div>
                         </li>

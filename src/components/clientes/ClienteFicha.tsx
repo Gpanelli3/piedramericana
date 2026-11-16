@@ -17,14 +17,27 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
+import { AprobarPresupuestoDialog } from "@/components/presupuesto/AprobarPresupuestoDialog";
+import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
+import { PresupuestoDetallePanel } from "@/components/presupuesto/PresupuestoDetallePanel";
 import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
+import { ComprobanteCobrosSheet } from "@/components/venta/ComprobanteCobrosSheet";
+import { VentaCobrosDialog, type VentaCobrosResumen } from "@/components/venta/VentaCobrosDialog";
 import { etiquetaMetodo } from "@/lib/finanzas-api";
 import {
   fetchClienteFicha,
   type ClienteFichaData,
   type ClienteFichaMovimiento,
+  type ClienteFichaPresupuesto,
+  type ClienteFichaVenta,
   type ClientePresupuesto,
 } from "@/lib/clients-api";
+import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
+import { eliminarPresupuestoPendiente } from "@/lib/presupuestos-api";
+import {
+  aprobarPresupuestoConVentaInicial,
+  type ChapaReservaPendiente,
+} from "@/lib/ventas-api";
 import type { PresupuestoEstado } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -74,8 +87,25 @@ export function ClienteFicha({
   const [act, setAct] = useState<ClienteFichaData | null>(null);
   const [cargando, setCargando] = useState(true);
 
-  const recargar = useCallback(async () => {
-    setCargando(true);
+  const [comprobanteMov, setComprobanteMov] = useState<ClienteFichaMovimiento | null>(null);
+  const [comprobanteOpen, setComprobanteOpen] = useState(false);
+  const [presupuestoPid, setPresupuestoPid] = useState<string | null>(null);
+  const [presupuestoOpen, setPresupuestoOpen] = useState(false);
+  const [detalleRefresh, setDetalleRefresh] = useState(0);
+  const [statusBusy, setStatusBusy] = useState(false);
+
+  const [ventaPid, setVentaPid] = useState<string | null>(null);
+  const [ventaOpen, setVentaOpen] = useState(false);
+  const [ventaResumen, setVentaResumen] = useState<VentaCobrosResumen | null>(null);
+
+  const [aprobDialogAbierto, setAprobDialogAbierto] = useState(false);
+  const [aprobDialogRow, setAprobDialogRow] = useState<ClienteFichaPresupuesto | null>(null);
+  const [aprobBusy, setAprobBusy] = useState(false);
+  const [chapasPendientes, setChapasPendientes] = useState<ChapaReservaPendiente[]>([]);
+  const [reemplazoOpen, setReemplazoOpen] = useState(false);
+
+  const recargar = useCallback(async (opts?: { silencioso?: boolean }) => {
+    if (!opts?.silencioso) setCargando(true);
     const res = await fetchClienteFicha(cliente.id, cliente.nombre);
     if (res.error) {
       toast.error(res.error.message);
@@ -90,49 +120,137 @@ export function ClienteFicha({
     void recargar();
   }, [recargar]);
 
-  const irPresupuesto = (id: string) => {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        n.set("ws", "ventas");
-        n.set("pv", "list");
-        n.set("ft", "todos");
-        n.set("rid", id);
-        n.delete("cid");
-        n.delete("id");
-        n.delete("pid");
-        n.delete("ot");
-        n.delete("eq");
-        return n;
-      },
-      { replace: false },
-    );
+  const abrirComprobante = (m: ClienteFichaMovimiento) => {
+    setComprobanteMov(m);
+    setComprobanteOpen(true);
   };
 
-  const irVenta = (presupuestoId: string) => {
-    setSearchParams(
-      (prev) => {
-        const n = new URLSearchParams(prev);
-        n.set("ws", "administracion");
-        n.set("pid", presupuestoId);
-        n.delete("cid");
-        n.delete("pv");
-        n.delete("ft");
-        n.delete("rid");
-        n.delete("id");
-        n.delete("ot");
-        n.delete("eq");
-        return n;
-      },
-      { replace: false },
-    );
+  const abrirPresupuesto = (id: string) => {
+    setPresupuestoPid(id);
+    setPresupuestoOpen(true);
   };
 
-  const irMovimiento = (m: ClienteFichaMovimiento) => {
-    const tieneVenta = Boolean(act?.ventas.some((v) => v.presupuestoId === m.presupuestoId));
-    if (tieneVenta) irVenta(m.presupuestoId);
-    else irPresupuesto(m.presupuestoId);
+  const abrirVenta = (v: ClienteFichaVenta) => {
+    setVentaPid(v.presupuestoId);
+    setVentaResumen({
+      cliente: cliente.nombre,
+      numero: v.numero,
+      total: v.total,
+      moneda: v.moneda,
+    });
+    setVentaOpen(true);
   };
+
+  const irAEditar = useCallback(
+    (id: string) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.set("ws", "ventas");
+          n.set("pv", "nuevo");
+          n.set("id", id);
+          n.delete("cid");
+          n.delete("rid");
+          n.delete("pid");
+          n.delete("ft");
+          n.delete("ot");
+          n.delete("eq");
+          return n;
+        },
+        { replace: false },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const iniciarAprobacion = useCallback(
+    (id: string) => {
+      const r = act?.presupuestos.find((x) => x.id === id);
+      if (!r || r.status !== "pendiente") return;
+      setAprobDialogRow(r);
+      setAprobDialogAbierto(true);
+    },
+    [act],
+  );
+
+  const onConfirmacionAprobar = useCallback(
+    async (payload: {
+      totalAprobado: number;
+      montoSenia: number;
+      fecha: string;
+      metodo: string;
+      nota: string;
+      retencionPorcentaje?: number;
+      retencionMonto?: number;
+      comprobante?: File | null;
+    }) => {
+      if (!aprobDialogRow) return;
+      setAprobBusy(true);
+      const res = await aprobarPresupuestoConVentaInicial({
+        presupuestoId: aprobDialogRow.id,
+        totalAprobado: payload.totalAprobado,
+        montoSenia: payload.montoSenia,
+        fecha: payload.fecha,
+        metodo: payload.metodo,
+        nota: payload.nota || undefined,
+        created_by: null,
+        retencionPorcentaje: payload.retencionPorcentaje,
+        retencionMonto: payload.retencionMonto,
+        comprobante: payload.comprobante,
+      });
+      setAprobBusy(false);
+      if (res.error) {
+        toast.error(res.error.message);
+        return;
+      }
+      setAprobDialogAbierto(false);
+      setAprobDialogRow(null);
+      if (res.chapasPendientes && res.chapasPendientes.length > 0) {
+        toast.warning("Algunas chapas señaladas ya no están disponibles. Elegí reemplazo.");
+        setChapasPendientes(res.chapasPendientes);
+        setReemplazoOpen(true);
+      } else {
+        toast.success(
+          payload.montoSenia > 0
+            ? "Aprobado con seña. Chapas señaladas reservadas si había stock."
+            : "Aprobado. Podés registrar la primera seña cuando quieras desde Ventas.",
+        );
+      }
+      if (payload.montoSenia > 0) {
+        const envio = await enviarAProduccionSiCorresponde(aprobDialogRow.id);
+        if (envio.error) toast.error(envio.error.message);
+        else if (envio.enviado) toast.success("Ya tenía medidas: pasó a producción.");
+      }
+      setDetalleRefresh((n) => n + 1);
+      await recargar({ silencioso: true });
+    },
+    [aprobDialogRow, recargar],
+  );
+
+  const onRechazar = useCallback(
+    async (id: string) => {
+      const row = act?.presupuestos.find((r) => r.id === id);
+      const etiqueta = row ? `${row.numero} · ${cliente.nombre}` : "este presupuesto";
+      if (
+        !window.confirm(
+          `¿Borrar ${etiqueta}?\nSale de medición y no queda historial.`,
+        )
+      ) {
+        return;
+      }
+      setStatusBusy(true);
+      const res = await eliminarPresupuestoPendiente(id);
+      setStatusBusy(false);
+      if (res.error) {
+        toast.error(res.error.message);
+        return;
+      }
+      toast.success("Presupuesto eliminado.");
+      setPresupuestoOpen(false);
+      await recargar({ silencioso: true });
+    },
+    [act, cliente.nombre, recargar],
+  );
 
   const hayUsd = Boolean(
     act &&
@@ -249,7 +367,7 @@ export function ClienteFicha({
                     <TableRow
                       key={m.id}
                       className="cursor-pointer"
-                      onClick={() => irMovimiento(m)}
+                      onClick={() => abrirComprobante(m)}
                     >
                       <TableCell className="whitespace-nowrap">{fmtFechaIso(m.fecha)}</TableCell>
                       <TableCell>
@@ -312,7 +430,7 @@ export function ClienteFicha({
                     <TableRow
                       key={p.id}
                       className="cursor-pointer"
-                      onClick={() => irPresupuesto(p.id)}
+                      onClick={() => abrirPresupuesto(p.id)}
                     >
                       <TableCell className="font-medium text-accent">{p.numero}</TableCell>
                       <TableCell>
@@ -356,7 +474,7 @@ export function ClienteFicha({
                     <TableRow
                       key={v.id}
                       className="cursor-pointer"
-                      onClick={() => irVenta(v.presupuestoId)}
+                      onClick={() => abrirVenta(v)}
                     >
                       <TableCell className="font-medium text-accent">{v.numero}</TableCell>
                       <TableCell>{etiquetaVentaEstado(v.estado)}</TableCell>
@@ -380,7 +498,6 @@ export function ClienteFicha({
             </div>
           )}
         </TabsContent>
-
       </Tabs>
 
       <ClienteFormDialog
@@ -391,6 +508,66 @@ export function ClienteFicha({
         descripcion="Teléfono, mail, contacto de obra y dirección."
         modoVista
         onSaved={onUpdated}
+      />
+
+      <ComprobanteCobrosSheet
+        open={comprobanteOpen}
+        onOpenChange={setComprobanteOpen}
+        movimiento={comprobanteMov}
+        telCliente={cliente.tel}
+      />
+
+      <PresupuestoDetallePanel
+        open={presupuestoOpen}
+        presupuestoId={presupuestoPid}
+        onClose={() => setPresupuestoOpen(false)}
+        onEditar={irAEditar}
+        onAprobar={iniciarAprobacion}
+        onRechazar={onRechazar}
+        statusBusy={statusBusy}
+        refreshKey={detalleRefresh}
+      />
+
+      <AprobarPresupuestoDialog
+        open={aprobDialogAbierto}
+        onOpenChange={(o) => {
+          setAprobDialogAbierto(o);
+          if (!o) setAprobDialogRow(null);
+        }}
+        row={
+          aprobDialogRow
+            ? {
+                id: aprobDialogRow.id,
+                numero: aprobDialogRow.numero,
+                cliente: cliente.nombre,
+                total: aprobDialogRow.total,
+                moneda: aprobDialogRow.moneda,
+              }
+            : null
+        }
+        busy={aprobBusy}
+        onConfirm={onConfirmacionAprobar}
+      />
+
+      <ElegirChapaReemplazoDialog
+        open={reemplazoOpen}
+        onOpenChange={(o) => {
+          setReemplazoOpen(o);
+          if (!o) setChapasPendientes([]);
+        }}
+        pendientes={chapasPendientes}
+        onResuelto={async () => {
+          setChapasPendientes([]);
+          await recargar({ silencioso: true });
+        }}
+      />
+
+      <VentaCobrosDialog
+        open={ventaOpen}
+        onOpenChange={setVentaOpen}
+        presupuestoId={ventaPid}
+        rowResumen={ventaResumen}
+        onDatosCambiaron={() => recargar({ silencioso: true })}
       />
     </div>
   );
