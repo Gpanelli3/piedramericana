@@ -32,6 +32,9 @@ export type MedidaItemEditable = {
   anchoM: string;
   cantidad: string;
   desperdicioPct: string;
+  /** m² de la pieza en la cotización original. */
+  m2Cotizado: number;
+  /** m² de la pieza con las medidas vigentes (o las que se están editando). */
   m2Approx: number;
   muestraAlto: boolean;
   muestraAncho: boolean;
@@ -91,21 +94,44 @@ function articuloIdsDePayload(payload: PresupuestoPayloadV1): string[] {
   return payload.ordenes.flatMap((ot) => ot.items.map((line) => line.articuloId));
 }
 
+function m2DeLinea(
+  line: Parameters<typeof buildLineaCalcInput>[1],
+  art: ArticuloConPrecio | undefined,
+): number {
+  const artCalc = articuloCalculoParaLinea(art, line);
+  return computeLineaPresupuesto(artCalc, buildLineaCalcInput(artCalc, line)).m2Linea;
+}
+
+function indiceM2PorPieza(
+  payload: PresupuestoPayloadV1 | null | undefined,
+  articulos: ArticuloConPrecio[],
+): Map<string, number> {
+  const byId = new Map(articulos.map((a) => [a.id, a]));
+  const out = new Map<string, number>();
+  if (!payload) return out;
+  for (const orden of payload.ordenes ?? []) {
+    for (const line of orden.items ?? []) {
+      out.set(`${orden.key}:${line.key}`, m2DeLinea(line, byId.get(line.articuloId)));
+    }
+  }
+  return out;
+}
+
 function itemsDesdePayload(
   payload: PresupuestoPayloadV1,
   articulos: ArticuloConPrecio[],
   ordenKey: string | null,
+  payloadVenta?: PresupuestoPayloadV1 | null,
 ): MedidaItemEditable[] {
   const byId = new Map(articulos.map((a) => [a.id, a]));
+  const cotizado = indiceM2PorPieza(payloadVenta ?? payload, articulos);
   const ordenesFuente =
     ordenKey ? (payload.ordenes ?? []).filter((o) => o.key === ordenKey) : (payload.ordenes ?? []);
   const items: MedidaItemEditable[] = [];
   for (const orden of ordenesFuente) {
     for (const line of orden.items ?? []) {
       const art = byId.get(line.articuloId);
-      const artCalc = articuloCalculoParaLinea(art, line);
-      const calc = buildLineaCalcInput(artCalc, line);
-      const m2 = computeLineaPresupuesto(artCalc, calc).m2Linea;
+      const m2 = m2DeLinea(line, art);
       const unidad = art?.unidad ?? "M2";
       const modo = line.modoIngreso === "manual" ? "manual" : "dimensiones";
       const muestraAlto = unidad === "ML" || (unidad === "M2" && modo === "dimensiones");
@@ -123,6 +149,7 @@ function itemsDesdePayload(
         anchoM: line.anchoM ?? "",
         cantidad: line.cantidad ?? "",
         desperdicioPct: line.desperdicioPct ?? "",
+        m2Cotizado: cotizado.get(`${orden.key}:${line.key}`) ?? m2,
         m2Approx: m2,
         muestraAlto,
         muestraAncho,
@@ -254,13 +281,13 @@ export async function fetchMedidasOt(
     const articulos = arts.data;
 
     const ordenKey = (otRes.data.orden_key ?? "").trim() || null;
-    const items = itemsDesdePayload(payload, articulos, ordenKey);
-    const ordenesFuente =
-      ordenKey ? (payload.ordenes ?? []).filter((o) => o.key === ordenKey) : (payload.ordenes ?? []);
-    const m2Calc = computePresupuestoTotalM2(ordenesFuente, articulos);
     const v1Res = await fetchPayloadVentaPorPresupuestoIds([ventaRes.data.presupuesto_id]);
     if (v1Res.error) return { data: null, error: v1Res.error };
     const payloadVenta = v1Res.data.get(ventaRes.data.presupuesto_id)?.payload ?? payload;
+    const items = itemsDesdePayload(payload, articulos, ordenKey, payloadVenta);
+    const ordenesFuente =
+      ordenKey ? (payload.ordenes ?? []).filter((o) => o.key === ordenKey) : (payload.ordenes ?? []);
+    const m2Calc = computePresupuestoTotalM2(ordenesFuente, articulos);
     const totalVenta = v1Res.data.get(ventaRes.data.presupuesto_id)?.total ?? (Number(presRes.data.total) || 0);
     const trio = trioM2DeOrden({
       ordenKey,
@@ -316,7 +343,6 @@ export async function fetchMedidasPresupuesto(
     const arts = await fetchArticulosPorIds(articuloIdsDePayload(payload));
     if (arts.error) return { data: null, error: arts.error };
     const articulos = arts.data;
-    const items = itemsDesdePayload(payload, articulos, null);
 
     const ventaRes = await supabase
       .from("ventas")
@@ -336,6 +362,7 @@ export async function fetchMedidasPresupuesto(
     const v1Res = await fetchPayloadVentaPorPresupuestoIds([presupuestoId]);
     if (v1Res.error) return { data: null, error: v1Res.error };
     const payloadVenta = v1Res.data.get(presupuestoId)?.payload ?? payload;
+    const items = itemsDesdePayload(payload, articulos, null, payloadVenta);
     const totalVenta = v1Res.data.get(presupuestoId)?.total ?? (Number(presRes.data.total) || 0);
     const trio = trioM2(
       computePresupuestoTotalM2(payloadVenta.ordenes, articulos),

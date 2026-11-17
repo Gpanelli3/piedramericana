@@ -187,7 +187,7 @@ export function ImportacionesCatalogo() {
         </div>
         <Button
           type="button"
-          className="gap-1.5 shrink-0"
+          className="h-9 gap-1.5 shrink-0"
           onClick={() => {
             setEditando(null);
             setDialogAbierto(true);

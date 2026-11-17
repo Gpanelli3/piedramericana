@@ -10,6 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createMaterial } from "@/lib/materials-api";
@@ -75,7 +76,7 @@ export function NuevoMaterialDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton>
+      <DialogContent className={dialogFormClassName} showCloseButton>
         <DialogHeader>
           <DialogTitle>Material</DialogTitle>
         </DialogHeader>

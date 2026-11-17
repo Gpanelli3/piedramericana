@@ -83,6 +83,23 @@ export async function getPlanoSignedUrl(
   return { url: data.signedUrl, error: null };
 }
 
+export async function downloadPlanoArchivo(
+  storagePath: string,
+): Promise<{ blob: Blob | null; error: Error | null }> {
+  if (!isSupabaseConfigured) {
+    return { blob: null, error: new Error("Supabase no está configurado.") };
+  }
+  const path = storagePath.trim();
+  if (!path) {
+    return { blob: null, error: new Error("No se pudo descargar el plano.") };
+  }
+  const { data, error } = await supabase.storage.from(PRESUPUESTO_PLANOS_BUCKET).download(path);
+  if (error || !data) {
+    return { blob: null, error: new Error(error?.message ?? "No se pudo descargar el plano.") };
+  }
+  return { blob: data, error: null };
+}
+
 export async function removePlano(
   storagePath: string,
 ): Promise<{ error: Error | null }> {

@@ -44,6 +44,20 @@ function medidasItemTexto(it: MedidaItemEditable): string {
   return `cant. ${it.cantidad.trim() || "—"}`;
 }
 
+function m2Distinto(cotizado: number, obra: number): boolean {
+  return Math.abs(obra - cotizado) >= 0.005;
+}
+
+function gruposPorOt(items: MedidaItemEditable[]) {
+  const map = new Map<string, { ordenKey: string; ordenTitulo: string; items: MedidaItemEditable[] }>();
+  for (const it of items) {
+    const prev = map.get(it.ordenKey);
+    if (prev) prev.items.push(it);
+    else map.set(it.ordenKey, { ordenKey: it.ordenKey, ordenTitulo: it.ordenTitulo, items: [it] });
+  }
+  return [...map.values()];
+}
+
 type Props = {
   otId?: string;
   presupuestoId?: string;
@@ -72,8 +86,6 @@ export function OtMedidasPanel({
   const [totalVenta, setTotalVenta] = useState(0);
   const [moneda, setMoneda] = useState<"ars" | "usd">("ars");
   const [nroVersion, setNroVersion] = useState(1);
-  const [m2Venta, setM2Venta] = useState(0);
-  const [m2Obra, setM2Obra] = useState(0);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -95,8 +107,6 @@ export function OtMedidasPanel({
     setTotalVenta(res.data.totalVenta);
     setMoneda(res.data.moneda);
     setNroVersion(res.data.nroVersion);
-    setM2Venta(res.data.m2Venta);
-    setM2Obra(res.data.m2Obra);
     setEditando(!res.data.medidasConfirmadas && destacado);
   }, [otId, presupuestoId, destacado]);
 
@@ -151,8 +161,6 @@ export function OtMedidasPanel({
     setTotalVigente(res.totalNuevo);
     setTotalVenta(res.totalAnterior);
     setNroVersion(res.nroVersion);
-    setM2Venta(res.m2Anterior);
-    setM2Obra(res.m2Nuevo);
     if (m2CambioSignificativo(res.m2Anterior, res.m2Nuevo)) {
       toast.success("Medidas confirmadas. El presupuesto pasó a " + etiquetaVersionPresupuesto(res.nroVersion) + ".");
     } else {
@@ -178,7 +186,7 @@ export function OtMedidasPanel({
   }
 
   const mostrarForm = editando || (destacado && !confirmadas);
-  const m2ObraMostrado = mostrarForm ? items.reduce((s, it) => s + it.m2Approx, 0) : m2Obra;
+  const grupos = gruposPorOt(items);
 
   return (
     <div
@@ -214,14 +222,10 @@ export function OtMedidasPanel({
 
       <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
         <div className="grid grid-cols-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          <span>Cotizado</span>
-          <span className="text-right">Medido en obra</span>
+          <span>Importe cotizado</span>
+          <span className="text-right">Importe vigente</span>
         </div>
-        <div className="grid grid-cols-2 items-baseline gap-y-1 px-3 py-2 tabular-nums">
-          <span className="text-muted-foreground">{formatMetraje(m2Venta)} m²</span>
-          <span className="text-right font-medium text-foreground">
-            {formatMetraje(m2ObraMostrado)} m²
-          </span>
+        <div className="grid grid-cols-2 items-baseline px-3 py-2 tabular-nums">
           <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
           <span className="text-right font-medium text-foreground">
             {formatMonto(totalVigente, moneda)}
@@ -230,58 +234,72 @@ export function OtMedidasPanel({
       </div>
 
       {mostrarForm ? (
-        <div className="space-y-3">
-          {items.map((it) => (
-            <div
-              key={`${it.ordenKey}-${it.itemKey}`}
-              className="space-y-2 rounded-md border border-border/80 bg-background/80 px-3 py-2"
-            >
-              <p className="text-xs font-medium text-foreground">
-                {it.articuloLabel}
-                <span className="ml-1 font-normal text-muted-foreground">· {it.ordenTitulo}</span>
+        <div className="space-y-4">
+          {grupos.map((grupo) => (
+            <section key={grupo.ordenKey} className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {grupo.ordenTitulo}
               </p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {it.muestraAlto ? (
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Alto (m)</Label>
-                    <Input
-                      className="h-8 text-xs"
-                      value={it.altoM}
-                      onChange={(e) =>
-                        onChangeItem(it.itemKey, it.ordenKey, { altoM: e.target.value })
+              {grupo.items.map((it) => (
+                <div
+                  key={`${it.ordenKey}-${it.itemKey}`}
+                  className="space-y-2 rounded-md border border-border/80 bg-background/80 px-3 py-2"
+                >
+                  <p className="text-xs font-medium text-foreground">{it.articuloLabel}</p>
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Cotizado {formatMetraje(it.m2Cotizado)} m²
+                    <span className="mx-1">·</span>
+                    <span
+                      className={
+                        m2Distinto(it.m2Cotizado, it.m2Approx)
+                          ? "font-medium text-foreground"
+                          : undefined
                       }
-                    />
+                    >
+                      En obra {formatMetraje(it.m2Approx)} m²
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {it.muestraAlto ? (
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Alto (m)</Label>
+                        <Input
+                          className="h-8 text-xs"
+                          value={it.altoM}
+                          onChange={(e) =>
+                            onChangeItem(it.itemKey, it.ordenKey, { altoM: e.target.value })
+                          }
+                        />
+                      </div>
+                    ) : null}
+                    {it.muestraAncho ? (
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Ancho (m)</Label>
+                        <Input
+                          className="h-8 text-xs"
+                          value={it.anchoM}
+                          onChange={(e) =>
+                            onChangeItem(it.itemKey, it.ordenKey, { anchoM: e.target.value })
+                          }
+                        />
+                      </div>
+                    ) : null}
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">
+                        {it.unidad === "M2" && it.modoIngreso === "manual" ? "m²" : "Cantidad"}
+                      </Label>
+                      <Input
+                        className="h-8 text-xs"
+                        value={it.cantidad}
+                        onChange={(e) =>
+                          onChangeItem(it.itemKey, it.ordenKey, { cantidad: e.target.value })
+                        }
+                      />
+                    </div>
                   </div>
-                ) : null}
-                {it.muestraAncho ? (
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Ancho (m)</Label>
-                    <Input
-                      className="h-8 text-xs"
-                      value={it.anchoM}
-                      onChange={(e) =>
-                        onChangeItem(it.itemKey, it.ordenKey, { anchoM: e.target.value })
-                      }
-                    />
-                  </div>
-                ) : null}
-                <div className="space-y-1">
-                  <Label className="text-[10px]">
-                    {it.unidad === "M2" && it.modoIngreso === "manual" ? "m²" : "Cantidad"}
-                  </Label>
-                  <Input
-                    className="h-8 text-xs"
-                    value={it.cantidad}
-                    onChange={(e) =>
-                      onChangeItem(it.itemKey, it.ordenKey, { cantidad: e.target.value })
-                    }
-                  />
                 </div>
-              </div>
-              <p className="text-[10px] tabular-nums text-muted-foreground">
-                ≈ {formatMetraje(it.m2Approx)} m²
-              </p>
-            </div>
+              ))}
+            </section>
           ))}
 
           <div className="space-y-1">
@@ -313,30 +331,48 @@ export function OtMedidasPanel({
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
-          <div className="overflow-hidden rounded-md border border-border/70 bg-background">
-            <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Ítem</span>
-              <span>Medidas</span>
-              <span className="text-right">m²</span>
+        <div className="space-y-3">
+          {grupos.map((grupo) => (
+            <div
+              key={grupo.ordenKey}
+              className="overflow-hidden rounded-md border border-border/70 bg-background"
+            >
+              <p className="border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[11px] font-semibold text-foreground">
+                {grupo.ordenTitulo}
+              </p>
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <span>Pieza</span>
+                <span>Medidas</span>
+                <span className="text-right">Cotizado</span>
+                <span className="text-right">En obra</span>
+              </div>
+              <ul>
+                {grupo.items.map((it) => (
+                  <li
+                    key={`${it.ordenKey}-${it.itemKey}`}
+                    className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-3 border-t border-border/40 px-3 py-2 text-xs"
+                  >
+                    <span className="min-w-0 truncate font-medium text-foreground">
+                      {it.articuloLabel}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">{medidasItemTexto(it)}</span>
+                    <span className="text-right tabular-nums text-muted-foreground">
+                      {formatMetraje(it.m2Cotizado)}
+                    </span>
+                    <span
+                      className={
+                        m2Distinto(it.m2Cotizado, it.m2Approx)
+                          ? "text-right tabular-nums font-medium text-foreground"
+                          : "text-right tabular-nums text-foreground"
+                      }
+                    >
+                      {formatMetraje(it.m2Approx)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul>
-              {items.map((it) => (
-                <li
-                  key={`${it.ordenKey}-${it.itemKey}`}
-                  className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3 border-t border-border/40 px-3 py-2 text-xs first:border-t-0"
-                >
-                  <span className="min-w-0 truncate font-medium text-foreground">
-                    {it.articuloLabel}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">{medidasItemTexto(it)}</span>
-                  <span className="text-right tabular-nums font-medium text-foreground">
-                    {formatMetraje(it.m2Approx)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          ))}
           {notas ? (
             <p className="text-xs text-muted-foreground">
               Notas: <span className="text-foreground">{notas}</span>

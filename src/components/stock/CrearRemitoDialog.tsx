@@ -9,6 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,6 +127,40 @@ function formatM2(n: number): string {
   return n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
+const M2_PLACA_MIN = 1;
+const M2_PLACA_MAX = 12;
+
+function parseCm(raw: string): number {
+  return Number(raw.replace(",", "."));
+}
+
+function m2Placa(largoCm: number, anchoCm: number): number {
+  if (!(largoCm > 0) || !(anchoCm > 0)) return 0;
+  return (largoCm / 100) * (anchoCm / 100);
+}
+
+function m2PlacaFueraDeRango(m2: number): boolean {
+  return m2 > 0 && (m2 < M2_PLACA_MIN || m2 > M2_PLACA_MAX);
+}
+
+/** Parte `R-01123-00009833` o `01123-00009833` en punto de venta y número. */
+function parseRemitoNumero(raw: string): { branch: string; serial: string } | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const m = t.match(/^(?:[A-Za-z]+[\s-]*)?(\d{1,8})[\s\-./]+(\d{1,12})\s*$/);
+  if (!m) return null;
+  return { branch: m[1]!, serial: m[2]! };
+}
+
+function composeRemitoNotes(pedido: string, notes: string): string | null {
+  const p = pedido.trim();
+  const n = notes.trim();
+  if (p && n) return `Pedido: ${p} — ${n}`;
+  if (p) return `Pedido: ${p}`;
+  if (n) return n;
+  return null;
+}
+
 type CrearRemitoDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -160,8 +195,9 @@ export function CrearRemitoDialog({
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [supplierId, setSupplierId] = useState<string>("");
   const [branchCode, setBranchCode] = useState("");
-  const [serialCode, setSerialCode] = useState("000000");
+  const [serialCode, setSerialCode] = useState("");
   const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [pedidoProveedor, setPedidoProveedor] = useState("");
   const [notes, setNotes] = useState("");
   const [origenPlaca, setOrigenPlaca] = useState<OrigenPlaca>("nacional");
   const [lines, setLines] = useState<LineDraft[]>(() => [blankLine()]);
@@ -199,11 +235,12 @@ export function CrearRemitoDialog({
     if (!open) return;
     setLines([blankLine()]);
     setNotes("");
+    setPedidoProveedor("");
     setBranchCode("");
     setSupplierId(initialSupplierId ?? "");
     setOrigenPlaca(initialOrigen ?? "nacional");
     setIssueDate(new Date().toISOString().slice(0, 10));
-    setSerialCode("000000");
+    setSerialCode("");
   }, [open, initialSupplierId, initialOrigen]);
 
   const materialLabelForLine = useCallback(
@@ -265,6 +302,17 @@ export function CrearRemitoDialog({
   const materialSelectValue = (ln: LineDraft) =>
     ln.material_id || (ln.otro ? "__otro__" : undefined);
 
+  const applyRemitoNumero = useCallback((raw: string, field: "branch" | "serial") => {
+    const parsed = parseRemitoNumero(raw);
+    if (parsed) {
+      setBranchCode(parsed.branch);
+      setSerialCode(parsed.serial);
+      return;
+    }
+    if (field === "branch") setBranchCode(raw);
+    else setSerialCode(raw);
+  }, []);
+
   const handleGrabar = async () => {
     if (isSupabaseConfigured && !supplierId) {
       toast.error("Seleccioná un proveedor o creá uno nuevo.");
@@ -274,8 +322,9 @@ export function CrearRemitoDialog({
       toast.error("Indicá la fecha del remito.");
       return;
     }
-    if (notes.length > MAX_NOTAS) {
-      toast.error(`Observación: máximo ${MAX_NOTAS} caracteres.`);
+    const composedNotes = composeRemitoNotes(pedidoProveedor, notes);
+    if ((composedNotes?.length ?? 0) > MAX_NOTAS) {
+      toast.error(`Observación: máximo ${MAX_NOTAS} caracteres (incluye el pedido).`);
       return;
     }
 
@@ -297,18 +346,32 @@ export function CrearRemitoDialog({
       }
       if (d.modo_medidas === "iguales") {
         const qty = parseInt(d.qty_slabs.replace(/\s/g, ""), 10);
-        const largo = Number(d.largo_cm.replace(",", "."));
-        const ancho = Number(d.ancho_cm.replace(",", "."));
+        const largo = parseCm(d.largo_cm);
+        const ancho = parseCm(d.ancho_cm);
         if (!Number.isFinite(qty) || qty < 1 || !(largo > 0) || !(ancho > 0)) {
           toast.error(`Línea ${i + 1}: revisá cantidad y medidas.`);
           return;
         }
+        const m2una = m2Placa(largo, ancho);
+        if (m2PlacaFueraDeRango(m2una)) {
+          toast.error(
+            `Línea ${i + 1}: cada placa da ${formatM2(m2una)} m². Si el remito está en metros (2,830 × 1,890), cargá 283 y 189.`,
+          );
+          return;
+        }
       } else {
         for (const m of d.medidas) {
-          const largo = Number(m.largo_cm.replace(",", "."));
-          const ancho = Number(m.ancho_cm.replace(",", "."));
+          const largo = parseCm(m.largo_cm);
+          const ancho = parseCm(m.ancho_cm);
           if (!(largo > 0) || !(ancho > 0)) {
             toast.error(`Línea ${i + 1}: hay placas sin medida.`);
+            return;
+          }
+          const m2una = m2Placa(largo, ancho);
+          if (m2PlacaFueraDeRango(m2una)) {
+            toast.error(
+              `Línea ${i + 1}: hay una placa de ${formatM2(m2una)} m². Si el remito está en metros (2,830 × 1,890), cargá 283 y 189.`,
+            );
             return;
           }
         }
@@ -375,7 +438,7 @@ export function CrearRemitoDialog({
           branch_code: branchCode,
           serial_code: serialCode,
           issue_date: issueDate,
-          notes: notes || null,
+          notes: composedNotes,
           origen_placa: origenPlaca,
           created_by: userId ?? null,
           importacion_id: importacionId ?? null,
@@ -471,22 +534,22 @@ export function CrearRemitoDialog({
       />
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[min(40rem,94vh)] w-full max-w-[min(28rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
-          <DialogHeader className="shrink-0 space-y-0 border-b border-border px-4 pb-2.5 pt-4 pr-12 text-left sm:px-5">
+        <DialogContent className={dialogFormClassName}>
+          <DialogHeader>
             <DialogTitle>Carga manual</DialogTitle>
           </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
+          <div className="grid gap-3 py-2">
             {loadErr ? <p className="text-xs text-destructive">{loadErr}</p> : null}
 
-            <div className="space-y-1.5">
-              <Label>Proveedor</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Proveedor</Label>
               <div className="flex gap-2">
                 <Select
                   value={supplierId || undefined}
                   onValueChange={setSupplierId}
                 >
-                  <SelectTrigger className="min-w-0 flex-1">
+                  <SelectTrigger className="h-9 min-w-0 flex-1 text-sm">
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
@@ -500,28 +563,28 @@ export function CrearRemitoDialog({
                 <Button
                   type="button"
                   size="icon"
-                  className="h-10 w-10 shrink-0"
+                  className="h-9 w-9 shrink-0"
                   aria-label="Nuevo proveedor"
                   onClick={() => setProveedorDialog(true)}
                   disabled={!isSupabaseConfigured}
                 >
-                  <Plus className="h-5 w-5" />
+                  <Plus className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Fecha</Label>
-                <FechaInput value={issueDate} onChange={setIssueDate} />
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha</Label>
+                <FechaInput className="h-9 w-full text-sm" value={issueDate} onChange={setIssueDate} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Origen</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Origen</Label>
                 <Select
                   value={origenPlaca}
                   onValueChange={(v) => setOrigenPlaca(v as OrigenPlaca)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 w-full text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -535,26 +598,32 @@ export function CrearRemitoDialog({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>N° remito — sucursal</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Punto de venta</Label>
                 <Input
-                  placeholder="Ej. 1"
+                  className="h-9 text-sm"
+                  placeholder="01123"
                   value={branchCode}
-                  onChange={(e) => setBranchCode(e.target.value)}
+                  onChange={(e) => applyRemitoNumero(e.target.value, "branch")}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label>N° remito — serie</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Número</Label>
                 <Input
-                  placeholder="000000"
+                  className="h-9 text-sm"
+                  placeholder="00009833"
                   value={serialCode}
-                  onChange={(e) => setSerialCode(e.target.value)}
+                  onChange={(e) => applyRemitoNumero(e.target.value, "serial")}
                 />
               </div>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Pegá el número completo (R-01123-00009833) en cualquiera de los dos campos.
+            </p>
 
             {lines.map((ln, idx) => {
               const m2tot = m2Linea(ln);
+              const m2IgualesUna = m2Placa(parseCm(ln.largo_cm), parseCm(ln.ancho_cm));
               return (
                 <div key={ln.key} className="space-y-3">
                   {lines.length > 1 ? (
@@ -573,8 +642,8 @@ export function CrearRemitoDialog({
                     </div>
                   ) : null}
 
-                  <div className="space-y-1.5">
-                    <Label>Material</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Material</Label>
                     <Select
                       value={materialSelectValue(ln)}
                       onValueChange={(v) => {
@@ -590,7 +659,7 @@ export function CrearRemitoDialog({
                         });
                       }}
                     >
-                      <SelectTrigger className="w-full">
+                      <SelectTrigger className="h-9 w-full text-sm">
                         <SelectValue placeholder="Elegir material…" />
                       </SelectTrigger>
                       <SelectContent>
@@ -604,6 +673,7 @@ export function CrearRemitoDialog({
                     </Select>
                     {ln.otro ? (
                       <Input
+                        className="h-9 text-sm"
                         placeholder="Nombre del material"
                         value={ln.material_other}
                         onChange={(e) => patchLine(idx, { material_other: e.target.value })}
@@ -612,17 +682,19 @@ export function CrearRemitoDialog({
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <Label>Lote *</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Lote *</Label>
                       <Input
+                        className="h-9 text-sm"
                         placeholder="Código de lote"
                         value={ln.lote_codigo}
                         onChange={(e) => patchLine(idx, { lote_codigo: e.target.value })}
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>N° bulto inicial</Label>
+                    <div className="space-y-1">
+                      <Label className="text-xs">N° bulto inicial</Label>
                       <Input
+                        className="h-9 text-sm"
                         inputMode="numeric"
                         placeholder="9001"
                         value={ln.bulto_inicio}
@@ -631,8 +703,8 @@ export function CrearRemitoDialog({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label>Modo de medidas</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Modo de medidas</Label>
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         type="button"
@@ -655,36 +727,40 @@ export function CrearRemitoDialog({
 
                   {ln.modo_medidas === "iguales" ? (
                     <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label>Cantidad (placas iguales)</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Cantidad (placas iguales)</Label>
                         <Input
+                          className="h-9 text-sm"
                           inputMode="numeric"
                           value={ln.qty_slabs}
                           onChange={(e) => patchLine(idx, { qty_slabs: e.target.value })}
                         />
                       </div>
                       <div className="grid grid-cols-3 gap-2">
-                        <div className="space-y-1.5">
-                          <Label>Largo (cm)</Label>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Largo (cm)</Label>
                           <Input
+                            className="h-9 text-sm"
                             inputMode="decimal"
                             placeholder="320"
                             value={ln.largo_cm}
                             onChange={(e) => patchLine(idx, { largo_cm: e.target.value })}
                           />
                         </div>
-                        <div className="space-y-1.5">
-                          <Label>Ancho (cm)</Label>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Ancho (cm)</Label>
                           <Input
+                            className="h-9 text-sm"
                             inputMode="decimal"
                             placeholder="160"
                             value={ln.ancho_cm}
                             onChange={(e) => patchLine(idx, { ancho_cm: e.target.value })}
                           />
                         </div>
-                        <div className="space-y-1.5">
-                          <Label>Esp (cm)</Label>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Esp (cm)</Label>
                           <Input
+                            className="h-9 text-sm"
                             inputMode="decimal"
                             placeholder="2"
                             value={ln.espesor_cm}
@@ -692,8 +768,16 @@ export function CrearRemitoDialog({
                           />
                         </div>
                       </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Si el remito trae metros (2,830 × 1,890), cargá 283 y 189.
+                      </p>
+                      {m2PlacaFueraDeRango(m2IgualesUna) ? (
+                        <p className="text-[11px] text-destructive">
+                          Cada placa da {formatM2(m2IgualesUna)} m². Revisá si las medidas están en metros.
+                        </p>
+                      ) : null}
                       <div className="space-y-1">
-                        <Label className="text-muted-foreground">m² totales</Label>
+                        <Label className="text-xs text-muted-foreground">m² totales</Label>
                         <p className="text-sm font-semibold tabular-nums">
                           {m2tot > 0 ? formatM2(m2tot) : "—"}
                         </p>
@@ -703,9 +787,9 @@ export function CrearRemitoDialog({
                     <div className="flex min-h-0 flex-col gap-2">
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <Label>Medida por placa (cm)</Label>
+                          <Label className="text-xs">Medida por placa (cm)</Label>
                           <p className="text-[11px] text-muted-foreground">
-                            Centímetros. Ej.: 320 × 160 → 5,12 m²
+                            Centímetros. Si el remito trae metros (2,830 × 1,890), cargá 283 y 189.
                           </p>
                         </div>
                         <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -716,15 +800,7 @@ export function CrearRemitoDialog({
                       </div>
                       <div className="space-y-2">
                         {ln.medidas.map((m, mi) => {
-                          const largo = Number(m.largo_cm.replace(",", "."));
-                          const ancho = Number(m.ancho_cm.replace(",", "."));
-                          const m2Placa =
-                            Number.isFinite(largo) &&
-                            largo > 0 &&
-                            Number.isFinite(ancho) &&
-                            ancho > 0
-                              ? (largo / 100) * (ancho / 100)
-                              : 0;
+                          const m2Una = m2Placa(parseCm(m.largo_cm), parseCm(m.ancho_cm));
                           return (
                             <div key={m.key} className="flex items-end gap-2">
                               <span className="mb-2 w-5 shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -734,6 +810,7 @@ export function CrearRemitoDialog({
                                 <div className="space-y-1">
                                   {mi === 0 ? <Label className="text-xs">Largo (cm)</Label> : null}
                                   <Input
+                                    className="h-9 text-sm"
                                     inputMode="decimal"
                                     placeholder="320"
                                     value={m.largo_cm}
@@ -745,6 +822,7 @@ export function CrearRemitoDialog({
                                 <div className="space-y-1">
                                   {mi === 0 ? <Label className="text-xs">Ancho (cm)</Label> : null}
                                   <Input
+                                    className="h-9 text-sm"
                                     inputMode="decimal"
                                     placeholder="160"
                                     value={m.ancho_cm}
@@ -756,6 +834,7 @@ export function CrearRemitoDialog({
                                 <div className="space-y-1">
                                   {mi === 0 ? <Label className="text-xs">Esp (cm)</Label> : null}
                                   <Input
+                                    className="h-9 text-sm"
                                     inputMode="decimal"
                                     placeholder="2"
                                     value={m.espesor_cm}
@@ -764,15 +843,21 @@ export function CrearRemitoDialog({
                                     }
                                   />
                                 </div>
-                                <div className="mb-2 w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                                  {m2Placa > 0 ? `${formatM2(m2Placa)} m²` : "—"}
+                                <div
+                                  className={
+                                    m2PlacaFueraDeRango(m2Una)
+                                      ? "mb-2 w-14 shrink-0 text-right text-[11px] tabular-nums text-destructive"
+                                      : "mb-2 w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground"
+                                  }
+                                >
+                                  {m2Una > 0 ? `${formatM2(m2Una)} m²` : "—"}
                                 </div>
                               </div>
                               <Button
                                 type="button"
                                 size="icon"
                                 variant="ghost"
-                                className="mb-0.5 h-10 w-10 shrink-0 text-destructive"
+                                className="mb-0.5 h-9 w-9 shrink-0 text-destructive"
                                 disabled={ln.medidas.length <= 1}
                                 onClick={() => removeMedidaAt(idx, m.key)}
                                 title="Quitar placa"
@@ -796,9 +881,10 @@ export function CrearRemitoDialog({
                     </div>
                   )}
 
-                  <div className="space-y-1.5">
-                    <Label>Precio por m² (opcional)</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Precio por m² (opcional)</Label>
                     <Input
+                      className="h-9 text-sm"
                       inputMode="decimal"
                       placeholder="0"
                       value={ln.precio}
@@ -820,8 +906,19 @@ export function CrearRemitoDialog({
               Agregar otro material
             </Button>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="rem-obs">Observación (opcional)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="rem-pedido" className="text-xs">Pedido del proveedor (opcional)</Label>
+              <Input
+                id="rem-pedido"
+                className="h-9 text-sm"
+                placeholder="OV_MGSL_2830"
+                value={pedidoProveedor}
+                onChange={(e) => setPedidoProveedor(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="rem-obs" className="text-xs">Observación (opcional)</Label>
               <Textarea
                 id="rem-obs"
                 placeholder={`Máximo ${MAX_NOTAS} caracteres`}
@@ -833,10 +930,10 @@ export function CrearRemitoDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 gap-2 border-t border-border px-4 py-3 sm:flex-row sm:justify-between sm:space-x-0 sm:px-5">
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={saving}
             >

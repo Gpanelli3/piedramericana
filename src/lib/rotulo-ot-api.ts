@@ -1,7 +1,9 @@
 import { etiquetaTipoColocacion } from "@/components/presupuesto/wizard/types";
 import { fetchMedidasOt } from "@/lib/ot-medidas-api";
+import { ALTO_ZOCALO_CM } from "@/lib/plan-corte";
 import { getOtProduccionById } from "@/lib/produccion-api";
-import { getPlanoSignedUrl } from "@/lib/presupuesto-planos-storage";
+import { descargarBlob } from "@/lib/descargar-pdf";
+import { downloadPlanoArchivo, getPlanoSignedUrl } from "@/lib/presupuesto-planos-storage";
 import { formatMetraje, parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { getPresupuestoById } from "@/lib/presupuestos-api";
 import {
@@ -21,12 +23,14 @@ export type RotuloOtDatos = {
   presupuestoNumero: string;
   fechaEntrega: string;
   cliente: string;
+  telefono: string;
   direccion: string;
   material: string;
   zocalo: string;
-  nafe: string;
   bachaTitulo: string;
   bachaDetalle: string | null;
+  comoVa: string;
+  notas: string;
   piezas: RotuloPieza[];
 };
 
@@ -46,6 +50,7 @@ export type RotuloOtInput = {
   presupuestoNumero: string;
   fechaProgramada: string | null | undefined;
   cliente: string;
+  telefono?: string | null | undefined;
   direccion: string;
   material: string;
   bachaRequerida: boolean;
@@ -53,7 +58,7 @@ export type RotuloOtInput = {
   bachaTipo: string | null | undefined;
   bachaOrigen: string | null | undefined;
   bachaColocacion: string | null | undefined;
-  nafe?: string | null | undefined;
+  notas?: string | null | undefined;
   piezas: RotuloPiezaInput[];
 };
 
@@ -103,28 +108,78 @@ export function esPiezaZocaloRotulo(input: {
   return textoIncluyeZocalo(input.articuloLabel ?? "");
 }
 
-export function textoNafeRotulo(nafe: string | null | undefined): string {
-  const t = nafe?.trim() ?? "";
+export function textoTelefonoRotulo(tel: string | null | undefined): string {
+  const t = tel?.trim() ?? "";
   return t || "—";
 }
 
-/** «Sí» si alguna pieza es zócalo; si no, «No». */
-export function textoZocaloRotulo(
-  piezas: Array<{ articuloCodigo?: string | null; articuloLabel?: string | null }>,
-): string {
-  return piezas.some(esPiezaZocaloRotulo) ? "Sí" : "No";
+export function textoNotasRotulo(notas: string | null | undefined): string {
+  const t = notas?.trim() ?? "";
+  return t || "—";
 }
 
-function extrasBachaRotulo(input: {
-  origen: string | null | undefined;
-  colocacion: string | null | undefined;
-}): string[] {
+function formatoCmRotulo(cm: number): string {
+  const n = Math.round(cm * 10) / 10;
+  const texto = Number.isInteger(n)
+    ? String(n)
+    : n.toLocaleString("es-AR", { maximumFractionDigits: 1 });
+  return `${texto} cm`;
+}
+
+/** Altura del zócalo en cm: lado chico de la pieza, o 10 cm si solo hay largo. */
+export function alturaZocaloCm(p: {
+  muestraAlto?: boolean;
+  muestraAncho?: boolean;
+  altoM?: string;
+  anchoM?: string;
+}): number {
+  const alto = parseDecimalInput(p.altoM ?? "");
+  const ancho = parseDecimalInput(p.anchoM ?? "");
+  if (alto > 0 && alto <= 0.5) return alto * 100;
+  if (p.muestraAncho) {
+    const dims = [alto, ancho].filter((n) => n > 0);
+    if (dims.length > 0) {
+      const menor = Math.min(...dims);
+      if (menor <= 0.5) return menor * 100;
+    }
+  }
+  return ALTO_ZOCALO_CM;
+}
+
+/** Altura en cm si hay zócalo; si no, «—». */
+export function textoZocaloRotulo(
+  piezas: Array<{
+    articuloCodigo?: string | null;
+    articuloLabel?: string | null;
+    muestraAlto?: boolean;
+    muestraAncho?: boolean;
+    altoM?: string;
+    anchoM?: string;
+  }>,
+): string {
+  const zocalos = piezas.filter(esPiezaZocaloRotulo);
+  if (zocalos.length === 0) return "—";
+  const alturas = [
+    ...new Set(zocalos.map((p) => Math.round(alturaZocaloCm(p) * 10) / 10)),
+  ].sort((a, b) => a - b);
+  return alturas.map(formatoCmRotulo).join(" · ");
+}
+
+function extrasBachaRotulo(origen: string | null | undefined): string[] {
   const partes: string[] = [];
-  if (input.origen === "propia") partes.push("Nuestra");
-  if (input.origen === "cliente") partes.push("Del cliente");
-  const coloc = input.colocacion?.trim();
-  if (coloc) partes.push(etiquetaTipoColocacion(coloc));
+  if (origen === "propia") partes.push("Nuestra");
+  if (origen === "cliente") partes.push("Del cliente");
   return partes;
+}
+
+export function textoComoVaRotulo(input: {
+  requerida: boolean;
+  colocacion: string | null | undefined;
+}): string {
+  if (!input.requerida) return "—";
+  const coloc = input.colocacion?.trim() ?? "";
+  if (!coloc) return "—";
+  return etiquetaTipoColocacion(coloc);
 }
 
 export function textoBachaRotulo(input: {
@@ -132,13 +187,12 @@ export function textoBachaRotulo(input: {
   asignada?: boolean;
   tipo: string | null | undefined;
   origen: string | null | undefined;
-  colocacion: string | null | undefined;
 }): { titulo: string; detalle: string | null } {
   if (!input.requerida) {
-    return { titulo: "Sin bacha", detalle: null };
+    return { titulo: "—", detalle: null };
   }
   const tipo = input.tipo?.trim() ?? "";
-  const extras = extrasBachaRotulo(input);
+  const extras = extrasBachaRotulo(input.origen);
   if (!input.asignada) {
     const detallePartes = tipo ? [tipo, ...extras] : extras;
     return {
@@ -149,12 +203,9 @@ export function textoBachaRotulo(input: {
   if (tipo) {
     return { titulo: tipo, detalle: extras.length > 0 ? extras.join(" · ") : null };
   }
-  const coloc = input.colocacion?.trim();
-  const titulo = coloc ? etiquetaTipoColocacion(coloc) : "Bacha";
-  const origenPartes = extras.filter((p) => !coloc || p !== etiquetaTipoColocacion(coloc));
   return {
-    titulo,
-    detalle: origenPartes.length > 0 ? origenPartes.join(" · ") : null,
+    titulo: "Bacha",
+    detalle: extras.length > 0 ? extras.join(" · ") : null,
   };
 }
 
@@ -167,7 +218,6 @@ export function armarRotuloOt(input: RotuloOtInput): RotuloOtDatos {
     asignada: input.bachaAsignada,
     tipo: input.bachaTipo,
     origen: input.bachaOrigen,
-    colocacion: input.bachaColocacion,
   });
   return {
     titulo,
@@ -175,12 +225,17 @@ export function armarRotuloOt(input: RotuloOtInput): RotuloOtDatos {
     presupuestoNumero: nro || "—",
     fechaEntrega: formatoFechaEntregaRotulo(input.fechaProgramada),
     cliente: input.cliente.trim() || "—",
+    telefono: textoTelefonoRotulo(input.telefono),
     direccion: input.direccion.trim() || "—",
     material: input.material.trim() || "—",
     zocalo: textoZocaloRotulo(input.piezas),
-    nafe: textoNafeRotulo(input.nafe),
     bachaTitulo: bacha.titulo,
     bachaDetalle: bacha.detalle,
+    comoVa: textoComoVaRotulo({
+      requerida: input.bachaRequerida,
+      colocacion: input.bachaColocacion,
+    }),
+    notas: textoNotasRotulo(input.notas),
     piezas: input.piezas.map((p) => ({
       articulo: p.articuloLabel.trim() || "Pieza",
       medidas: textoMedidasPiezaRotulo(p),
@@ -206,6 +261,7 @@ export async function fetchRotuloOt(
       presupuestoNumero: item.presupuestoNumero,
       fechaProgramada: item.orden.fecha_programada,
       cliente: item.cliente,
+      telefono: item.telefono,
       direccion: item.direccionObra,
       material: item.materialLabel,
       bachaRequerida: Boolean(item.orden.bacha_requerida),
@@ -213,7 +269,7 @@ export async function fetchRotuloOt(
       bachaTipo: item.orden.bacha_tipo,
       bachaOrigen: item.orden.bacha_origen,
       bachaColocacion: item.orden.bacha_colocacion,
-      nafe: item.orden.nafe,
+      notas: medRes.data?.notasMedicion ?? "",
       piezas: medRes.data?.items ?? [],
     }),
     error: null,
@@ -226,10 +282,34 @@ export type PlanoOtArchivo = {
   name: string;
 };
 
-export async function resolverPlanoOt(
+type PlanoUbicado = {
+  storagePath: string;
+  mime: string;
+  name: string;
+};
+
+function nombreArchivoPlano(name: string, mime: string): string {
+  const base = name.trim() || "Plano";
+  if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
+  const ext =
+    mime === "application/pdf"
+      ? "pdf"
+      : mime === "image/jpeg"
+        ? "jpg"
+        : mime === "image/png"
+          ? "png"
+          : mime === "image/webp"
+            ? "webp"
+            : mime === "image/gif"
+              ? "gif"
+              : "";
+  return ext ? `${base}.${ext}` : base;
+}
+
+async function ubicarPlanoOt(
   presupuestoId: string | null | undefined,
   ordenKey: string | null | undefined,
-): Promise<{ data: PlanoOtArchivo | null; sinPlano: boolean; error: Error | null }> {
+): Promise<{ data: PlanoUbicado | null; sinPlano: boolean; error: Error | null }> {
   const presId = presupuestoId?.trim() ?? "";
   const key = ordenKey?.trim() ?? "";
   if (!presId || !key) {
@@ -250,8 +330,27 @@ export async function resolverPlanoOt(
   if (!path) {
     return { data: null, sinPlano: true, error: null };
   }
+  return {
+    data: {
+      storagePath: path,
+      mime: ot?.planoAdjunto?.mime ?? "",
+      name: ot?.planoAdjunto?.name?.trim() || "Plano",
+    },
+    sinPlano: false,
+    error: null,
+  };
+}
 
-  const signed = await getPlanoSignedUrl(path);
+export async function resolverPlanoOt(
+  presupuestoId: string | null | undefined,
+  ordenKey: string | null | undefined,
+): Promise<{ data: PlanoOtArchivo | null; sinPlano: boolean; error: Error | null }> {
+  const ubicado = await ubicarPlanoOt(presupuestoId, ordenKey);
+  if (!ubicado.data) {
+    return { data: null, sinPlano: ubicado.sinPlano, error: ubicado.error };
+  }
+
+  const signed = await getPlanoSignedUrl(ubicado.data.storagePath);
   if (signed.error || !signed.url) {
     return {
       data: null,
@@ -262,28 +361,36 @@ export async function resolverPlanoOt(
   return {
     data: {
       url: signed.url,
-      mime: ot?.planoAdjunto?.mime ?? "",
-      name: ot?.planoAdjunto?.name?.trim() || "Plano",
+      mime: ubicado.data.mime,
+      name: ubicado.data.name,
     },
     sinPlano: false,
     error: null,
   };
 }
 
-export async function abrirPlanoOt(
+export async function descargarPlanoOt(
   presupuestoId: string | null | undefined,
   ordenKey: string | null | undefined,
 ): Promise<{ sinPlano: boolean; error: Error | null }> {
-  const res = await resolverPlanoOt(presupuestoId, ordenKey);
-  if (res.sinPlano || res.error || !res.data) {
-    return { sinPlano: res.sinPlano, error: res.error };
+  const ubicado = await ubicarPlanoOt(presupuestoId, ordenKey);
+  if (!ubicado.data) {
+    return { sinPlano: ubicado.sinPlano, error: ubicado.error };
   }
-  const opened = window.open(res.data.url, "_blank", "noopener,noreferrer");
-  if (!opened) {
-    return {
-      sinPlano: false,
-      error: new Error("El navegador bloqueó la ventana del plano."),
-    };
+  const file = await downloadPlanoArchivo(ubicado.data.storagePath);
+  if (file.error || !file.blob) {
+    return { sinPlano: false, error: file.error ?? new Error("No se pudo descargar el plano.") };
   }
+  descargarBlob(file.blob, nombreArchivoPlano(ubicado.data.name, ubicado.data.mime));
   return { sinPlano: false, error: null };
+}
+
+export async function descargarPlanoPorOtId(
+  otId: string,
+): Promise<{ sinPlano: boolean; error: Error | null }> {
+  const ot = await getOtProduccionById(otId);
+  if (ot.error || !ot.data) {
+    return { sinPlano: false, error: ot.error ?? new Error("No se encontró la OT.") };
+  }
+  return descargarPlanoOt(ot.data.presupuestoId, ot.data.orden.orden_key);
 }

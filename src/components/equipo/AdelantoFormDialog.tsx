@@ -14,6 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -133,7 +134,7 @@ export function AdelantoFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" showCloseButton aria-describedby={undefined}>
+      <DialogContent className={dialogFormClassName} showCloseButton aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{editando ? "Editar adelanto" : "Nuevo adelanto"}</DialogTitle>
         </DialogHeader>

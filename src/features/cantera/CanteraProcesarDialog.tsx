@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -165,7 +167,7 @@ export function CanteraProcesarDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Procesar piedra bruta</DialogTitle>
           <DialogDescription>
@@ -186,7 +188,7 @@ export function CanteraProcesarDialog({
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Lote de origen</Label>
                   <Select value={loteId || "__none__"} onValueChange={(v) => setLoteId(v === "__none__" ? "" : v)}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="h-9 w-full text-sm">
                       <SelectValue placeholder="Elegir lote" />
                     </SelectTrigger>
                     <SelectContent>
@@ -202,7 +204,7 @@ export function CanteraProcesarDialog({
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Kg a consumir</Label>
                   <Input
-                    className="tabular-nums"
+                    className="h-9 text-sm tabular-nums"
                     inputMode="decimal"
                     placeholder="ej. 2000"
                     value={kgConsumidos}
@@ -217,7 +219,7 @@ export function CanteraProcesarDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Fecha</Label>
-                  <FechaInput value={issueDate} onChange={setIssueDate} />
+                  <FechaInput className="h-9 w-full text-sm" value={issueDate} onChange={setIssueDate} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Notas</Label>
@@ -246,6 +248,7 @@ export function CanteraProcesarDialog({
                       <div className="space-y-1 min-w-0">
                         <Label className="text-[11px] text-muted-foreground">Nombre del producto</Label>
                         <Input
+                          className="h-9 text-sm"
                           placeholder="ej. Adoquines 10x20"
                           value={ln.nombre}
                           onChange={(e) => patchProductLine(ln.key, { nombre: e.target.value })}
@@ -254,7 +257,7 @@ export function CanteraProcesarDialog({
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Cantidad</Label>
                         <Input
-                          className="tabular-nums"
+                          className="h-9 text-sm tabular-nums"
                           inputMode="decimal"
                           placeholder="0"
                           value={ln.cantidad}
@@ -264,7 +267,7 @@ export function CanteraProcesarDialog({
                       <div className="space-y-1">
                         <Label className="text-[11px] text-muted-foreground">Unidad</Label>
                         <Select value={ln.unit} onValueChange={(v) => patchProductLine(ln.key, { unit: v })}>
-                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="u.">unidades</SelectItem>
                             <SelectItem value="m2">m²</SelectItem>
@@ -291,19 +294,18 @@ export function CanteraProcesarDialog({
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <DialogFooter className="gap-2 sm:gap-0">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Cancelar
                 </Button>
                 <Button
                   type="button"
-                  variant="accent"
                   disabled={submitting || !loteId}
                   onClick={() => void handleSubmit()}
                 >
                   {submitting ? "Guardando…" : "Confirmar procesamiento"}
                 </Button>
-              </div>
+              </DialogFooter>
             </>
           )}
         </div>

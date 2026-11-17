@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,7 +86,7 @@ export function NuevoProveedorDialog({ open, onOpenChange, onCreated }: NuevoPro
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Nuevo proveedor</DialogTitle>
         </DialogHeader>

@@ -208,7 +208,7 @@ export function VistaStock() {
           </div>
           {stockTab === "placas" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" className="h-10 gap-1.5" onClick={() => setRemitoOpen(true)}>
+              <Button type="button" className="h-9 gap-1.5" onClick={() => setRemitoOpen(true)}>
                 <Truck className="h-4 w-4" />
                 Ingreso remito
               </Button>
@@ -313,14 +313,13 @@ export function VistaStock() {
           <div className="mb-3 flex justify-end">
             <Button
               type="button"
-              size="sm"
-              className="h-8 gap-1.5"
+              className="h-9 gap-1.5"
               onClick={() => {
                 setHistorialOpen(false);
                 setRemitoOpen(true);
               }}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-4 w-4" />
               Nuevo ingreso
             </Button>
           </div>

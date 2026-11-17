@@ -13,6 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -334,7 +335,7 @@ export function ArticulosCatalogo() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-end gap-3">
         <h2 className="sr-only">Catálogo de trabajos</h2>
-        <Button type="button" size="sm" className="gap-1.5" onClick={abrirNuevo}>
+        <Button type="button" className="h-9 gap-1.5" onClick={abrirNuevo}>
           <Plus className="h-4 w-4" />
           Nuevo trabajo
         </Button>
@@ -396,7 +397,7 @@ export function ArticulosCatalogo() {
       )}
 
       <Dialog open={dialogAbierto} onOpenChange={(o) => !o && cerrarDialog()}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" showCloseButton>
+        <DialogContent className={dialogFormClassName} showCloseButton>
           <DialogHeader>
             <DialogTitle>{editandoId ? "Editar trabajo" : "Nuevo trabajo"}</DialogTitle>
             <DialogDescription>

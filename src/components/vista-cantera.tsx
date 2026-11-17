@@ -130,11 +130,11 @@ export function VistaCantera() {
           </h1>
         </div>
         <div className="flex gap-2 self-start">
-          <Button variant="accent" className="gap-2" onClick={() => setDialogOpen(true)}>
+          <Button type="button" className="h-9 gap-1.5" onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4" />
             Nuevo ingreso
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => setProcesarOpen(true)}>
+          <Button type="button" variant="outline" className="h-9 gap-1.5" onClick={() => setProcesarOpen(true)}>
             <Factory className="h-4 w-4" />
             Procesar
           </Button>

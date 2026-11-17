@@ -16,6 +16,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   createClient,
@@ -183,7 +184,7 @@ export function ClienteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton>
+      <DialogContent className={dialogFormClassName} showCloseButton>
         <DialogHeader>
           <div className="flex items-start justify-between gap-3 pr-6">
             <div className="min-w-0 space-y-2">

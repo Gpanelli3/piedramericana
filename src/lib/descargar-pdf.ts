@@ -15,7 +15,7 @@ export function nombreArchivoPdf(base: string): string {
   return name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
 }
 
-function dispararDescargaBlob(blob: Blob, filename: string): void {
+export function descargarBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -77,7 +77,7 @@ export async function descargarElementoComoPdf(
   nombreArchivo: string,
 ): Promise<void> {
   const { blob, filename } = await elementoComoPdfBlob(elemento, nombreArchivo);
-  dispararDescargaBlob(blob, filename);
+  descargarBlob(blob, filename);
 }
 
 export function puedeCompartirArchivo(file: File): boolean {

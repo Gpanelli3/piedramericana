@@ -86,7 +86,6 @@ export function MaterialesCatalogoTab({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Button
                 type="button"
-                size="sm"
                 className="h-9 gap-1.5 shrink-0"
                 disabled={!isSupabaseConfigured}
                 onClick={() => setDialogOpen(true)}

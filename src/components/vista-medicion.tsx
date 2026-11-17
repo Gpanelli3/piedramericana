@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +12,12 @@ import {
 } from "@/lib/medicion-api";
 import { enColaParaMedir, etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
-import { abrirPlanoOt } from "@/lib/rotulo-ot-api";
+import { descargarRotuloOt } from "@/components/produccion/descargarRotuloOt";
+import { descargarPlanoOt } from "@/lib/rotulo-ot-api";
 import { eliminarPresupuestoPendiente } from "@/lib/presupuestos-api";
 import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
-import { ConfirmarMedidasDialog } from "@/components/medicion/ConfirmarMedidasDialog";
-import { ArrowRight, CalendarClock, Eye, FileImage, Printer, Ruler } from "lucide-react";
+import { MedicionDetalleSheet } from "@/components/medicion/MedicionDetalleSheet";
+import { CalendarClock, Ruler } from "lucide-react";
 
 function hoyLocalIso(): string {
   const d = new Date();
@@ -78,22 +78,19 @@ function agruparParaMedir(items: MedicionColaItem[]): GrupoSemana[] {
 }
 
 export function VistaMedicion() {
-  const navigate = useNavigate();
   const { tieneAlgunRol, esAdmin, roles } = useRol();
   /** Igual que el sidebar: sin roles cargados se muestran todas las acciones. */
   const sinRoles = roles.length === 0;
   const puedeVendedor = esAdmin || sinRoles || tieneAlgunRol("vendedor", "administracion");
-  const puedeMedidor = esAdmin || sinRoles || tieneAlgunRol("medidor", "vendedor", "administracion");
 
   const [items, setItems] = useState<MedicionColaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyRotuloId, setBusyRotuloId] = useState<string | null>(null);
   const [busyPlanoId, setBusyPlanoId] = useState<string | null>(null);
 
-  const [confirmar, setConfirmar] = useState<{
-    item: MedicionColaItem;
-    autoEnviar: boolean;
-  } | null>(null);
+  const [detalleItem, setDetalleItem] = useState<MedicionColaItem | null>(null);
+  const [detalleHistorial, setDetalleHistorial] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -150,18 +147,26 @@ export function VistaMedicion() {
     await refresh();
   };
 
-  const onRotulo = (item: MedicionColaItem) => {
+  const onRotulo = async (item: MedicionColaItem) => {
     const ots = item.ots.filter((ot) => ot.id);
     if (ots.length === 0) {
       toast.message("Esta medición todavía no tiene orden de trabajo.");
       return;
     }
-    if (ots.length === 1) {
-      navigate(`/ordenes-trabajo/${ots[0]!.id}/rotulo`);
-      return;
-    }
-    for (const ot of ots) {
-      window.open(`/ordenes-trabajo/${ot.id}/rotulo`, "_blank", "noopener,noreferrer");
+    setBusyRotuloId(item.presupuestoId);
+    let ok = 0;
+    try {
+      for (const ot of ots) {
+        const res = await descargarRotuloOt(ot.id);
+        if (res.error) toast.error(res.error.message);
+        else ok += 1;
+      }
+      if (ok === 1) toast.success("Rótulo descargado.");
+      else if (ok > 1) toast.success(`Se descargaron ${ok} rótulos.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo descargar el rótulo.");
+    } finally {
+      setBusyRotuloId(null);
     }
   };
 
@@ -176,18 +181,19 @@ export function VistaMedicion() {
       return;
     }
     setBusyPlanoId(item.presupuestoId);
-    let abrio = false;
+    let descargo = false;
     let sinPlano = 0;
     try {
       for (const ot of ots) {
-        const res = await abrirPlanoOt(item.presupuestoId, ot.ordenKey);
+        const res = await descargarPlanoOt(item.presupuestoId, ot.ordenKey);
         if (res.sinPlano) sinPlano += 1;
         else if (res.error) toast.error(res.error.message);
-        else abrio = true;
+        else descargo = true;
       }
-      if (!abrio && sinPlano > 0) toast.message("Esta OT no tiene plano adjunto.");
+      if (!descargo && sinPlano > 0) toast.message("Esta OT no tiene plano adjunto.");
+      else if (descargo) toast.success("Plano descargado.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo abrir el plano.");
+      toast.error(e instanceof Error ? e.message : "No se pudo descargar el plano.");
     } finally {
       setBusyPlanoId(null);
     }
@@ -236,18 +242,10 @@ export function VistaMedicion() {
                           <FilaMedicion
                             key={item.presupuestoId}
                             item={item}
-                            busy={busyId === item.presupuestoId}
-                            planoBusy={busyPlanoId === item.presupuestoId}
-                            onRotulo={() => onRotulo(item)}
-                            onPlano={() => void onPlano(item)}
-                            accionPrincipal={
-                              puedeMedidor
-                                ? {
-                                    label: "Confirmar medidas",
-                                    onClick: () => setConfirmar({ item, autoEnviar: true }),
-                                  }
-                                : undefined
-                            }
+                            onClick={() => {
+                              setDetalleItem(item);
+                              setDetalleHistorial(false);
+                            }}
                             extra={
                               puedeVendedor && item.presupuestoStatus === "pendiente" ? (
                                 <Button
@@ -280,14 +278,10 @@ export function VistaMedicion() {
                     <FilaMedicion
                       key={item.presupuestoId}
                       item={item}
-                      busy={false}
-                      planoBusy={busyPlanoId === item.presupuestoId}
-                      onRotulo={() => onRotulo(item)}
-                      onPlano={() => void onPlano(item)}
                       historial
-                      accionPrincipal={{
-                        label: "Ver",
-                        onClick: () => setConfirmar({ item, autoEnviar: false }),
+                      onClick={() => {
+                        setDetalleItem(item);
+                        setDetalleHistorial(true);
                       }}
                     />
                   ))}
@@ -298,18 +292,24 @@ export function VistaMedicion() {
         )}
       </main>
 
-      <ConfirmarMedidasDialog
-        open={Boolean(confirmar)}
+      <MedicionDetalleSheet
+        item={detalleItem}
+        open={Boolean(detalleItem)}
         onOpenChange={(o) => {
-          if (!o) setConfirmar(null);
+          if (!o) setDetalleItem(null);
         }}
-        presupuestoId={confirmar?.item.presupuestoId ?? null}
-        cliente={confirmar?.item.cliente}
-        numero={confirmar?.item.numero}
-        titulo={confirmar?.autoEnviar ? "Confirmar medidas" : "Medidas confirmadas"}
+        historial={detalleHistorial}
+        onRotulo={() => {
+          if (detalleItem) void onRotulo(detalleItem);
+        }}
+        onPlano={() => {
+          if (detalleItem) void onPlano(detalleItem);
+        }}
+        rotuloBusy={Boolean(detalleItem && busyRotuloId === detalleItem.presupuestoId)}
+        planoBusy={Boolean(detalleItem && busyPlanoId === detalleItem.presupuestoId)}
         onSaved={() => {
-          const id = confirmar?.item.presupuestoId;
-          if (id && confirmar?.autoEnviar) void onMedidasConfirmadas(id);
+          const id = detalleItem?.presupuestoId;
+          if (id && !detalleHistorial) void onMedidasConfirmadas(id);
           else void refresh();
         }}
       />
@@ -337,31 +337,46 @@ function Seccion({
   );
 }
 
+function esControl(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest("button, a, input, textarea, select"));
+}
+
 function FilaMedicion({
   item,
-  busy,
-  accionPrincipal,
   extra,
   historial = false,
-  onRotulo,
-  onPlano,
-  planoBusy = false,
+  onClick,
 }: {
   item: MedicionColaItem;
-  busy: boolean;
-  accionPrincipal?: { label: string; onClick: () => void; disabled?: boolean };
   extra?: ReactNode;
   historial?: boolean;
-  onRotulo?: () => void;
-  onPlano?: () => void;
-  planoBusy?: boolean;
+  onClick: () => void;
 }) {
   const fechaConfirmada = formatFechaCorta(item.medicion.medido_en);
+
+  const onRowClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (esControl(e.target)) return;
+    onClick();
+  };
+
+  const onRowKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (esControl(e.target)) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      tabIndex={0}
+      onClick={onRowClick}
+      onKeyDown={onRowKeyDown}
+      className="group flex cursor-pointer flex-col gap-3 border-b border-border/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center sm:justify-between"
+    >
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate text-sm font-medium text-foreground underline-offset-2 group-hover:underline">
             {item.numero} · {item.cliente}
           </p>
           {historial ? (
@@ -410,34 +425,7 @@ function FilaMedicion({
           <p className="text-[11px] text-amber-800 dark:text-amber-200">{item.bloqueoEnvio}</p>
         ) : null}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {extra}
-        {onRotulo ? (
-          <Button type="button" size="sm" variant="outline" onClick={onRotulo}>
-            <Printer className="mr-1 h-3.5 w-3.5" />
-            Rótulo
-          </Button>
-        ) : null}
-        {onPlano ? (
-          <Button type="button" size="sm" variant="outline" disabled={planoBusy} onClick={onPlano}>
-            <FileImage className="mr-1 h-3.5 w-3.5" />
-            Plano
-          </Button>
-        ) : null}
-        {accionPrincipal ? (
-          <Button
-            type="button"
-            size="sm"
-            variant={historial ? "outline" : "default"}
-            disabled={busy || accionPrincipal.disabled}
-            onClick={accionPrincipal.onClick}
-          >
-            {historial ? <Eye className="mr-1 h-3.5 w-3.5" /> : null}
-            {accionPrincipal.label}
-            {historial ? null : <ArrowRight className="ml-1 h-3.5 w-3.5" />}
-          </Button>
-        ) : null}
-      </div>
+      {extra ? <div className="flex shrink-0 flex-wrap items-center gap-2">{extra}</div> : null}
     </div>
   );
 }

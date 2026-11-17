@@ -15,6 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -102,8 +103,8 @@ export function PrestadoresCatalogo() {
         </TabsList>
         <TabsContent value="pagos" className="mt-4 space-y-3">
           <div className="flex justify-end">
-            <Button type="button" size="sm" onClick={() => setPagoAbierto(true)}>
-              <Plus className="mr-1 h-4 w-4" />
+            <Button type="button" className="h-9 gap-1.5" onClick={() => setPagoAbierto(true)}>
+              <Plus className="h-4 w-4" />
               Registrar pago
             </Button>
           </div>
@@ -162,13 +163,13 @@ export function PrestadoresCatalogo() {
           <div className="flex justify-end">
             <Button
               type="button"
-              size="sm"
+              className="h-9 gap-1.5"
               onClick={() => {
                 setEditando(null);
                 setFormAbierto(true);
               }}
             >
-              <Plus className="mr-1 h-4 w-4" />
+              <Plus className="h-4 w-4" />
               Alta
             </Button>
           </div>
@@ -317,7 +318,7 @@ function PrestadorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>{prestador ? "Editar" : "Alta"} de prestador</DialogTitle>
         </DialogHeader>
@@ -428,7 +429,7 @@ function PagoPrestadorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Pago a no empleado</DialogTitle>
         </DialogHeader>

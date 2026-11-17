@@ -6,6 +6,9 @@ import { XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
+/** Formularios de alta/edición: 672 px, con scroll si el contenido es alto. */
+const dialogFormClassName = 'max-h-[90vh] overflow-y-auto sm:max-w-2xl'
+
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -140,4 +143,5 @@ export {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
+  dialogFormClassName,
 }

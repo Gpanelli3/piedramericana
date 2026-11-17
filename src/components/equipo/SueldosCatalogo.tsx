@@ -206,7 +206,7 @@ export function SueldosCatalogo() {
           <Button
             type="button"
             variant="outline"
-            className="gap-1.5"
+            className="h-9 gap-1.5"
             disabled={armando || !isSupabaseConfigured}
             onClick={() => void armarMes()}
           >
@@ -215,7 +215,7 @@ export function SueldosCatalogo() {
           </Button>
           <Button
             type="button"
-            className="gap-1.5"
+            className="h-9 gap-1.5"
             onClick={() => {
               setEditando(null);
               setDialogAbierto(true);

@@ -14,6 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -100,7 +101,7 @@ export function IncentivoFormDialog({ open, onOpenChange, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Nuevo incentivo</DialogTitle>
         </DialogHeader>

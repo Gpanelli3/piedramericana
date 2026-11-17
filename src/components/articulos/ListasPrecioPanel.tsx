@@ -14,6 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -245,7 +246,7 @@ export function ListasPrecioPanel() {
             ) : null}
           </div>
         </div>
-        <Button type="button" size="sm" className="gap-1.5" onClick={abrirNuevaLista}>
+        <Button type="button" className="h-9 gap-1.5" onClick={abrirNuevaLista}>
           <Plus className="h-4 w-4" />
           Nueva lista
         </Button>
@@ -338,7 +339,7 @@ export function ListasPrecioPanel() {
       )}
 
       <Dialog open={dialogAbierto} onOpenChange={(o) => !o && setDialogAbierto(false)}>
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className={dialogFormClassName} showCloseButton>
           <DialogHeader>
             <DialogTitle>{editandoId ? "Editar lista" : "Nueva lista de precios"}</DialogTitle>
             <DialogDescription>

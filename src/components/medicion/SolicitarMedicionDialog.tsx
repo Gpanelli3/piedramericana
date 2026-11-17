@@ -12,6 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { solicitarMedicion } from "@/lib/medicion-api";
@@ -61,7 +62,7 @@ export function SolicitarMedicionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Listo para medir</DialogTitle>
           <DialogDescription>

@@ -193,7 +193,7 @@ export function OtDetalleDialog({
   onNavChange,
   mostrarRotulo = false,
 }: Props) {
-  const { irARotulo, irAPlano } = useAccionesRotuloOt();
+  const { descargarRotulo, descargarPlano, rotuloBusy, planoBusy } = useAccionesRotuloOt();
   const [fechaLocal, setFechaLocal] = useState("");
   const [savingFecha, setSavingFecha] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -587,7 +587,8 @@ export function OtDetalleDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => irARotulo(item.orden.id)}
+                  disabled={rotuloBusy}
+                  onClick={() => void descargarRotulo(item.orden.id)}
                 >
                   <Printer className="h-3.5 w-3.5" />
                   Rótulo
@@ -596,7 +597,8 @@ export function OtDetalleDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => irAPlano(item.orden.id)}
+                  disabled={planoBusy}
+                  onClick={() => void descargarPlano(item.orden.id)}
                 >
                   <FileImage className="h-3.5 w-3.5" />
                   Plano

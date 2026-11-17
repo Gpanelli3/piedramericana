@@ -105,7 +105,8 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
     return (
       numero.includes(q) ||
       (r.supplier_name ?? "").toLowerCase().includes(q) ||
-      r.issue_date.includes(q)
+      r.issue_date.includes(q) ||
+      (r.notes ?? "").toLowerCase().includes(q)
     );
   });
 
@@ -188,7 +189,7 @@ export function HistorialRemitosTab({ reloadToken = 0 }: HistorialProps) {
             </Button>
             <Input
               className="h-9 sm:w-64"
-              placeholder="Buscar por N°, proveedor o fecha…"
+              placeholder="Buscar por N°, proveedor, fecha o pedido…"
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
             />

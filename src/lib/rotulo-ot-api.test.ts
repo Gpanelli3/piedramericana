@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  alturaZocaloCm,
   armarRotuloOt,
   formatoDimRotulo,
   formatoFechaEntregaRotulo,
   textoBachaRotulo,
+  textoComoVaRotulo,
   textoMedidasPiezaRotulo,
-  textoNafeRotulo,
+  textoNotasRotulo,
+  textoTelefonoRotulo,
   textoZocaloRotulo,
 } from "./rotulo-ot-api";
 
@@ -63,29 +66,27 @@ describe("textoMedidasPiezaRotulo", () => {
 });
 
 describe("textoBachaRotulo", () => {
-  it("sin requisito", () => {
+  it("sin requisito queda en raya", () => {
     expect(
       textoBachaRotulo({
         requerida: false,
         tipo: "Johnson — Acero Premium",
         origen: "propia",
-        colocacion: "bajo",
       }),
-    ).toEqual({ titulo: "Sin bacha", detalle: null });
+    ).toEqual({ titulo: "—", detalle: null });
   });
 
-  it("modelo, origen y colocación", () => {
+  it("modelo y origen, sin colocación", () => {
     expect(
       textoBachaRotulo({
         requerida: true,
         asignada: true,
         tipo: "Johnson — Acero Premium",
         origen: "propia",
-        colocacion: "bajo",
       }),
     ).toEqual({
       titulo: "Johnson — Acero Premium",
-      detalle: "Nuestra · Bajo mesada",
+      detalle: "Nuestra",
     });
   });
 
@@ -96,11 +97,10 @@ describe("textoBachaRotulo", () => {
         asignada: true,
         tipo: "Franke — Orion 70",
         origen: "cliente",
-        colocacion: "sobre",
       }),
     ).toEqual({
       titulo: "Franke — Orion 70",
-      detalle: "Del cliente · Sobre mesada",
+      detalle: "Del cliente",
     });
   });
 
@@ -111,35 +111,32 @@ describe("textoBachaRotulo", () => {
         asignada: true,
         tipo: "  ",
         origen: null,
-        colocacion: null,
       }),
     ).toEqual({ titulo: "Bacha", detalle: null });
   });
 
-  it("sin tipo usa colocación y origen", () => {
+  it("sin tipo usa origen", () => {
     expect(
       textoBachaRotulo({
         requerida: true,
         asignada: true,
         tipo: null,
         origen: "propia",
-        colocacion: "bajo",
       }),
-    ).toEqual({ titulo: "Bajo mesada", detalle: "Nuestra" });
+    ).toEqual({ titulo: "Bacha", detalle: "Nuestra" });
   });
 
-  it("pendiente: empieza con Bacha pendiente y sigue tipo, origen y colocación", () => {
+  it("pendiente: empieza con Bacha pendiente y sigue tipo y origen", () => {
     expect(
       textoBachaRotulo({
         requerida: true,
         asignada: false,
         tipo: "Franke — Orion 70",
         origen: "cliente",
-        colocacion: "bajo",
       }),
     ).toEqual({
       titulo: "Bacha pendiente",
-      detalle: "Franke — Orion 70 · Del cliente · Bajo mesada",
+      detalle: "Franke — Orion 70 · Del cliente",
     });
   });
 
@@ -149,7 +146,6 @@ describe("textoBachaRotulo", () => {
         requerida: true,
         tipo: "  ",
         origen: null,
-        colocacion: null,
       }),
     ).toEqual({
       titulo: "Bacha pendiente",
@@ -157,18 +153,17 @@ describe("textoBachaRotulo", () => {
     });
   });
 
-  it("pendiente sin tipo muestra origen y colocación", () => {
+  it("pendiente sin tipo muestra origen", () => {
     expect(
       textoBachaRotulo({
         requerida: true,
         asignada: false,
         tipo: null,
         origen: "cliente",
-        colocacion: "bajo",
       }),
     ).toEqual({
       titulo: "Bacha pendiente",
-      detalle: "Del cliente · Bajo mesada",
+      detalle: "Del cliente",
     });
   });
 
@@ -178,7 +173,6 @@ describe("textoBachaRotulo", () => {
       asignada: true,
       tipo: "Johnson — Acero Premium",
       origen: "propia",
-      colocacion: "bajo",
     });
     expect(`${r.titulo} · ${r.detalle}`).not.toContain("Bacha pendiente");
   });
@@ -189,48 +183,130 @@ describe("textoBachaRotulo", () => {
       asignada: false,
       tipo: "Johnson — Acero Premium",
       origen: "propia",
-      colocacion: "bajo",
     });
-    expect(r.titulo).toBe("Sin bacha");
+    expect(r.titulo).toBe("—");
     expect(r.titulo).not.toContain("Bacha pendiente");
   });
 });
 
-describe("textoZocaloRotulo", () => {
-  it("Sí con código ZOC-M2", () => {
-    expect(
-      textoZocaloRotulo([{ articuloCodigo: "ZOC-M2", articuloLabel: "Zócalo" }]),
-    ).toBe("Sí");
+describe("textoComoVaRotulo", () => {
+  it("sin bacha queda en raya", () => {
+    expect(textoComoVaRotulo({ requerida: false, colocacion: "bajo" })).toBe("—");
   });
 
-  it("Sí con código viejo ZOC-ML", () => {
-    expect(textoZocaloRotulo([{ articuloCodigo: "zoc-ml", articuloLabel: "ML" }])).toBe(
-      "Sí",
-    );
+  it("sin colocación queda en raya", () => {
+    expect(textoComoVaRotulo({ requerida: true, colocacion: null })).toBe("—");
+    expect(textoComoVaRotulo({ requerida: true, colocacion: "  " })).toBe("—");
   });
 
-  it("Sí por descripción aunque el código no coincida", () => {
-    expect(
-      textoZocaloRotulo([{ articuloCodigo: "OTRO", articuloLabel: "Zócalo cocina" }]),
-    ).toBe("Sí");
-  });
-
-  it("No si no hay zócalo", () => {
-    expect(
-      textoZocaloRotulo([{ articuloCodigo: "PIEZA", articuloLabel: "Mesada" }]),
-    ).toBe("No");
-    expect(textoZocaloRotulo([])).toBe("No");
+  it("muestra la colocación", () => {
+    expect(textoComoVaRotulo({ requerida: true, colocacion: "bajo" })).toBe("Bajo mesada");
+    expect(textoComoVaRotulo({ requerida: true, colocacion: "sobre" })).toBe("Sobre mesada");
+    expect(textoComoVaRotulo({ requerida: true, colocacion: "ras" })).toBe("Al ras");
   });
 });
 
-describe("textoNafeRotulo", () => {
+describe("textoTelefonoRotulo", () => {
   it("vacío queda en raya", () => {
-    expect(textoNafeRotulo(null)).toBe("—");
-    expect(textoNafeRotulo("  ")).toBe("—");
+    expect(textoTelefonoRotulo(null)).toBe("—");
+    expect(textoTelefonoRotulo("  ")).toBe("—");
   });
 
-  it("muestra el valor cargado", () => {
-    expect(textoNafeRotulo("Pulido")).toBe("Pulido");
+  it("muestra el número", () => {
+    expect(textoTelefonoRotulo("2615122347")).toBe("2615122347");
+  });
+});
+
+describe("textoNotasRotulo", () => {
+  it("vacío queda en raya", () => {
+    expect(textoNotasRotulo(null)).toBe("—");
+    expect(textoNotasRotulo("  ")).toBe("—");
+  });
+
+  it("muestra el texto", () => {
+    expect(textoNotasRotulo("No cortar el mueble")).toBe("No cortar el mueble");
+  });
+});
+
+describe("alturaZocaloCm", () => {
+  it("usa el alto si es de hasta 50 cm", () => {
+    expect(alturaZocaloCm({ altoM: "0,05" })).toBe(5);
+  });
+
+  it("en m² toma el lado menor", () => {
+    expect(
+      alturaZocaloCm({
+        muestraAncho: true,
+        altoM: "2,40",
+        anchoM: "0,10",
+      }),
+    ).toBe(10);
+  });
+
+  it("sin medida chica usa 10 cm", () => {
+    expect(alturaZocaloCm({ altoM: "2,40" })).toBe(10);
+    expect(alturaZocaloCm({})).toBe(10);
+  });
+});
+
+describe("textoZocaloRotulo", () => {
+  it("altura en cm con código ZOC-M2", () => {
+    expect(
+      textoZocaloRotulo([
+        {
+          articuloCodigo: "ZOC-M2",
+          articuloLabel: "Zócalo",
+          muestraAlto: true,
+          muestraAncho: true,
+          altoM: "2,40",
+          anchoM: "0,05",
+        },
+      ]),
+    ).toBe("5 cm");
+  });
+
+  it("altura en cm con código viejo ZOC-ML", () => {
+    expect(
+      textoZocaloRotulo([
+        { articuloCodigo: "zoc-ml", articuloLabel: "ML", altoM: "0,10" },
+      ]),
+    ).toBe("10 cm");
+  });
+
+  it("por descripción aunque el código no coincida", () => {
+    expect(
+      textoZocaloRotulo([
+        { articuloCodigo: "OTRO", articuloLabel: "Zócalo cocina", altoM: "0,07" },
+      ]),
+    ).toBe("7 cm");
+  });
+
+  it("raya si no hay zócalo", () => {
+    expect(
+      textoZocaloRotulo([{ articuloCodigo: "PIEZA", articuloLabel: "Mesada" }]),
+    ).toBe("—");
+    expect(textoZocaloRotulo([])).toBe("—");
+  });
+
+  it("lista alturas distintas", () => {
+    expect(
+      textoZocaloRotulo([
+        {
+          articuloCodigo: "ZOC-M2",
+          articuloLabel: "Zócalo",
+          muestraAncho: true,
+          altoM: "2,00",
+          anchoM: "0,05",
+        },
+        {
+          articuloCodigo: "ZOC-M2",
+          articuloLabel: "Zócalo",
+          muestraAncho: true,
+          altoM: "1,20",
+          anchoM: "0,07",
+        },
+      ]),
+    ).toBe("5 cm · 7 cm");
   });
 });
 
@@ -241,6 +317,7 @@ describe("armarRotuloOt", () => {
       presupuestoNumero: "1842",
       fechaProgramada: "2026-10-18",
       cliente: "Familia García",
+      telefono: "2615122347",
       direccion: "Av. San Martín 1240, San Rafael",
       material: "Silestone Blanco Zeus",
       bachaRequerida: true,
@@ -248,6 +325,7 @@ describe("armarRotuloOt", () => {
       bachaTipo: "Johnson — Acero Premium",
       bachaOrigen: "propia",
       bachaColocacion: "bajo",
+      notas: "En obra, en contenedor",
       piezas: [
         {
           articuloLabel: "Mesada",
@@ -264,10 +342,12 @@ describe("armarRotuloOt", () => {
     expect(rotulo.ambiente).toBe("Mesada cocina");
     expect(rotulo.presupuestoNumero).toBe("1842");
     expect(rotulo.fechaEntrega).toBe("18/10/2026");
-    expect(rotulo.zocalo).toBe("No");
-    expect(rotulo.nafe).toBe("—");
+    expect(rotulo.telefono).toBe("2615122347");
+    expect(rotulo.zocalo).toBe("—");
     expect(rotulo.bachaTitulo).toBe("Johnson — Acero Premium");
-    expect(rotulo.bachaDetalle).toBe("Nuestra · Bajo mesada");
+    expect(rotulo.bachaDetalle).toBe("Nuestra");
+    expect(rotulo.comoVa).toBe("Bajo mesada");
+    expect(rotulo.notas).toBe("En obra, en contenedor");
     expect(rotulo.piezas).toEqual([
       { articulo: "Mesada", medidas: "2,4 × 0,6 m", m2: "1,44" },
     ]);
@@ -291,8 +371,11 @@ describe("armarRotuloOt", () => {
     expect(rotulo.ambiente).toBe("—");
     expect(rotulo.fechaEntrega).toBe("Sin fecha");
     expect(rotulo.cliente).toBe("—");
-    expect(rotulo.zocalo).toBe("No");
-    expect(rotulo.bachaTitulo).toBe("Sin bacha");
+    expect(rotulo.telefono).toBe("—");
+    expect(rotulo.zocalo).toBe("—");
+    expect(rotulo.bachaTitulo).toBe("—");
+    expect(rotulo.comoVa).toBe("—");
+    expect(rotulo.notas).toBe("—");
     expect(rotulo.piezas).toEqual([]);
   });
 
@@ -302,6 +385,7 @@ describe("armarRotuloOt", () => {
       presupuestoNumero: "1842",
       fechaProgramada: "2026-10-18",
       cliente: "Familia García",
+      telefono: "2615122347",
       direccion: "Av. San Martín 1240",
       material: "Granito negro",
       bachaRequerida: true,
@@ -309,7 +393,7 @@ describe("armarRotuloOt", () => {
       bachaTipo: "Franke — Orion 70",
       bachaOrigen: "cliente",
       bachaColocacion: "bajo",
-      nafe: "Pulido",
+      notas: "No cortar",
       piezas: [
         {
           articuloLabel: "Mesada",
@@ -334,9 +418,10 @@ describe("armarRotuloOt", () => {
       ],
     });
     expect(rotulo.ambiente).toBe("Cocina — mesada principal");
-    expect(rotulo.zocalo).toBe("Sí");
-    expect(rotulo.nafe).toBe("Pulido");
+    expect(rotulo.zocalo).toBe("10 cm");
     expect(rotulo.bachaTitulo).toBe("Bacha pendiente");
-    expect(rotulo.bachaDetalle).toBe("Franke — Orion 70 · Del cliente · Bajo mesada");
+    expect(rotulo.bachaDetalle).toBe("Franke — Orion 70 · Del cliente");
+    expect(rotulo.comoVa).toBe("Bajo mesada");
+    expect(rotulo.notas).toBe("No cortar");
   });
 });

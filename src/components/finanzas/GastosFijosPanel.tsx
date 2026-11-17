@@ -13,6 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -94,13 +95,13 @@ export function GastosFijosPanel({ onRegistrado }: { onRegistrado?: () => void }
       <div className="flex justify-end">
         <Button
           type="button"
-          size="sm"
+          className="h-9 gap-1.5"
           onClick={() => {
             setEditando(null);
             setAbierto(true);
           }}
         >
-          <Plus className="mr-1 h-4 w-4" />
+          <Plus className="h-4 w-4" />
           Plantilla
         </Button>
       </div>
@@ -228,7 +229,7 @@ function GastoFijoFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>{gasto ? "Editar gasto fijo" : "Plantilla de gasto fijo"}</DialogTitle>
         </DialogHeader>

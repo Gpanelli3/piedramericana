@@ -31,10 +31,9 @@ function Linea({
 }
 
 export function RotuloOtDocumento({ datos, className }: Props) {
-  const bacha =
-    datos.bachaDetalle && datos.bachaTitulo !== "Sin bacha"
-      ? `${datos.bachaTitulo} · ${datos.bachaDetalle}`
-      : datos.bachaTitulo;
+  const bacha = datos.bachaDetalle
+    ? `${datos.bachaTitulo} · ${datos.bachaDetalle}`
+    : datos.bachaTitulo;
 
   return (
     <article
@@ -55,9 +54,13 @@ export function RotuloOtDocumento({ datos, className }: Props) {
           <Linea label="Entrega" value={datos.fechaEntrega} />
           <Linea label="Dirección" value={datos.direccion} />
           <Linea label="Ambiente" value={datos.ambiente} />
+          <Linea label="Teléfono" value={datos.telefono} />
           <Linea label="Zócalo" value={datos.zocalo} />
-          <Linea label="NAFE" value={datos.nafe} />
           <Linea label="Bacha" value={bacha} wrap />
+          <Linea label="Colocación bacha" value={datos.comoVa} />
+        </div>
+        <div className="mt-1.5">
+          <Linea label="Notas" value={datos.notas} wrap />
         </div>
       </header>
 

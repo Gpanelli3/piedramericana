@@ -144,7 +144,7 @@ export function EmpleadosCatalogo() {
             </SelectContent>
           </Select>
         </div>
-        <Button type="button" className="gap-1.5 shrink-0" onClick={abrirNuevo}>
+        <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo}>
           <Plus className="h-4 w-4" />
           Nuevo empleado
         </Button>

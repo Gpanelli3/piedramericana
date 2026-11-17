@@ -43,6 +43,7 @@ export type OtProduccionItem = {
   m2Significativo: boolean;
   vendedorLabel: string;
   direccionObra: string;
+  telefono: string;
   esReposicion: boolean;
   otOrigenTitulo: string | null;
 };
@@ -124,6 +125,11 @@ function direccionDesdePresupuesto(pres: OtKanbanFuentePayload | null, ordenKey?
   const ot =
     (ordenKey ? p.ordenes?.find((o) => o.key === ordenKey) : null) ?? p.ordenes?.[0];
   return direccionDesdeOrden(ot);
+}
+
+function telefonoDesdePresupuesto(pres: OtKanbanFuentePayload | null): string {
+  const p = parsePayload((pres?.payload ?? null) as Json);
+  return p?.tel?.trim() ?? "";
 }
 
 function materialDesdeOrden(
@@ -235,6 +241,7 @@ async function enrichOts(
       m2Significativo: m2CambioSignificativo(trio.venta, trio.obra),
       vendedorLabel: labels.vendedorLabel,
       direccionObra: direccionDesdePresupuesto(presupuesto, ordenKey),
+      telefono: telefonoDesdePresupuesto(presupuesto),
       esReposicion: orden.tipo === "reposicion",
       otOrigenTitulo: orden.ot_origen_id
         ? origenTituloById.get(orden.ot_origen_id) ?? null

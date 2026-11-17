@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -167,7 +169,7 @@ export function CanteraIngresoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>Nuevo ingreso de cantera</DialogTitle>
           <DialogDescription>
@@ -184,7 +186,7 @@ export function CanteraIngresoDialog({
                 onValueChange={(v) => setSupplierId(v === "__none__" ? "" : v)}
                 disabled={!isSupabaseConfigured}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="h-9 w-full text-sm">
                   <SelectValue placeholder="Sin proveedor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -197,11 +199,11 @@ export function CanteraIngresoDialog({
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Fecha</Label>
-              <FechaInput value={issueDate} onChange={setIssueDate} />
+              <FechaInput className="h-9 w-full text-sm" value={issueDate} onChange={setIssueDate} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Ref. comprobante</Label>
-              <Input placeholder="Remito / nota" value={receiptRef} onChange={(e) => setReceiptRef(e.target.value)} />
+              <Input className="h-9 text-sm" placeholder="Remito / nota" value={receiptRef} onChange={(e) => setReceiptRef(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Notas</Label>
@@ -226,7 +228,7 @@ export function CanteraIngresoDialog({
                   <div className="space-y-1 min-w-0">
                     <Label className="text-[11px] text-muted-foreground">Material</Label>
                     <Select value={ln.materialId} onValueChange={(v) => patchLine(ln.key, { materialId: v })}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {materiales.map((m) => (
                           <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
@@ -236,12 +238,12 @@ export function CanteraIngresoDialog({
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[11px] text-muted-foreground">Cantidad</Label>
-                    <Input className="tabular-nums" inputMode="decimal" placeholder="0" value={ln.qty} onChange={(e) => patchLine(ln.key, { qty: e.target.value })} />
+                    <Input className="h-9 text-sm tabular-nums" inputMode="decimal" placeholder="0" value={ln.qty} onChange={(e) => patchLine(ln.key, { qty: e.target.value })} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[11px] text-muted-foreground">Unidad</Label>
                     <Select value={ln.uom} onValueChange={(v) => patchLine(ln.key, { uom: v as CanteraPurchaseUom })}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-9 w-full text-sm"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="KG">kg</SelectItem>
                         <SelectItem value="T">ton</SelectItem>
@@ -266,19 +268,18 @@ export function CanteraIngresoDialog({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
             <Button
               type="button"
-              variant="accent"
               disabled={submitting || !materiales.length}
               onClick={() => void handleSubmit()}
             >
               {submitting ? "Guardando…" : "Confirmar ingreso"}
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>

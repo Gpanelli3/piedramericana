@@ -301,7 +301,6 @@ export function CanteraProcesarTab({
 
               <Button
                 type="button"
-                variant="accent"
                 className="w-full sm:w-auto"
                 disabled={submitting || !materiales.length || !loteId}
                 onClick={() => void handleSubmit()}

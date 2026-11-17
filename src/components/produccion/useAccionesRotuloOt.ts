@@ -1,23 +1,38 @@
-import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { stateIrADetalleOt } from "@/lib/retorno-ot-dialog";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { descargarRotuloOt } from "@/components/produccion/descargarRotuloOt";
+import { descargarPlanoPorOtId } from "@/lib/rotulo-ot-api";
 
 export function useAccionesRotuloOt() {
-  const navigate = useNavigate();
+  const [rotuloBusy, setRotuloBusy] = useState(false);
+  const [planoBusy, setPlanoBusy] = useState(false);
 
-  const irARotulo = useCallback(
-    (otId: string) => {
-      navigate(`/ordenes-trabajo/${otId}/rotulo`, { state: stateIrADetalleOt(otId) });
-    },
-    [navigate],
-  );
+  const descargarRotulo = useCallback(async (otId: string) => {
+    setRotuloBusy(true);
+    try {
+      const res = await descargarRotuloOt(otId);
+      if (res.error) toast.error(res.error.message);
+      else toast.success("Rótulo descargado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo descargar el rótulo.");
+    } finally {
+      setRotuloBusy(false);
+    }
+  }, []);
 
-  const irAPlano = useCallback(
-    (otId: string) => {
-      navigate(`/ordenes-trabajo/${otId}/plano`, { state: stateIrADetalleOt(otId) });
-    },
-    [navigate],
-  );
+  const descargarPlano = useCallback(async (otId: string) => {
+    setPlanoBusy(true);
+    try {
+      const res = await descargarPlanoPorOtId(otId);
+      if (res.sinPlano) toast.message("Esta OT no tiene plano adjunto.");
+      else if (res.error) toast.error(res.error.message);
+      else toast.success("Plano descargado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo descargar el plano.");
+    } finally {
+      setPlanoBusy(false);
+    }
+  }, []);
 
-  return { irARotulo, irAPlano };
+  return { descargarRotulo, descargarPlano, rotuloBusy, planoBusy };
 }

@@ -15,6 +15,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  dialogFormClassName,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -179,7 +180,7 @@ export function ProveedorFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className={dialogFormClassName}>
         <DialogHeader>
           <DialogTitle>{editando ? "Editar proveedor" : "Nuevo proveedor"}</DialogTitle>
           <DialogDescription>
