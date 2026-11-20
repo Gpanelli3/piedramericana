@@ -8,10 +8,12 @@ import {
   computePresupuestoComercial,
   computePresupuestoTotalM2,
   parseDecimalInput,
+  totalConDiferenciaDeCalculo,
   trioM2,
   trioM2DeOrden,
   type M2Trio,
 } from "@/lib/presupuesto-calculos";
+import { registrarEventoPrecio } from "@/lib/presupuesto-eventos-api";
 import type { Json } from "@/types/database";
 import {
   hydratePresupuestoPayloadV1,
@@ -512,15 +514,31 @@ export async function aplicarMedidasAPresupuesto(opts: {
       };
     });
 
-    const comercial = computePresupuestoComercial({
-      ordenes,
+    const parametrosComerciales = {
       articulos,
       descuentoGlobalPct: payload.descuentoGlobalPct,
       mMedicionGlobal: payload.mMedicionGlobal,
       mEntregaGlobal: payload.mEntregaGlobal,
       mColocacionGlobal: payload.mColocacionGlobal,
       totalMecGlobal: payload.totalMecGlobal,
+    };
+    const comercialAntes = computePresupuestoComercial({
+      ordenes: payload.ordenes,
+      ...parametrosComerciales,
     });
+    const comercialCalculado = computePresupuestoComercial({
+      ordenes,
+      ...parametrosComerciales,
+    });
+    // Se suma solo la diferencia de las líneas al total vigente: no se pierde lo acordado al aprobar.
+    const comercial = {
+      ...comercialCalculado,
+      total: totalConDiferenciaDeCalculo({
+        totalActual: totalAnterior,
+        calculoAnterior: comercialAntes.total,
+        calculoNuevo: comercialCalculado.total,
+      }),
+    };
 
     const trio = trioM2DeOrden({
       ordenKey,
@@ -548,6 +566,22 @@ export async function aplicarMedidasAPresupuesto(opts: {
       })
       .eq("id", presupuestoId);
     if (upPres.error) return { ...EMPTY_GUARDAR, error: new Error(upPres.error.message) };
+
+    // El cambio de precio por medición queda registrado en el historial del presupuesto.
+    if (Math.abs(comercial.total - totalAnterior) > 0.009) {
+      await registrarEventoPrecio({
+        presupuestoId,
+        tipo: "ajuste",
+        monto: comercial.total,
+        moneda,
+        meta: {
+          motivo: "medicion",
+          total_anterior: totalAnterior,
+          m2_anterior: trio.venta,
+          m2_nuevo: trio.obra,
+        },
+      });
+    }
 
     const ventaRes = await supabase
       .from("ventas")

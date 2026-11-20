@@ -761,9 +761,24 @@ export function PresupuestoDetallePanel({
                             !Array.isArray(ev.meta) &&
                             typeof ev.meta.total_anterior === "number" ? (
                               <p className="text-xs text-muted-foreground">
-                                {ev.meta.motivo === "aprobacion" ? "Al aprobar" : "Ajuste"} · antes{" "}
+                                {ev.meta.motivo === "aprobacion"
+                                  ? "Al aprobar"
+                                  : ev.meta.motivo === "medicion"
+                                    ? "Por medición"
+                                    : ev.meta.motivo === "renegociacion"
+                                      ? "Renegociado con el cliente"
+                                      : "Ajuste"}{" "}
+                                · antes{" "}
                                 {formatMoneyAr(ev.meta.total_anterior, ev.moneda)}
                               </p>
+                            ) : null}
+                            {ev.tipo === "ajuste" &&
+                            ev.meta &&
+                            typeof ev.meta === "object" &&
+                            !Array.isArray(ev.meta) &&
+                            typeof ev.meta.nota === "string" &&
+                            ev.meta.nota ? (
+                              <p className="text-xs italic text-muted-foreground">«{ev.meta.nota}»</p>
                             ) : null}
                           </div>
                         </div>

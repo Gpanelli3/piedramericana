@@ -1,11 +1,14 @@
 import { supabase } from "@/lib/supabase";
 import {
+  conformidadTrasMedir,
   esMedicionEstado,
   motivoBloqueoEnvio,
   puedeEnviarAProduccion,
+  validarImporteRenegociado,
   type MedicionEstado,
   type PuedeEnviarAProduccionResultado,
 } from "@/lib/medicion-reglas";
+import { registrarEventoPrecio } from "@/lib/presupuesto-eventos-api";
 import {
   guardarMedidasPresupuesto,
   type GuardarMedidasOtResult,
@@ -25,9 +28,21 @@ export type PresupuestoMedicionRow = {
   medido_en: string | null;
   motivo_salto: string | null;
   notas: string | null;
+  /** El precio cambió al medir y el cliente todavía no dio su conformidad. */
+  conformidad_pendiente: boolean;
+  conformidad_total_anterior: number | null;
+  conformidad_total_nuevo: number | null;
+  conformidad_en: string | null;
+  conformidad_por: string | null;
   created_at: string;
   updated_at: string;
 };
+
+function numeroONulo(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 function mapMedicion(row: {
   id: string;
@@ -40,12 +55,22 @@ function mapMedicion(row: {
   medido_en: string | null;
   motivo_salto: string | null;
   notas: string | null;
+  conformidad_pendiente?: boolean | null;
+  conformidad_total_anterior?: number | string | null;
+  conformidad_total_nuevo?: number | string | null;
+  conformidad_en?: string | null;
+  conformidad_por?: string | null;
   created_at: string;
   updated_at: string;
 }): PresupuestoMedicionRow {
   return {
     ...row,
     estado: esMedicionEstado(row.estado) ? row.estado : "sin_solicitar",
+    conformidad_pendiente: row.conformidad_pendiente === true,
+    conformidad_total_anterior: numeroONulo(row.conformidad_total_anterior),
+    conformidad_total_nuevo: numeroONulo(row.conformidad_total_nuevo),
+    conformidad_en: row.conformidad_en ?? null,
+    conformidad_por: row.conformidad_por ?? null,
   };
 }
 
@@ -206,6 +231,13 @@ export async function confirmarMedicion(opts: {
 
   const now = new Date().toISOString();
   const notas = opts.notas?.trim() || cur.data.notas;
+  // Si el precio cambió al medir, falta que el cliente dé su conformidad antes de producir.
+  const conformidad = conformidadTrasMedir({
+    pendienteActual: cur.data.conformidad_pendiente,
+    totalAceptadoPrevio: cur.data.conformidad_total_anterior,
+    totalAnterior: saved.totalAnterior,
+    totalNuevo: saved.totalNuevo,
+  });
   const { data, error } = await supabase
     .from("presupuesto_mediciones")
     .update({
@@ -214,6 +246,11 @@ export async function confirmarMedicion(opts: {
       medido_en: now,
       notas: notas || null,
       motivo_salto: null,
+      conformidad_pendiente: conformidad.pendiente,
+      conformidad_total_anterior: conformidad.totalAnterior,
+      conformidad_total_nuevo: conformidad.totalNuevo,
+      conformidad_en: null,
+      conformidad_por: null,
       updated_at: now,
     })
     .eq("id", cur.data.id)
@@ -281,6 +318,7 @@ export type MedicionColaItem = {
   numero: string;
   cliente: string;
   presupuestoStatus: PresupuestoEstado;
+  moneda: "ars" | "usd";
   medicion: PresupuestoMedicionRow;
   tieneSena: boolean;
   ventaId: string | null;
@@ -338,7 +376,7 @@ export async function listarColaMedicion(): Promise<{
   const [presRes, ventasRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select("id,numero,cliente,status,payload")
+      .select("id,numero,cliente,status,payload,moneda")
       .in("id", presIds),
     supabase.from("ventas").select("id,presupuesto_id,estado").in("presupuesto_id", presIds),
   ]);
@@ -402,12 +440,14 @@ export async function listarColaMedicion(): Promise<{
       presupuestoAprobado: pres.status === "aprobado",
       tieneSena,
       medicionEstado: medicion.estado,
+      conformidadPendiente: medicion.conformidad_pendiente,
     });
     items.push({
       presupuestoId: pres.id,
       numero: pres.numero,
       cliente: pres.cliente,
       presupuestoStatus: pres.status as PresupuestoEstado,
+      moneda: pres.moneda === "usd" ? "usd" : "ars",
       medicion,
       tieneSena,
       ventaId: venta?.id ?? null,
@@ -462,7 +502,130 @@ export async function evaluarEnvioAProduccion(presupuestoId: string): Promise<{
       presupuestoAprobado: pres.data.status === "aprobado",
       tieneSena: sena.tieneSena,
       medicionEstado: med.data.estado,
+      conformidadPendiente: med.data.conformidad_pendiente,
     }),
     error: null,
   };
+}
+
+/**
+ * El cliente no aceptó el importe que resultó de medir: el vendedor registra el importe que
+ * acordaron. Cuenta como conformidad y la OT puede pasar a producción. Queda en el historial
+ * del presupuesto con el motivo, el importe anterior y quién lo hizo.
+ */
+export async function renegociarImporteTrasMedicion(opts: {
+  presupuestoId: string;
+  nuevoTotal: number;
+  motivo: string;
+  usuarioId?: string | null;
+}): Promise<{ error: Error | null }> {
+  const med = await getOrCreateMedicion(opts.presupuestoId);
+  if (med.error) return { error: med.error };
+  if (!med.data?.conformidad_pendiente) {
+    return { error: new Error("Esta obra no está esperando la conformidad del cliente.") };
+  }
+
+  const pres = await supabase
+    .from("presupuestos")
+    .select("id,total,moneda,payload")
+    .eq("id", opts.presupuestoId)
+    .maybeSingle();
+  if (pres.error) return { error: new Error(pres.error.message) };
+  if (!pres.data) return { error: new Error("Presupuesto no encontrado.") };
+  const moneda: "ars" | "usd" = pres.data.moneda === "usd" ? "usd" : "ars";
+
+  // Lo ya cobrado, en la moneda del presupuesto: el nuevo importe no puede ser menor.
+  let cobrado = 0;
+  const venta = await supabase
+    .from("ventas")
+    .select("id")
+    .eq("presupuesto_id", opts.presupuestoId)
+    .maybeSingle();
+  if (venta.error) return { error: new Error(venta.error.message) };
+  if (venta.data?.id) {
+    const pagos = await supabase
+      .from("ventas_pagos")
+      .select("monto,moneda")
+      .eq("venta_id", venta.data.id);
+    if (pagos.error) return { error: new Error(pagos.error.message) };
+    for (const p of pagos.data ?? []) {
+      if (p.moneda !== moneda) continue;
+      const m = Number(p.monto);
+      if (Number.isFinite(m)) cobrado += m;
+    }
+  }
+
+  const nuevoTotal = Math.round(opts.nuevoTotal * 100) / 100;
+  const invalido = validarImporteRenegociado({ nuevoTotal, cobrado, motivo: opts.motivo });
+  if (invalido) return { error: new Error(invalido) };
+
+  const totalAnterior = Number(pres.data.total) || 0;
+  const payload = pres.data.payload;
+  const nextPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? { ...(payload as Record<string, Json>), totalPresupuesto: nuevoTotal }
+      : payload;
+
+  const now = new Date().toISOString();
+  const upPres = await supabase
+    .from("presupuestos")
+    .update({ total: nuevoTotal, payload: nextPayload, updated_at: now })
+    .eq("id", opts.presupuestoId);
+  if (upPres.error) return { error: new Error(upPres.error.message) };
+
+  await registrarEventoPrecio({
+    presupuestoId: opts.presupuestoId,
+    tipo: "ajuste",
+    monto: nuevoTotal,
+    moneda,
+    createdBy: opts.usuarioId ?? null,
+    meta: {
+      motivo: "renegociacion",
+      total_anterior: totalAnterior,
+      importe_medicion: med.data.conformidad_total_nuevo,
+      nota: opts.motivo.trim(),
+    },
+  });
+
+  const upMed = await supabase
+    .from("presupuesto_mediciones")
+    .update({
+      conformidad_pendiente: false,
+      conformidad_total_nuevo: nuevoTotal,
+      conformidad_en: now,
+      conformidad_por: opts.usuarioId ?? null,
+      updated_at: now,
+    })
+    .eq("id", med.data.id);
+  if (upMed.error) return { error: new Error(upMed.error.message) };
+  return { error: null };
+}
+
+/**
+ * El vendedor confirma que el cliente está de acuerdo con el nuevo importe.
+ * Queda registrado quién y cuándo; después la OT puede pasar a producción.
+ */
+export async function confirmarConformidadCliente(opts: {
+  presupuestoId: string;
+  usuarioId?: string | null;
+}): Promise<{ data: PresupuestoMedicionRow | null; error: Error | null }> {
+  const cur = await getOrCreateMedicion(opts.presupuestoId);
+  if (cur.error) return { data: null, error: cur.error };
+  if (!cur.data) return { data: null, error: new Error("No se encontró la medición.") };
+  if (!cur.data.conformidad_pendiente) return { data: cur.data, error: null };
+
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("presupuesto_mediciones")
+    .update({
+      conformidad_pendiente: false,
+      conformidad_en: now,
+      conformidad_por: opts.usuarioId ?? null,
+      updated_at: now,
+    })
+    .eq("id", cur.data.id)
+    .select("*")
+    .maybeSingle();
+  if (error) return { data: null, error: new Error(error.message) };
+  return { data: data ? mapMedicion(data) : null, error: null };
 }

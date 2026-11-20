@@ -21,10 +21,65 @@ export function enColaParaMedir(estado: MedicionEstado, tieneSena: boolean): boo
   return estado === "sin_solicitar" && tieneSena;
 }
 
+/**
+ * Tras medir, si el precio cambió hace falta que el cliente esté de acuerdo
+ * con el nuevo importe antes de pasar a producción.
+ */
+export function requiereConformidadCliente(opts: {
+  totalAnterior: number;
+  totalNuevo: number;
+}): boolean {
+  return Math.abs(opts.totalNuevo - opts.totalAnterior) > 0.009;
+}
+
+/**
+ * Estado de la conformidad después de confirmar las medidas.
+ * Si ya había una conformidad pendiente, se compara contra el importe que el cliente
+ * había aceptado (no contra el intermedio): si vuelve a ese importe, ya no hace falta.
+ */
+export function conformidadTrasMedir(opts: {
+  pendienteActual: boolean;
+  totalAceptadoPrevio: number | null;
+  totalAnterior: number;
+  totalNuevo: number;
+}): { pendiente: boolean; totalAnterior: number | null; totalNuevo: number | null } {
+  const base =
+    opts.pendienteActual && opts.totalAceptadoPrevio != null
+      ? opts.totalAceptadoPrevio
+      : opts.totalAnterior;
+  if (!requiereConformidadCliente({ totalAnterior: base, totalNuevo: opts.totalNuevo })) {
+    return { pendiente: false, totalAnterior: null, totalNuevo: null };
+  }
+  return { pendiente: true, totalAnterior: base, totalNuevo: opts.totalNuevo };
+}
+
+/**
+ * Valida el importe que el vendedor acuerda con el cliente cuando este no acepta
+ * el que resultó de la medición. Devuelve el mensaje de error o null si está bien.
+ */
+export function validarImporteRenegociado(opts: {
+  nuevoTotal: number;
+  cobrado: number;
+  motivo: string;
+}): string | null {
+  if (!Number.isFinite(opts.nuevoTotal) || opts.nuevoTotal <= 0) {
+    return "Cargá el importe acordado con el cliente.";
+  }
+  if (opts.nuevoTotal + 0.009 < opts.cobrado) {
+    return "El nuevo importe no puede ser menor a lo que ya se cobró.";
+  }
+  if (!opts.motivo.trim()) {
+    return "Anotá el motivo o cómo se acordó con el cliente.";
+  }
+  return null;
+}
+
 export type PuedeEnviarAProduccionInput = {
   presupuestoAprobado: boolean;
   tieneSena: boolean;
   medicionEstado: MedicionEstado;
+  /** El precio cambió al medir y el cliente todavía no dio su conformidad. */
+  conformidadPendiente?: boolean;
 };
 
 export type PuedeEnviarAProduccionResultado = {
@@ -49,6 +104,9 @@ export function puedeEnviarAProduccion(
     } else {
       faltantes.push("Falta confirmar las medidas.");
     }
+  }
+  if (input.conformidadPendiente) {
+    faltantes.push("Falta la conformidad del cliente con el nuevo importe.");
   }
   return { ok: faltantes.length === 0, faltantes };
 }

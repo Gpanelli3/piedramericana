@@ -6,10 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRol } from "@/hooks/useRol";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import {
+  confirmarConformidadCliente,
+  evaluarEnvioAProduccion,
   listarColaMedicion,
   type MedicionColaItem,
 } from "@/lib/medicion-api";
+import { formatMoneyAr } from "@/lib/presupuesto-detalle";
 import { enColaParaMedir, etiquetaMedicionEstado } from "@/lib/medicion-reglas";
 import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
 import { descargarRotuloOt } from "@/components/produccion/descargarRotuloOt";
@@ -17,7 +21,8 @@ import { descargarPlanoOt } from "@/lib/rotulo-ot-api";
 import { eliminarPresupuestoPendiente } from "@/lib/presupuestos-api";
 import { etiquetaVentaEstado, formatFechaCorta } from "@/components/produccion/ot-ui";
 import { MedicionDetalleSheet } from "@/components/medicion/MedicionDetalleSheet";
-import { CalendarClock, Ruler } from "lucide-react";
+import { RenegociarImporteDialog } from "@/components/medicion/RenegociarImporteDialog";
+import { CalendarClock, Handshake, Ruler } from "lucide-react";
 
 function hoyLocalIso(): string {
   const d = new Date();
@@ -78,6 +83,7 @@ function agruparParaMedir(items: MedicionColaItem[]): GrupoSemana[] {
 }
 
 export function VistaMedicion() {
+  const { user } = useAuth();
   const { tieneAlgunRol, esAdmin, roles } = useRol();
   /** Igual que el sidebar: sin roles cargados se muestran todas las acciones. */
   const sinRoles = roles.length === 0;
@@ -89,6 +95,7 @@ export function VistaMedicion() {
   const [busyRotuloId, setBusyRotuloId] = useState<string | null>(null);
   const [busyPlanoId, setBusyPlanoId] = useState<string | null>(null);
 
+  const [renegociarItem, setRenegociarItem] = useState<MedicionColaItem | null>(null);
   const [detalleItem, setDetalleItem] = useState<MedicionColaItem | null>(null);
   const [detalleHistorial, setDetalleHistorial] = useState(false);
 
@@ -117,9 +124,19 @@ export function VistaMedicion() {
     [items],
   );
   const gruposSemana = useMemo(() => agruparParaMedir(paraMedir), [paraMedir]);
+  const esperandoConformidad = useMemo(
+    () =>
+      items.filter(
+        (i) =>
+          i.medicion.estado === "medido" &&
+          i.medicion.conformidad_pendiente &&
+          i.presupuestoStatus === "aprobado",
+      ),
+    [items],
+  );
   const confirmadas = useMemo(() => {
     return items
-      .filter((i) => i.medicion.estado === "medido")
+      .filter((i) => i.medicion.estado === "medido" && !esperandoConformidad.includes(i))
       .sort((a, b) => {
         const fa = a.medicion.medido_en ?? "";
         const fb = b.medicion.medido_en ?? "";
@@ -203,6 +220,43 @@ export function VistaMedicion() {
     const envio = await enviarAProduccionSiCorresponde(presupuestoId);
     if (envio.error) toast.error(envio.error.message);
     else if (envio.enviado) toast.success("Pasó a producción.");
+    else {
+      // Si no pasó porque cambió el precio, se avisa que falta la conformidad del cliente.
+      const ev = await evaluarEnvioAProduccion(presupuestoId);
+      if (ev.data?.faltantes.some((f) => f.includes("conformidad"))) {
+        toast.warning(
+          "Cambió el importe al medir. Avisale al cliente y, cuando esté de acuerdo, confirmalo acá en «Esperando conformidad».",
+          { duration: 12000 },
+        );
+      }
+    }
+    await refresh();
+  };
+
+  /** Se acordó un importe distinto con el cliente: sigue el mismo camino que la conformidad. */
+  const onImporteAcordado = async (presupuestoId: string) => {
+    const envio = await enviarAProduccionSiCorresponde(presupuestoId);
+    if (envio.error) toast.error(envio.error.message);
+    else if (envio.enviado) toast.success("Pasó a producción.");
+    await refresh();
+  };
+
+  const onClienteConforme = async (item: MedicionColaItem) => {
+    setBusyId(item.presupuestoId);
+    const res = await confirmarConformidadCliente({
+      presupuestoId: item.presupuestoId,
+      usuarioId: user?.id ?? null,
+    });
+    if (res.error) {
+      setBusyId(null);
+      toast.error(res.error.message);
+      return;
+    }
+    const envio = await enviarAProduccionSiCorresponde(item.presupuestoId);
+    setBusyId(null);
+    if (envio.error) toast.error(envio.error.message);
+    else if (envio.enviado) toast.success("Cliente conforme. Pasó a producción.");
+    else toast.success("Conformidad registrada.");
     await refresh();
   };
 
@@ -269,6 +323,71 @@ export function VistaMedicion() {
               )}
             </Seccion>
 
+            {esperandoConformidad.length > 0 ? (
+              <Seccion
+                titulo="Esperando conformidad del cliente"
+                icono={<Handshake className="h-4 w-4" />}
+              >
+                <p className="-mt-1 text-xs text-muted-foreground">
+                  Al medir cambió el importe. Avisale al cliente: si está de acuerdo, tocá «Cliente conforme»
+                  y la OT pasa a producción. Si no acepta, tocá «No conforme» y cargá el importe que
+                  acuerden.
+                </p>
+                <div className="overflow-hidden rounded-lg border border-amber-200 bg-card">
+                  {esperandoConformidad.map((item) => (
+                    <FilaMedicion
+                      key={item.presupuestoId}
+                      item={item}
+                      historial
+                      onClick={() => {
+                        // Se abre editable: si el cliente no está de acuerdo, se pueden corregir las medidas.
+                        setDetalleItem(item);
+                        setDetalleHistorial(false);
+                      }}
+                      extra={
+                        <>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {item.medicion.conformidad_total_anterior != null
+                              ? formatMoneyAr(item.medicion.conformidad_total_anterior, item.moneda)
+                              : "—"}
+                            {" → "}
+                            <span className="font-semibold text-foreground">
+                              {item.medicion.conformidad_total_nuevo != null
+                                ? formatMoneyAr(item.medicion.conformidad_total_nuevo, item.moneda)
+                                : "—"}
+                            </span>
+                          </span>
+                          {puedeVendedor ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                disabled={busyId === item.presupuestoId}
+                                onClick={() => setRenegociarItem(item)}
+                              >
+                                No conforme
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 text-xs"
+                                disabled={busyId === item.presupuestoId}
+                                onClick={() => void onClienteConforme(item)}
+                              >
+                                {busyId === item.presupuestoId ? "…" : "Cliente conforme"}
+                              </Button>
+                            </>
+                          ) : null}
+                        </>
+                      }
+                    />
+                  ))}
+                </div>
+              </Seccion>
+            ) : null}
+
             <Seccion titulo="Confirmadas" icono={<Ruler className="h-4 w-4" />}>
               {confirmadas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Todavía no hay medidas confirmadas.</p>
@@ -291,6 +410,16 @@ export function VistaMedicion() {
           </>
         )}
       </main>
+
+      <RenegociarImporteDialog
+        item={renegociarItem}
+        open={Boolean(renegociarItem)}
+        onOpenChange={(o) => {
+          if (!o) setRenegociarItem(null);
+        }}
+        usuarioId={user?.id ?? null}
+        onDone={(id) => void onImporteAcordado(id)}
+      />
 
       <MedicionDetalleSheet
         item={detalleItem}

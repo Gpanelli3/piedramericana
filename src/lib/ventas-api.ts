@@ -100,6 +100,21 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
     return { error: new Error("La seña no puede superar el total aprobado.") };
   }
 
+  // Se validan antes de aprobar las causas de rechazo conocidas de la seña. Si no, el presupuesto
+  // quedaba aprobado sin venta ni OT, y como un presupuesto aprobado ya no se puede editar,
+  // tampoco se podía confirmar la plancha para señar.
+  if (opts.montoSenia > 0) {
+    if (!opts.metodo?.trim()) {
+      return { error: new Error("Indicá cómo se paga: efectivo, transferencia, cheque o tarjeta.") };
+    }
+    const payloadSenia = parsePayload(pres.payload as Json);
+    const planErr = payloadSenia ? validarPlanParaSenia(payloadSenia.ordenes) : null;
+    if (planErr) {
+      return { error: new Error(`${planErr} Editá el presupuesto, confirmá la plancha y volvé a aprobarlo.`) };
+    }
+  }
+
+  const totalAnterior = Number(pres.total) || 0;
   const nowIso = new Date().toISOString();
   const { error: uErr } = await supabase
     .from("presupuestos")
@@ -108,8 +123,8 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
   if (uErr) return { error: new Error(uErr.message) };
 
   // Si al aprobar se cambió el total, queda registrado: precio anterior, nuevo y quién lo hizo.
-  const totalAnterior = Number(pres.total) || 0;
-  if (Math.abs(totalAnterior - opts.totalAprobado) > 0.009) {
+  const registrarAjuste = async () => {
+    if (Math.abs(totalAnterior - opts.totalAprobado) <= 0.009) return;
     await registrarEventoPrecio({
       presupuestoId: opts.presupuestoId,
       tipo: "ajuste",
@@ -118,14 +133,20 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
       createdBy: opts.created_by ?? null,
       meta: { motivo: "aprobacion", total_anterior: totalAnterior },
     });
-  }
+  };
 
   const ev = await ensureVentaForPresupuestoAprobado(opts.presupuestoId);
-  if (ev.error) return { error: ev.error };
+  if (ev.error) {
+    await revertirAprobacionSinPagos(opts.presupuestoId, totalAnterior);
+    return { error: ev.error };
+  }
 
-  if (opts.montoSenia <= 0) return { error: null };
+  if (opts.montoSenia <= 0) {
+    await registrarAjuste();
+    return { error: null };
+  }
 
-  return registrarPagoSena({
+  const res = await registrarPagoSena({
     presupuestoId: opts.presupuestoId,
     monto: opts.montoSenia,
     moneda: pres.moneda,
@@ -137,6 +158,42 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
     retencionMonto: opts.retencionMonto,
     comprobante: opts.comprobante,
   });
+
+  if (res.error) {
+    // Si todavía no hay plata registrada, se deshace la aprobación para poder corregir y reintentar.
+    const revertido = await revertirAprobacionSinPagos(opts.presupuestoId, totalAnterior);
+    if (revertido) {
+      return {
+        ...res,
+        error: new Error(`${res.error.message} El presupuesto sigue pendiente: corregilo y volvé a intentar.`),
+      };
+    }
+  }
+  await registrarAjuste();
+  return res;
+}
+
+/**
+ * Vuelve un presupuesto recién aprobado a «pendiente» si todavía no tiene pagos ni OTs.
+ * Devuelve false (y no toca nada) si ya hay plata registrada.
+ */
+async function revertirAprobacionSinPagos(presupuestoId: string, totalAnterior: number): Promise<boolean> {
+  const venta = await supabase.from("ventas").select("id").eq("presupuesto_id", presupuestoId).maybeSingle();
+  if (venta.error) return false;
+  if (venta.data?.id) {
+    const pagos = await supabase
+      .from("ventas_pagos")
+      .select("id", { count: "exact", head: true })
+      .eq("venta_id", venta.data.id);
+    if (pagos.error || (pagos.count ?? 0) > 0) return false;
+    const del = await supabase.from("ventas").delete().eq("id", venta.data.id);
+    if (del.error) return false;
+  }
+  const up = await supabase
+    .from("presupuestos")
+    .update({ status: "pendiente", total: totalAnterior, updated_at: new Date().toISOString() })
+    .eq("id", presupuestoId);
+  return !up.error;
 }
 
 export type VentaResumenMerged = {

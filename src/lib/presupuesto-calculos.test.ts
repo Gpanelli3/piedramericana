@@ -13,6 +13,7 @@ import {
   precioMaterialDeOrden,
   precioSugeridoLinea,
   reponerPreciosSugeridosOrdenes,
+  totalConDiferenciaDeCalculo,
   trioM2DeOrden,
 } from "@/lib/presupuesto-calculos";
 import {
@@ -808,5 +809,35 @@ describe("normalizeOrdenesFromPayload MEC", () => {
     ]);
     expect(ordenes[0]?.excluirMec).toBe(true);
     expect(ordenes[0]?.obsMec).toBe("mesa redonda");
+  });
+});
+
+describe('totalConDiferenciaDeCalculo', () => {
+  it('suma solo la diferencia de las líneas al total aprobado', () => {
+    // Aprobado a 60.000 (las líneas sumaban 65.300) y la pieza pasa de 0,6 a 0,8 m² a 500/m².
+    expect(
+      totalConDiferenciaDeCalculo({ totalActual: 60000, calculoAnterior: 65300, calculoNuevo: 65400 }),
+    ).toBe(60100);
+  });
+
+  it('resta si la medida real es menor', () => {
+    expect(
+      totalConDiferenciaDeCalculo({ totalActual: 60000, calculoAnterior: 65300, calculoNuevo: 65100 }),
+    ).toBe(59800);
+  });
+
+  it('sin cambios deja el total como está', () => {
+    expect(
+      totalConDiferenciaDeCalculo({ totalActual: 60000, calculoAnterior: 65300, calculoNuevo: 65300 }),
+    ).toBe(60000);
+  });
+
+  it('redondea a centavos y nunca devuelve negativo', () => {
+    expect(
+      totalConDiferenciaDeCalculo({ totalActual: 100, calculoAnterior: 0.1, calculoNuevo: 0.3 }),
+    ).toBe(100.2);
+    expect(
+      totalConDiferenciaDeCalculo({ totalActual: 50, calculoAnterior: 1000, calculoNuevo: 0 }),
+    ).toBe(0);
   });
 });

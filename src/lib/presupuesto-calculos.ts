@@ -507,6 +507,20 @@ export function computePresupuestoComercial(opts: {
   };
 }
 
+/**
+ * Total tras re-medir: el total vigente (el que se aprobó, con rebajas o ajustes)
+ * más la diferencia entre el cálculo nuevo y el anterior de las líneas.
+ * Así un cambio de m² suma o resta solo lo que cambió y no pierde lo acordado.
+ */
+export function totalConDiferenciaDeCalculo(opts: {
+  totalActual: number;
+  calculoAnterior: number;
+  calculoNuevo: number;
+}): number {
+  const total = opts.totalActual + (opts.calculoNuevo - opts.calculoAnterior);
+  return Math.max(0, Math.round(total * 100) / 100);
+}
+
 export function etiquetaVersionPresupuesto(
   nro: number,
   modo: "vigente" | "historica" = "vigente",

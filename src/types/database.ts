@@ -1689,6 +1689,11 @@ export interface Database {
           medido_en: string | null;
           motivo_salto: string | null;
           notas: string | null;
+          conformidad_pendiente: boolean;
+          conformidad_total_anterior: number | null;
+          conformidad_total_nuevo: number | null;
+          conformidad_en: string | null;
+          conformidad_por: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1703,6 +1708,11 @@ export interface Database {
           medido_en?: string | null;
           motivo_salto?: string | null;
           notas?: string | null;
+          conformidad_pendiente?: boolean;
+          conformidad_total_anterior?: number | null;
+          conformidad_total_nuevo?: number | null;
+          conformidad_en?: string | null;
+          conformidad_por?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1717,6 +1727,11 @@ export interface Database {
           medido_en?: string | null;
           motivo_salto?: string | null;
           notas?: string | null;
+          conformidad_pendiente?: boolean;
+          conformidad_total_anterior?: number | null;
+          conformidad_total_nuevo?: number | null;
+          conformidad_en?: string | null;
+          conformidad_por?: string | null;
           created_at?: string;
           updated_at?: string;
         };
