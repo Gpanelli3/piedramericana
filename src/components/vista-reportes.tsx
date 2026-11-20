@@ -277,12 +277,16 @@ export function VistaReportes() {
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">por venta</p>
                   </ReportesWidgetShell>
-                  <ReportesWidgetShell title="m² entregados">
+                  <ReportesWidgetShell
+                    title={`m² entregados (${periodo === "mes" ? "mes" : periodoLabelCorto})`}
+                  >
                     <p className="pt-2 text-3xl font-semibold tabular-nums tracking-tight sm:text-4xl">
                       {data ? formatM2(data.m2Entregados) : "…"}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      OTs entregadas / finalizadas en el período
+                      {periodo === "mes"
+                        ? "OTs entregadas este mes"
+                        : "OTs entregadas / finalizadas en el período"}
                     </p>
                   </ReportesWidgetShell>
                   <ReportesTopMateriales data={data?.topMateriales ?? []} />

@@ -59,6 +59,16 @@ export interface LineaItemOTUiInput {
   altoM: string;
   anchoM: string;
   desperdicioPct: string;
+  /** Línea sin cargo (cortesía): se calcula con precio 0. */
+  sinCargo?: boolean;
+}
+
+/** Precio unitario efectivo de una línea: 0 si es sin cargo. */
+export function precioUnitarioEfectivo(line: {
+  precioUnitario: string;
+  sinCargo?: boolean;
+}): number {
+  return line.sinCargo ? 0 : parseDecimalInput(line.precioUnitario);
 }
 
 /** Convierte entradas de interfaz a metros para `computeLineaPresupuesto`. */
@@ -67,7 +77,7 @@ export function buildLineaCalcInput(art: ArticuloCalculo, line: LineaItemOTUiInp
     articuloId: line.articuloId,
     modoIngreso: line.modoIngreso,
     cantidad: line.cantidad,
-    precioUnitario: line.precioUnitario,
+    precioUnitario: line.sinCargo ? "0" : line.precioUnitario,
     desperdicioPct: line.desperdicioPct,
   };
 
@@ -113,12 +123,12 @@ export function esUnidadPorCantidad(u: UnidadArticuloDb): boolean {
   return u === "UNI" || u === "PIEZA" || u === "KG" || u === "TON";
 }
 
-/** Sub-ítem "Pieza": cobra la piedra (m² × precio de la plancha), no el precio fijo de Trabajos. */
+/** Sub-ítem "Pieza": cobra la piedra (m² × precio de la piedra en la lista), no el precio fijo de Trabajos. */
 export function esArticuloCobraMaterial(codigo: string): boolean {
   return codigo.trim().toUpperCase() === "PIEZA";
 }
 
-/** Precio inicial de una línea: Pieza usa la plancha (o lista si no hay chapa); el resto, precio fijo del trabajo. */
+/** Precio inicial de una línea: Pieza usa el $/m² de la piedra en la lista; el resto, el precio del trabajo en la lista. */
 export function precioSugeridoLinea(opts: {
   codigoArticulo: string;
   precioTrabajo: number | null | undefined;
@@ -134,21 +144,37 @@ export function precioSugeridoLinea(opts: {
     : "";
 }
 
-/** $/m² de Pieza: plancha elegida si hay; si no, lista de materiales. */
+/**
+ * $/m² de Pieza: sale solo de la lista de precios de materiales.
+ * La chapa elegida en el stock NO cambia el precio al cliente.
+ */
 export function precioMaterialDeOrden(opts: {
   piedraDelCliente?: boolean;
   materialId: string;
-  chapaSugeridaId: string | null;
   preciosMaterial: Record<string, number>;
-  preciosPlancha?: Record<string, number>;
 }): number | null {
   if (opts.piedraDelCliente) return null;
-  if (opts.chapaSugeridaId) {
-    const dePlancha = opts.preciosPlancha?.[opts.chapaSugeridaId];
-    return dePlancha != null && Number.isFinite(dePlancha) ? dePlancha : null;
-  }
   const deLista = opts.preciosMaterial[opts.materialId];
   return deLista != null && Number.isFinite(deLista) ? deLista : null;
+}
+
+/**
+ * Datos comerciales que además del JSON se guardan en columnas del presupuesto,
+ * para poder filtrar y reportar por lista, dólar y descuento.
+ */
+export function columnasComercialesDesdePayload(payload: {
+  listaPrecioId?: string | null;
+  dolarHoy?: number | null;
+  descuentoGlobalPct?: string | null;
+}): { lista_precio_id: string | null; cotizacion_usd: number | null; descuento_global: number } {
+  const lista = typeof payload.listaPrecioId === "string" ? payload.listaPrecioId.trim() : "";
+  const dolar = Number(payload.dolarHoy);
+  const descuento = parseDecimalInput(payload.descuentoGlobalPct ?? "");
+  return {
+    lista_precio_id: lista || null,
+    cotizacion_usd: Number.isFinite(dolar) && dolar > 0 ? dolar : null,
+    descuento_global: Math.max(0, Math.min(descuento, 100)),
+  };
 }
 
 /** Moneda del presupuesto = moneda de la lista. Sin lista, el fallback. */
@@ -161,12 +187,11 @@ export function monedaDeListaPrecio(
   return fallback;
 }
 
-/** Reemplaza precios de línea por los sugeridos de plancha / catálogo. */
+/** Reemplaza precios de línea por los de la lista (piedra por m² y servicios). */
 export function reponerPreciosSugeridosOrdenes(
   ordenes: OrdenTrabajoWizard[],
   articulos: ArticuloConPrecio[],
   preciosMaterial: Record<string, number>,
-  preciosPlancha: Record<string, number> = {},
 ): OrdenTrabajoWizard[] {
   let changed = false;
   const next = ordenes.map((orden) => ({
@@ -175,15 +200,14 @@ export function reponerPreciosSugeridosOrdenes(
       if (!linea.articuloId) return linea;
       const articulo = articulos.find((a) => a.id === linea.articuloId);
       if (!articulo) return linea;
+      if (linea.sinCargo) return linea;
       const precioUnitario = precioSugeridoLinea({
         codigoArticulo: articulo.codigo,
         precioTrabajo: articulo.precio,
         precioMaterial: precioMaterialDeOrden({
           piedraDelCliente: orden.piedraDelCliente,
           materialId: orden.materialId,
-          chapaSugeridaId: orden.chapaSugeridaId,
           preciosMaterial,
-          preciosPlancha,
         }),
       });
       if (linea.precioUnitario === precioUnitario) return linea;

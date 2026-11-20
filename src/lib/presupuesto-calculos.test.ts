@@ -342,7 +342,7 @@ describe("reponerPreciosSugeridosOrdenes", () => {
     expect(next[0]?.items[1]?.precioUnitario).toBe("40");
   });
 
-  it("usa el precio de la plancha elegida en Pieza", () => {
+  it("usa el precio de la lista en Pieza aunque haya una plancha elegida", () => {
     const articulos: ArticuloConPrecio[] = [
       art({ id: "pieza", codigo: "PIEZA", descripcion: "Pieza", unidad: "M2", precio: 10 }),
     ];
@@ -390,24 +390,23 @@ describe("reponerPreciosSugeridosOrdenes", () => {
         panelExpandido: true,
       },
     ];
-    const next = reponerPreciosSugeridosOrdenes(
-      ordenes,
-      articulos,
-      { "mat-1": 220 },
-      { "chapa-9": 180 },
-    );
-    expect(next[0]?.items[0]?.precioUnitario).toBe("180");
+    const next = reponerPreciosSugeridosOrdenes(ordenes, articulos, { "mat-1": 220 });
+    expect(next[0]?.items[0]?.precioUnitario).toBe("220");
   });
 
-  it("deja Pieza vacía si la plancha no tiene precio", () => {
+  it("deja Pieza vacía si la piedra no tiene precio en la lista", () => {
     expect(
       precioMaterialDeOrden({
         materialId: "mat-1",
-        chapaSugeridaId: "chapa-9",
-        preciosMaterial: { "mat-1": 220 },
-        preciosPlancha: {},
+        preciosMaterial: {},
       }),
     ).toBeNull();
+    expect(
+      precioMaterialDeOrden({
+        materialId: "mat-1",
+        preciosMaterial: { "mat-1": 220 },
+      }),
+    ).toBe(220);
     const articulos: ArticuloConPrecio[] = [
       art({ id: "pieza", codigo: "PIEZA", descripcion: "Pieza", unidad: "M2", precio: 10 }),
     ];
@@ -455,12 +454,7 @@ describe("reponerPreciosSugeridosOrdenes", () => {
         panelExpandido: true,
       },
     ];
-    const next = reponerPreciosSugeridosOrdenes(
-      ordenes,
-      articulos,
-      { "mat-1": 220 },
-      {},
-    );
+    const next = reponerPreciosSugeridosOrdenes(ordenes, articulos, {});
     expect(next[0]?.items[0]?.precioUnitario).toBe("");
   });
 });

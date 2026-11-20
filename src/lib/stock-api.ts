@@ -1,5 +1,6 @@
 import type { Database, InventorySlabEstado } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import {
   bachaCorrespondeACliente,
   esBloqueoPorBacha,
@@ -629,6 +630,12 @@ export async function createBachaInventario(
       modelo: input.modelo?.trim() || null,
       medidas: input.medidas?.trim() || null,
       ubicacion: input.ubicacion?.trim() || null,
+      // Solo la bacha nuestra se vende: la del cliente no tiene precio.
+      precio_venta:
+        origen === "propia" && input.precio_venta != null && input.precio_venta > 0
+          ? input.precio_venta
+          : null,
+      moneda: input.moneda === "usd" ? "usd" : "ars",
       estado: input.estado ?? "disponible",
       ot_id: input.ot_id ?? null,
       notas: input.notas?.trim() || null,
@@ -648,12 +655,76 @@ export async function updateBachaInventarioEstado(
   if (error) throw new Error(error.message || "No se pudo actualizar la bacha");
 }
 
+type PayloadBachaLinea = {
+  articuloId?: string;
+  cantidad?: string;
+  precioUnitario?: string;
+  sinCargo?: boolean;
+};
+type PayloadBachaOrden = { key?: string; items?: PayloadBachaLinea[] };
+
+/**
+ * Compara el precio de la bacha asignada con lo que se cobró en el presupuesto.
+ * Devuelve un aviso si difiere (no cambia el total: el ajuste lo decide una persona).
+ */
+async function avisoDiferenciaPrecioBacha(
+  otId: string,
+  bacha: BachaInventarioRow,
+): Promise<string | null> {
+  if (bacha.origen !== "propia" || bacha.precio_venta == null) return null;
+
+  const ot = await supabase
+    .from("ordenes_trabajo")
+    .select("venta_id, orden_key")
+    .eq("id", otId)
+    .maybeSingle();
+  if (ot.error || !ot.data?.venta_id) return null;
+  const venta = await supabase
+    .from("ventas")
+    .select("presupuesto_id")
+    .eq("id", ot.data.venta_id)
+    .maybeSingle();
+  if (venta.error || !venta.data?.presupuesto_id) return null;
+  const [pres, artBacha] = await Promise.all([
+    supabase
+      .from("presupuestos")
+      .select("moneda, payload")
+      .eq("id", venta.data.presupuesto_id)
+      .maybeSingle(),
+    supabase.from("articulos").select("id").eq("codigo", "BACHA").maybeSingle(),
+  ]);
+  if (pres.error || !pres.data || artBacha.error || !artBacha.data) return null;
+
+  const ordenes = ((pres.data.payload as { ordenes?: PayloadBachaOrden[] } | null)?.ordenes ??
+    []) as PayloadBachaOrden[];
+  const ordenKey = ot.data.orden_key;
+  const articuloBachaId = artBacha.data.id;
+  const orden =
+    (ordenKey ? ordenes.find((o) => o.key === ordenKey) : undefined) ??
+    (ordenes.length === 1 ? ordenes[0] : undefined);
+  const linea = orden?.items?.find((l) => l.articuloId === articuloBachaId);
+  if (!linea) return null;
+
+  const presupuestado = linea.sinCargo
+    ? 0
+    : parseDecimalInput(linea.precioUnitario ?? "") * (parseDecimalInput(linea.cantidad ?? "") || 1);
+  if (bacha.moneda !== pres.data.moneda) {
+    return "La bacha asignada tiene el precio en otra moneda que el presupuesto: revisá el cobro con el cliente.";
+  }
+  const diferencia = Number(bacha.precio_venta) - presupuestado;
+  if (Math.abs(diferencia) < 0.01) return null;
+
+  const fmt = (n: number) =>
+    `${bacha.moneda === "usd" ? "US$ " : "$ "}${Math.abs(n).toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
+  return `La bacha asignada sale ${fmt(Number(bacha.precio_venta))} y el presupuesto cobra ${fmt(presupuestado)}. Diferencia de ${fmt(diferencia)} ${diferencia > 0 ? "a favor del cliente (falta cobrar)" : "de más cobrada"}: revisalo con el vendedor.`;
+}
+
 export async function asignarBachaAOt(opts: {
   bachaId: string;
   otId: string;
   clienteNombre?: string | null;
   clienteId?: string | null;
-}): Promise<{ error: Error | null }> {
+}): Promise<{ error: Error | null; aviso?: string }> {
   if (!isSupabaseConfigured) return { error: new Error("Supabase no está configurado") };
 
   const [bachaRes, otRes] = await Promise.all([
@@ -708,7 +779,9 @@ export async function asignarBachaAOt(opts: {
   }
   const upOt = await supabase.from("ordenes_trabajo").update(otPatch).eq("id", opts.otId);
   if (upOt.error) return { error: new Error(upOt.error.message) };
-  return { error: null };
+
+  const aviso = await avisoDiferenciaPrecioBacha(opts.otId, bacha).catch(() => null);
+  return { error: null, ...(aviso ? { aviso } : {}) };
 }
 
 export async function liberarBachaDeOt(opts: {

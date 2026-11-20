@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { ChevronRight, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,13 +32,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { MaterialPiedraSheet } from "@/components/articulos/MaterialPiedraSheet";
 import {
   createListaPrecio,
   fetchListasPrecioTodas,
   fetchMaterialesPreciosDeLista,
   updateListaPrecio,
-  upsertPrecioListaMaterial,
   type ListaPrecioUpsertInput,
   type PrecioListaMaterialRow,
 } from "@/lib/articulos-api";
@@ -60,10 +59,10 @@ export function ListasPrecioPanel() {
   const [listas, setListas] = useState<ListaPrecioRow[]>([]);
   const [listaId, setListaId] = useState<string | null>(null);
   const [filas, setFilas] = useState<PrecioListaMaterialRow[]>([]);
-  const [draftPrecios, setDraftPrecios] = useState<Record<string, string>>({});
   const [cargandoListas, setCargandoListas] = useState(true);
   const [cargandoFilas, setCargandoFilas] = useState(false);
-  const [guardandoPrecioId, setGuardandoPrecioId] = useState<string | null>(null);
+  const [piedraId, setPiedraId] = useState<string | null>(null);
+  const [piedraAbierta, setPiedraAbierta] = useState(false);
 
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -103,15 +102,8 @@ export function ListasPrecioPanel() {
     if (error) {
       toast.error(error.message);
       setFilas([]);
-      setDraftPrecios({});
     } else {
-      const rows = data ?? [];
-      setFilas(rows);
-      const map: Record<string, string> = {};
-      for (const r of rows) {
-        map[r.material_id] = r.precio != null ? String(r.precio) : "";
-      }
-      setDraftPrecios(map);
+      setFilas(data ?? []);
     }
     setCargandoFilas(false);
   }, []);
@@ -180,31 +172,9 @@ export function ListasPrecioPanel() {
     }
   };
 
-  const guardarPrecioFila = async (materialId: string) => {
-    if (!listaId) return;
-    const raw = (draftPrecios[materialId] ?? "").trim().replace(",", ".");
-    let precio: number | null = null;
-    if (raw !== "") {
-      const n = Number.parseFloat(raw);
-      if (!Number.isFinite(n) || n < 0) {
-        toast.error("Precio inválido.");
-        return;
-      }
-      precio = n;
-    }
-    setGuardandoPrecioId(materialId);
-    const { error } = await upsertPrecioListaMaterial({
-      lista_precio_id: listaId,
-      material_id: materialId,
-      precio,
-    });
-    setGuardandoPrecioId(null);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success(precio == null ? "Precio quitado." : "Precio guardado.");
-    await recargarFilas(listaId);
+  const abrirPiedra = (materialId: string) => {
+    setPiedraId(materialId);
+    setPiedraAbierta(true);
   };
 
   return (
@@ -288,55 +258,50 @@ export function ListasPrecioPanel() {
               <TableRow>
                 <TableHead>Código</TableHead>
                 <TableHead>Material</TableHead>
-                <TableHead className="w-36">Precio ({listaActiva?.moneda.toUpperCase()})</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-44 text-right">
+                  Precio por m² ({listaActiva?.moneda.toUpperCase()})
+                </TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filas.map((f) => {
-                const dirty =
-                  (draftPrecios[f.material_id] ?? "") !==
-                  (f.precio != null ? String(f.precio) : "");
-                return (
-                  <TableRow key={f.material_id}>
-                    <TableCell className="font-mono text-xs">{f.codigo ?? "—"}</TableCell>
-                    <TableCell>{f.name}</TableCell>
-                    <TableCell>
-                      <Input
-                        className={cn(
-                          "h-8 text-sm tabular-nums",
-                          dirty && "border-amber-400",
-                        )}
-                        inputMode="decimal"
-                        placeholder="—"
-                        value={draftPrecios[f.material_id] ?? ""}
-                        onChange={(e) =>
-                          setDraftPrecios((prev) => ({
-                            ...prev,
-                            [f.material_id]: e.target.value,
-                          }))
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={dirty ? "default" : "outline"}
-                        className="h-8 text-xs"
-                        disabled={!dirty || guardandoPrecioId === f.material_id}
-                        onClick={() => void guardarPrecioFila(f.material_id)}
-                      >
-                        {guardandoPrecioId === f.material_id ? "…" : "Guardar"}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filas.map((f) => (
+                <TableRow
+                  key={f.material_id}
+                  className="cursor-pointer"
+                  onClick={() => abrirPiedra(f.material_id)}
+                >
+                  <TableCell className="font-mono text-xs">{f.codigo ?? "—"}</TableCell>
+                  <TableCell className="font-medium">{f.name}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {f.precio != null ? (
+                      f.precio.toLocaleString("es-AR", { maximumFractionDigits: 2 })
+                    ) : f.uso === "producto" ? (
+                      <span className="text-xs text-muted-foreground">Producto · se vende como artículo</span>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-300 text-[11px] text-amber-900">
+                        Sin precio
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    <ChevronRight className="h-4 w-4" aria-hidden />
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </div>
       )}
+
+      <MaterialPiedraSheet
+        materialId={piedraId}
+        open={piedraAbierta}
+        onOpenChange={setPiedraAbierta}
+        onPreciosChanged={() => {
+          if (listaId) void recargarFilas(listaId);
+        }}
+      />
 
       <Dialog open={dialogAbierto} onOpenChange={(o) => !o && setDialogAbierto(false)}>
         <DialogContent className={dialogFormClassName} showCloseButton>

@@ -8,6 +8,7 @@ import {
   type ConceptoMovimiento,
 } from "@/lib/finanzas-api";
 import { calcularRetencion } from "@/lib/retencion-reglas";
+import { registrarEventoPrecio } from "@/lib/presupuesto-eventos-api";
 import { aplicarPlanEnSenia } from "@/lib/plan-corte-stock";
 import { validarPlanParaSenia } from "@/lib/plan-corte";
 import { getOrCreateMedicion, solicitarMedicion } from "@/lib/medicion-api";
@@ -105,6 +106,19 @@ export async function aprobarPresupuestoConVentaInicial(opts: {
     .update({ status: "aprobado", total: opts.totalAprobado, updated_at: nowIso })
     .eq("id", opts.presupuestoId);
   if (uErr) return { error: new Error(uErr.message) };
+
+  // Si al aprobar se cambió el total, queda registrado: precio anterior, nuevo y quién lo hizo.
+  const totalAnterior = Number(pres.total) || 0;
+  if (Math.abs(totalAnterior - opts.totalAprobado) > 0.009) {
+    await registrarEventoPrecio({
+      presupuestoId: opts.presupuestoId,
+      tipo: "ajuste",
+      monto: opts.totalAprobado,
+      moneda: pres.moneda,
+      createdBy: opts.created_by ?? null,
+      meta: { motivo: "aprobacion", total_anterior: totalAnterior },
+    });
+  }
 
   const ev = await ensureVentaForPresupuestoAprobado(opts.presupuestoId);
   if (ev.error) return { error: ev.error };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmpleadoFormDialog } from "@/components/equipo/EmpleadoFormDialog";
+import { EmpleadoFichaSheet } from "@/components/equipo/EmpleadoFichaSheet";
 import {
   listEmpleados,
   puestoLabel,
@@ -53,6 +54,9 @@ export function EmpleadosCatalogo() {
   const [filtroEstado, setFiltroEstado] = useState<"activos" | "todos">("activos");
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editando, setEditando] = useState<EmpleadoRow | null>(null);
+  const [fichaId, setFichaId] = useState<string | null>(null);
+  const [fichaAbierta, setFichaAbierta] = useState(false);
+  const fichaEmpleado = fichaId ? filas.find((e) => e.id === fichaId) ?? null : null;
 
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -102,8 +106,14 @@ export function EmpleadosCatalogo() {
   };
 
   const abrirEditar = (e: EmpleadoRow) => {
+    setFichaAbierta(false);
     setEditando(e);
     setDialogAbierto(true);
+  };
+
+  const abrirFicha = (e: EmpleadoRow) => {
+    setFichaId(e.id);
+    setFichaAbierta(true);
   };
 
   const onSaved = (empleado: EmpleadoRow) => {
@@ -164,19 +174,18 @@ export function EmpleadosCatalogo() {
                 <TableHead className="hidden md:table-cell">Ingreso</TableHead>
                 <TableHead className="hidden md:table-cell">Sueldo base</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filtrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay empleados. Cargá el primero."
                       : "Ningún empleado coincide con la búsqueda."}
@@ -184,7 +193,11 @@ export function EmpleadosCatalogo() {
                 </TableRow>
               ) : (
                 filtrados.map((e) => (
-                  <TableRow key={e.id} className={!e.activo ? "opacity-50" : undefined}>
+                  <TableRow
+                    key={e.id}
+                    className={`cursor-pointer ${!e.activo ? "opacity-50" : ""}`}
+                    onClick={() => abrirFicha(e)}
+                  >
                     <TableCell className="font-medium">{nombreCompleto(e)}</TableCell>
                     <TableCell>{puestoLabel(e.puesto)}</TableCell>
                     <TableCell className="hidden md:table-cell">
@@ -202,18 +215,6 @@ export function EmpleadosCatalogo() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="Editar"
-                        onClick={() => abrirEditar(e)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -221,6 +222,13 @@ export function EmpleadosCatalogo() {
           </Table>
         </div>
       )}
+
+      <EmpleadoFichaSheet
+        empleado={fichaEmpleado}
+        open={fichaAbierta}
+        onOpenChange={setFichaAbierta}
+        onEdit={abrirEditar}
+      />
 
       <EmpleadoFormDialog
         open={dialogAbierto}

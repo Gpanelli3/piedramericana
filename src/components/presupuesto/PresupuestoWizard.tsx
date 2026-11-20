@@ -49,6 +49,7 @@ import {
   labelUnidad,
   materialPesoEstimadoDesdeOt,
   monedaDeListaPrecio,
+  parseDecimalInput,
   precioMaterialDeOrden,
   precioSugeridoLinea,
   reponerPreciosSugeridosOrdenes,
@@ -57,6 +58,7 @@ import {
 import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
 import { ClienteFormDialog } from "@/components/clientes/ClienteFormDialog";
 import { listMaterials } from "@/lib/materials-api";
+import { ajustarLineasBacha } from "@/components/presupuesto/wizard/bacha-lineas";
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
@@ -401,14 +403,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     [ordenes],
   );
 
-  const preciosPlancha = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const p of planchas) {
-      if (p.precioM2 != null && Number.isFinite(p.precioM2)) map[p.id] = p.precioM2;
-    }
-    return map;
-  }, [planchas]);
-
   useEffect(() => {
     if (presupuestoId && editCargando) return;
     let cancelled = false;
@@ -445,7 +439,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       return;
     }
     setOrdenes((prev) =>
-      reponerPreciosSugeridosOrdenes(prev, articulosBd, preciosMaterial, preciosPlancha),
+      reponerPreciosSugeridosOrdenes(prev, articulosBd, preciosMaterial),
     );
   }, [
     editCargando,
@@ -453,7 +447,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     preciosMaterial,
     preciosMaterialEpoch,
     listaPrecioId,
-    preciosPlancha,
     planchasListas,
   ]);
 
@@ -601,21 +594,21 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     setOrdenes((rows) =>
       rows.map((r) => {
         if (r.key !== key) return r;
-        const next = { ...r, ...patch };
+        const merged = { ...r, ...patch };
+        // «Lleva bacha» / origen: agrega o quita las líneas de cobro de la bacha.
+        const next =
+          patch.llevaBacha !== undefined || patch.bachaOrigen !== undefined
+            ? ajustarLineasBacha(merged, articulosBd)
+            : merged;
         const activaPiedraCliente =
           patch.piedraDelCliente === true && r.piedraDelCliente !== true;
         const materialId = patch.materialId;
         const cambiaMaterial = materialId != null && materialId !== r.materialId;
-        const cambiaChapa =
-          patch.chapaSugeridaId !== undefined &&
-          patch.chapaSugeridaId !== r.chapaSugeridaId;
-        if (!activaPiedraCliente && !cambiaMaterial && !cambiaChapa) return next;
+        if (!activaPiedraCliente && !cambiaMaterial) return next;
         const precioMaterial = precioMaterialDeOrden({
           piedraDelCliente: next.piedraDelCliente,
           materialId: next.materialId,
-          chapaSugeridaId: next.chapaSugeridaId,
           preciosMaterial,
-          preciosPlancha,
         });
         next.items = next.items.map((linea) => {
           const articulo = articulosBd.find((a) => a.id === linea.articuloId);
@@ -840,9 +833,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           ? precioMaterialDeOrden({
               piedraDelCliente: ot.piedraDelCliente,
               materialId: ot.materialId,
-              chapaSugeridaId: ot.chapaSugeridaId,
               preciosMaterial,
-              preciosPlancha,
             })
           : null,
       }),
@@ -1285,14 +1276,33 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
             className={cn(
               inputClass,
               !line.precioUnitario.trim() && "placeholder:text-muted-foreground/40",
+              hasArt &&
+                !line.sinCargo &&
+                parseDecimalInput(line.precioUnitario) <= 0 &&
+                "border-destructive/60",
             )}
             inputMode="decimal"
             placeholder="—"
-            value={line.precioUnitario}
+            value={line.sinCargo ? "0" : line.precioUnitario}
+            disabled={line.sinCargo === true}
             onChange={(e) =>
               patchItem(ot.key, line.key, { precioUnitario: e.target.value })
             }
           />
+          <label className="mt-1 flex cursor-pointer items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={line.sinCargo === true}
+              onChange={(e) =>
+                patchItem(ot.key, line.key, {
+                  sinCargo: e.target.checked,
+                  ...(e.target.checked ? { precioUnitario: "0" } : {}),
+                })
+              }
+            />
+            Sin cargo
+          </label>
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle text-right">
           <span

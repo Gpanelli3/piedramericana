@@ -28,6 +28,8 @@ export type LineaItemOT = {
   /** Ancho en metros (solo M2 dimensiones). */
   anchoM: string;
   desperdicioPct: string;
+  /** Cortesía a propósito: la línea no se cobra (precio 0) y no se bloquea el guardado. */
+  sinCargo?: boolean;
 };
 
 /** Plano / comprobante de cotización adjunto a una OT. */

@@ -145,7 +145,9 @@ export function StepOrdenes({
                         onChange={(e) => patchOrden(ot.key, { titulo: e.target.value })}
                       />
                       <BuscadorMaterial
-                        materials={materials}
+                        materials={materials.filter(
+                          (m) => m.uso !== "producto" || m.id === ot.materialId,
+                        )}
                         planchas={planchas}
                         value={ot.materialId}
                         chapaSugeridaId={ot.chapaSugeridaId}

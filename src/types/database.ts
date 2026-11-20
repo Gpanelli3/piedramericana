@@ -15,6 +15,8 @@ export type RoturaTipoDb = "chapa" | "pieza";
 export type RoturaMomentoDb = "corte" | "instalacion" | "viaje" | "otro";
 export type OrigenPlaca = "nacional" | "importado" | "cantera" | "otro";
 export type MaterialKindDb = "marmol" | "otra_piedra" | "agglomerado_otro";
+/** `piedra` = chapa que se elige al presupuestar; `producto` = producto de cantera que se vende como artículo. */
+export type MaterialUsoDb = "piedra" | "producto";
 export type BachaOrigen = "propia" | "cliente";
 export type BachaInventarioEstado = "disponible" | "asignada" | "usada" | "baja";
 export type PresupuestoEstado = "pendiente" | "aprobado" | "rechazado";
@@ -87,6 +89,12 @@ export type LiquidacionConceptoTipo =
   | "carga_social"
   | "otro";
 export type AdelantoMetodo = "efectivo" | "transferencia";
+export type EmpleadoDocumentoTipo =
+  | "certificado_medico"
+  | "contrato"
+  | "dni"
+  | "cuil"
+  | "otro";
 export type ConceptoMovimientoDb =
   | "trabajo"
   | "insumos"
@@ -444,6 +452,91 @@ export interface Database {
           },
         ];
       };
+      vacaciones_empleado: {
+        Row: {
+          id: string;
+          empleado_id: string;
+          desde: string;
+          hasta: string;
+          dias: number;
+          notas: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          empleado_id: string;
+          desde: string;
+          hasta: string;
+          dias: number;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          empleado_id?: string;
+          desde?: string;
+          hasta?: string;
+          dias?: number;
+          notas?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "vacaciones_empleado_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      empleado_documentos: {
+        Row: {
+          id: string;
+          empleado_id: string;
+          tipo: EmpleadoDocumentoTipo;
+          nombre: string;
+          storage_path: string;
+          mime_type: string | null;
+          size_bytes: number | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          empleado_id: string;
+          tipo?: EmpleadoDocumentoTipo;
+          nombre: string;
+          storage_path: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          empleado_id?: string;
+          tipo?: EmpleadoDocumentoTipo;
+          nombre?: string;
+          storage_path?: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "empleado_documentos_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       liquidaciones: {
         Row: {
           id: string;
@@ -609,6 +702,7 @@ export interface Database {
           familia: string | null;
           codigo: string | null;
           costo_usd: number | null;
+          uso: MaterialUsoDb;
         };
         Insert: {
           id?: string;
@@ -625,6 +719,7 @@ export interface Database {
           familia?: string | null;
           codigo?: string | null;
           costo_usd?: number | null;
+          uso?: MaterialUsoDb;
         };
         Update: {
           id?: string;
@@ -641,6 +736,7 @@ export interface Database {
           familia?: string | null;
           codigo?: string | null;
           costo_usd?: number | null;
+          uso?: MaterialUsoDb;
         };
         Relationships: [];
       };
@@ -1477,6 +1573,9 @@ export interface Database {
           status: PresupuestoEstado;
           payload: Json;
           nro_version: number;
+          lista_precio_id: string | null;
+          cotizacion_usd: number | null;
+          descuento_global: number;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -1491,6 +1590,9 @@ export interface Database {
           status?: PresupuestoEstado;
           payload?: Json;
           nro_version?: number;
+          lista_precio_id?: string | null;
+          cotizacion_usd?: number | null;
+          descuento_global?: number;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1505,6 +1607,9 @@ export interface Database {
           status?: PresupuestoEstado;
           payload?: Json;
           nro_version?: number;
+          lista_precio_id?: string | null;
+          cotizacion_usd?: number | null;
+          descuento_global?: number;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1879,6 +1984,8 @@ export interface Database {
           ot_id: string | null;
           notas: string | null;
           created_at: string;
+          precio_venta: number | null;
+          moneda: "ars" | "usd";
         };
         Insert: {
           id?: string;
@@ -1892,6 +1999,8 @@ export interface Database {
           ot_id?: string | null;
           notas?: string | null;
           created_at?: string;
+          precio_venta?: number | null;
+          moneda?: "ars" | "usd";
         };
         Update: {
           id?: string;
@@ -1905,6 +2014,8 @@ export interface Database {
           ot_id?: string | null;
           notas?: string | null;
           created_at?: string;
+          precio_venta?: number | null;
+          moneda?: "ars" | "usd";
         };
         Relationships: [
           {

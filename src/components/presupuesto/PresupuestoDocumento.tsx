@@ -9,6 +9,7 @@ import {
   formatMetraje,
   labelUnidad,
   parseDecimalInput,
+  precioUnitarioEfectivo,
 } from "@/lib/presupuesto-calculos";
 import { cn } from "@/lib/utils";
 import type { ArticuloConPrecio } from "@/types/articulos";
@@ -176,7 +177,7 @@ export function PresupuestoDocumento({
       const art = articuloConPrecioToMock(artBd);
       const calc = buildLineaCalcInput(art, line);
       const { m2Linea, subtotal } = computeLineaPresupuesto(art, calc);
-      const pu = parseDecimalInput(line.precioUnitario);
+      const pu = precioUnitarioEfectivo(line);
       const qty = parseDecimalInput(line.cantidad);
 
       const usaM2 = art.unidad === "M2" && art.calculaMaterial && m2Linea > 0;

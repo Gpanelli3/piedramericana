@@ -271,35 +271,20 @@ export async function findOrCreateMaterialByName(
   if (findErr) throw findErr;
   if (existing) return existing.id;
 
+  // Producto de cantera (adoquines, granzas…): no se ofrece como piedra al presupuestar.
   const { data: created, error: createErr } = await supabase
     .from("materials")
     .insert({
       name: trimmed,
       unit,
-      material_kind: "cantera" as never,
       stock_qty: 0,
       bulk_stock_kg: 0,
+      uso: "producto",
     })
     .select("id")
     .single();
 
-  if (createErr) {
-    if (/material_kind/.test(createErr.message)) {
-      const { data: fallback, error: fbErr } = await supabase
-        .from("materials")
-        .insert({
-          name: trimmed,
-          unit,
-          stock_qty: 0,
-          bulk_stock_kg: 0,
-        })
-        .select("id")
-        .single();
-      if (fbErr) throw fbErr;
-      return fallback!.id;
-    }
-    throw createErr;
-  }
+  if (createErr) throw createErr;
   return created!.id;
 }
 

@@ -755,6 +755,16 @@ export function PresupuestoDetallePanel({
                               {formatFechaHora(ev.created_at)}
                               {ev.created_by_nombre ? ` · ${ev.created_by_nombre}` : null}
                             </p>
+                            {ev.tipo === "ajuste" &&
+                            ev.meta &&
+                            typeof ev.meta === "object" &&
+                            !Array.isArray(ev.meta) &&
+                            typeof ev.meta.total_anterior === "number" ? (
+                              <p className="text-xs text-muted-foreground">
+                                {ev.meta.motivo === "aprobacion" ? "Al aprobar" : "Ajuste"} · antes{" "}
+                                {formatMoneyAr(ev.meta.total_anterior, ev.moneda)}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                         <p className="text-sm font-semibold tabular-nums shrink-0">

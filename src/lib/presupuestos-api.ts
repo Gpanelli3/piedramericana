@@ -12,6 +12,7 @@ import {
 } from "@/lib/ventas-api";
 import { supabase } from "@/lib/supabase";
 import { removePlano } from "@/lib/presupuesto-planos-storage";
+import { columnasComercialesDesdePayload } from "@/lib/presupuesto-calculos";
 import {
   ensurePrimerPrecio,
   registrarEventoPrecio,
@@ -393,6 +394,7 @@ export async function insertPresupuestoRow(input: {
       status: input.status,
       payload: input.payload,
       created_by: input.created_by,
+      ...columnasComercialesDesdePayload(input.payload),
     })
     .select("id, numero")
     .single();
@@ -429,6 +431,7 @@ export async function updatePresupuestoRow(
       total: input.total,
       moneda: input.moneda,
       payload: input.payload,
+      ...columnasComercialesDesdePayload(input.payload),
       ...(input.created_by !== undefined ? { created_by: input.created_by } : {}),
       updated_at: now,
     })
@@ -451,6 +454,7 @@ export async function updatePresupuestoRow(
         monto: input.total,
         moneda: input.moneda,
         createdBy: input.created_by ?? null,
+        meta: { motivo: "edicion", total_anterior: prevTotal },
       });
     }
   }

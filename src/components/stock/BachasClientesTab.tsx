@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { listClients, type ClientePresupuesto } from "@/lib/clients-api";
+import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import {
   createBachaInventario,
   fetchBachasInventario,
@@ -73,6 +74,8 @@ export function BachasInventarioTab() {
     medidas: "",
     ubicacion: "",
     notas: "",
+    precio_venta: "",
+    moneda: "ars" as "ars" | "usd",
   });
 
   const reload = useCallback(async () => {
@@ -124,6 +127,8 @@ export function BachasInventarioTab() {
       medidas: "",
       ubicacion: "",
       notas: "",
+      precio_venta: "",
+      moneda: "ars",
     });
 
   const handleOpenChange = (next: boolean) => {
@@ -146,9 +151,16 @@ export function BachasInventarioTab() {
       toast.error("Elegí el cliente.");
       return;
     }
+    const precio = parseDecimalInput(draft.precio_venta);
+    if (draft.origen === "propia" && precio <= 0) {
+      toast.error("Cargá el precio de venta de la bacha.");
+      return;
+    }
     setSaving(true);
     try {
       await createBachaInventario({
+        precio_venta: draft.origen === "propia" ? precio : null,
+        moneda: draft.moneda,
         origen: draft.origen,
         cliente_id: draft.origen === "cliente" ? draft.cliente_id : null,
         cliente_nombre: draft.origen === "cliente" ? draft.cliente_nombre.trim() : null,
@@ -247,6 +259,14 @@ export function BachasInventarioTab() {
                     <TableCell className="text-sm text-muted-foreground">
                       {r.modelo?.trim() || "—"}
                       {r.medidas?.trim() ? ` · ${r.medidas.trim()}` : ""}
+                      {r.origen === "propia" && r.precio_venta != null ? (
+                        <span className="block text-xs font-medium text-foreground">
+                          {r.moneda === "usd" ? "US$ " : "$ "}
+                          {Number(r.precio_venta).toLocaleString("es-AR", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {r.ubicacion?.trim() || "—"}
@@ -349,6 +369,37 @@ export function BachasInventarioTab() {
                 placeholder="Ej. 70 × 40"
               />
             </div>
+            {draft.origen === "propia" ? (
+              <div className="grid grid-cols-[1fr_7rem] gap-2">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Precio de venta</Label>
+                  <Input
+                    className="h-10"
+                    inputMode="decimal"
+                    value={draft.precio_venta}
+                    onChange={(e) => setDraft((d) => ({ ...d, precio_venta: e.target.value }))}
+                    placeholder="Ej. 80000"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Moneda</Label>
+                  <Select
+                    value={draft.moneda}
+                    onValueChange={(v) =>
+                      setDraft((d) => ({ ...d, moneda: v === "usd" ? "usd" : "ars" }))
+                    }
+                  >
+                    <SelectTrigger className="h-10 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ars">ARS</SelectItem>
+                      <SelectItem value="usd">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-1.5">
               <Label className="text-sm">Ubicación (opcional)</Label>
               <Input

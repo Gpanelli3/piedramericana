@@ -359,6 +359,8 @@ export type PrecioListaMaterialRow = {
   codigo: string | null;
   name: string;
   precio: number | null;
+  /** `producto` = producto de cantera: se vende como artículo, no por m² de piedra. */
+  uso: "piedra" | "producto";
 };
 
 export async function fetchMaterialesPreciosDeLista(listaId: string): Promise<{
@@ -367,7 +369,7 @@ export async function fetchMaterialesPreciosDeLista(listaId: string): Promise<{
 }> {
   try {
     const [matsRes, itemsRes] = await Promise.all([
-      supabase.from("materials").select("id, name, codigo").order("name"),
+      supabase.from("materials").select("id, name, codigo, uso").order("name"),
       supabase
         .from("listas_precio_materiales")
         .select("material_id, precio, activo")
@@ -385,6 +387,7 @@ export async function fetchMaterialesPreciosDeLista(listaId: string): Promise<{
           codigo: m.codigo,
           name: m.name,
           precio: item != null ? Number(item.precio) : null,
+          uso: m.uso === "producto" ? ("producto" as const) : ("piedra" as const),
         };
       }),
       error: null,
@@ -528,4 +531,36 @@ export async function updateArticulo(
       error: error instanceof Error ? error : new Error("No se pudo actualizar el artículo."),
     };
   }
+}
+
+export type PrecioMaterialEnLista = {
+  lista: ListaPrecioRow;
+  precio: number | null;
+};
+
+/** Precio por m² de una piedra en cada lista (activas e inactivas). */
+export async function fetchPreciosDeMaterial(materialId: string): Promise<{
+  data: PrecioMaterialEnLista[] | null;
+  error: Error | null;
+}> {
+  const [listasRes, itemsRes] = await Promise.all([
+    fetchListasPrecioTodas(),
+    supabase
+      .from("listas_precio_materiales")
+      .select("lista_precio_id, precio, activo")
+      .eq("material_id", materialId)
+      .eq("activo", true),
+  ]);
+  if (listasRes.error) return { data: null, error: listasRes.error };
+  if (itemsRes.error) return { data: null, error: new Error(itemsRes.error.message) };
+  const porLista = new Map(
+    (itemsRes.data ?? []).map((i) => [i.lista_precio_id, Number(i.precio)] as const),
+  );
+  return {
+    data: (listasRes.data ?? []).map((lista) => ({
+      lista,
+      precio: porLista.has(lista.id) ? (porLista.get(lista.id) ?? null) : null,
+    })),
+    error: null,
+  };
 }

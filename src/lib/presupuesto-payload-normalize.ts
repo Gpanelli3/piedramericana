@@ -61,6 +61,7 @@ export function normalizeLineaItemFromPayload(raw: unknown): LineaItemOT {
     altoM: normalizeDimensionInputM(altoRaw),
     anchoM: normalizeDimensionInputM(anchoRaw),
     desperdicioPct: typeof line.desperdicioPct === "string" ? line.desperdicioPct : "",
+    ...(line.sinCargo === true ? { sinCargo: true } : {}),
   };
 }
 

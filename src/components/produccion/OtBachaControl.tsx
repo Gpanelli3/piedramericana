@@ -178,6 +178,7 @@ export function OtBachaControl({
       return;
     }
     toast.success("Bacha asignada.");
+    if (res.aviso) toast.warning(res.aviso, { duration: 12000 });
     setBachaSelectId("");
     setDialogOpen(false);
     await reload();

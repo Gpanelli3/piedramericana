@@ -13,4 +13,6 @@ export type MaterialWizardRow = {
   codigo?: string | null;
   costo_usd?: number | null;
   espesor_mm?: number | null;
+  /** `producto` = producto de cantera: no se ofrece como piedra en el presupuesto. */
+  uso?: "piedra" | "producto";
 };

@@ -1,4 +1,5 @@
 import type { OrdenTrabajoWizard } from "./types";
+import { validateBachasOrdenes } from "./bacha-lineas";
 import type { ArticuloConPrecio } from "@/types/articulos";
 import {
   articuloConPrecioToMock,
@@ -87,6 +88,10 @@ export function validateOrdenesItems(
 
       const art = articuloConPrecioToMock(artBd);
       const qty = parseDecimalInput(line.cantidad);
+
+      if (!line.sinCargo && parseDecimalInput(line.precioUnitario) <= 0) {
+        return `Cargá el precio de «${art.descripcion}» (OT «${titulo}») o marcá la línea como «sin cargo».`;
+      }
 
       if (!art.calculaMaterial) {
         if (qty <= 0) {
@@ -190,6 +195,7 @@ export function validarPresupuestoCompleto(
     validateCliente(clienteSeleccionadoId) ??
     validateMaterialesOt(mecParams.ordenes) ??
     validateOrdenesItems(mecParams.ordenes, articulos) ??
+    validateBachasOrdenes(mecParams.ordenes, articulos) ??
     validateMecRequisitos(mecScope, mecParams)
   );
 }

@@ -55,6 +55,8 @@ type AdelantoFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   adelanto?: AdelantoConEmpleado | null;
+  /** Empleado preseleccionado al registrar uno nuevo (p. ej. desde la ficha). */
+  empleadoIdInicial?: string | null;
   onSaved: (row: AdelantoConEmpleado) => void;
 };
 
@@ -62,6 +64,7 @@ export function AdelantoFormDialog({
   open,
   onOpenChange,
   adelanto = null,
+  empleadoIdInicial = null,
   onSaved,
 }: AdelantoFormDialogProps) {
   const { user } = useAuth();
@@ -81,10 +84,10 @@ export function AdelantoFormDialog({
         notas: adelanto.notas ?? "",
       });
     } else {
-      setDraft(emptyDraft());
+      setDraft({ ...emptyDraft(), empleado_id: empleadoIdInicial ?? "" });
     }
     void listEmpleados().then(({ data }) => setEmpleados(data));
-  }, [open, adelanto]);
+  }, [open, adelanto, empleadoIdInicial]);
 
   const opciones = useMemo(
     () => empleados.filter((e) => e.activo || e.id === draft.empleado_id),

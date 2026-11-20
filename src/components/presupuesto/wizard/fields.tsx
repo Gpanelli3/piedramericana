@@ -358,13 +358,6 @@ function textoBusqueda(value: string): string {
     .trim();
 }
 
-function formatPrecioMaterial(n: number): string {
-  return n.toLocaleString("es-AR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 export type SeleccionMaterialOt = {
   materialId: string;
   materialLibre: string;
@@ -423,7 +416,6 @@ export function BuscadorMaterial({
   chapaSugeridaId = null,
   textoLibre = "",
   onChange,
-  moneda = "ars",
   loading,
   soloTextoLibre = false,
 }: {
@@ -556,8 +548,6 @@ export function BuscadorMaterial({
     if (ofreceLibre) elegirLibre();
   }
 
-  const prefijo = moneda === "usd" ? "US$" : "$";
-
   if (soloTextoLibre) {
     return (
       <input
@@ -672,19 +662,9 @@ export function BuscadorMaterial({
                     </span>
                   </span>
                   <span className="shrink-0 text-right leading-tight">
-                    {p.precioM2 != null ? (
-                      <>
-                        <span className="block text-sm font-semibold tabular-nums">
-                          {prefijo}
-                          {formatPrecioMaterial(p.precioM2)}
-                        </span>
-                        <span className="block text-[10px] text-muted-foreground">/ m²</span>
-                      </>
-                    ) : (
-                      <span className="block text-[11px] text-muted-foreground">s/precio</span>
-                    )}
+                    {/* El precio al cliente sale de la lista, no de la chapa: acá no se muestra. */}
                     {p.proveedor ? (
-                      <span className="mt-0.5 block max-w-[9rem] truncate text-[10px] text-muted-foreground">
+                      <span className="block max-w-[9rem] truncate text-[10px] text-muted-foreground">
                         {p.proveedor}
                       </span>
                     ) : null}

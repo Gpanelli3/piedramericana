@@ -574,3 +574,22 @@ export async function armarLiquidacionesDelMes(opts: {
   }
   return { creadas, omitidas, error: null };
 }
+
+export async function listLiquidacionesEmpleado(
+  empleadoId: string,
+): Promise<{ data: LiquidacionRow[]; error: Error | null }> {
+  if (!isSupabaseConfigured) {
+    return { data: [], error: new Error("Supabase no está configurado") };
+  }
+  const { data, error } = await supabase
+    .from("liquidaciones")
+    .select("*")
+    .eq("empleado_id", empleadoId)
+    .order("periodo_anio", { ascending: false })
+    .order("periodo_mes", { ascending: false });
+  if (error) return { data: [], error: new Error(error.message) };
+  return {
+    data: ((data ?? []) as LiquidacionRow[]).map(coerceLiquidacion),
+    error: null,
+  };
+}
