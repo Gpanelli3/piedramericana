@@ -4,6 +4,7 @@ import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import type { FocusEvent, ReactNode } from "react";
 import {
   BarChart3,
+  CalendarDays,
   ChevronRight,
   FileText,
   Landmark,
@@ -60,6 +61,12 @@ const NAV_ITEMS: NavItemDef[] = [
     id: "dashboard",
     label: "Dashboard",
     icon: <LayoutDashboard className="h-[18px] w-[18px]" />,
+  },
+  {
+    id: "planificacion",
+    label: "Planificación",
+    icon: <CalendarDays className="h-[18px] w-[18px]" />,
+    roles: ["vendedor", "medidor", "produccion", "instalador", "admin", "administracion"],
   },
   {
     id: "ventas",

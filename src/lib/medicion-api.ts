@@ -261,6 +261,15 @@ export async function confirmarMedicion(opts: {
   const ots = await marcarOtsMedidasConfirmadas(opts.presupuestoId, now);
   if (ots.error) return { ...empty, ...saved, error: ots.error, medicion: data ? mapMedicion(data) : null };
 
+  // La visita agendada en Planificación queda hecha.
+  const ev = await supabase
+    .from("planificacion_eventos")
+    .update({ estado: "hecho", hecho_en: now, hecho_por: opts.usuarioId ?? null, updated_at: now })
+    .eq("medicion_id", cur.data.id)
+    .eq("tipo", "medicion")
+    .eq("estado", "pendiente");
+  if (ev.error) return { ...empty, ...saved, error: new Error(ev.error.message), medicion: data ? mapMedicion(data) : null };
+
   return { ...saved, medicion: data ? mapMedicion(data) : null };
 }
 

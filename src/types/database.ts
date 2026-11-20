@@ -33,6 +33,9 @@ export type VentaEstado =
   | "entregado";
 export type EtapaOtKanban = "medicion" | "corte" | "produccion" | "despacho";
 export type OtTipo = "normal" | "reposicion";
+export type TipoEntregaOt = "retira" | "logistica" | "colocacion";
+export type PlanificacionEventoTipo = "entrega" | "medicion" | "tarea";
+export type PlanificacionEventoEstado = "pendiente" | "hecho" | "cancelado";
 export type UnidadArticuloDb = "M2" | "ML" | "UNI" | "PIEZA" | "KG" | "TON";
 export type RolOperativo =
   | "vendedor"
@@ -452,6 +455,118 @@ export interface Database {
           },
         ];
       };
+      planificacion_eventos: {
+        Row: {
+          id: string;
+          tipo: PlanificacionEventoTipo;
+          ot_id: string | null;
+          medicion_id: string | null;
+          venta_id: string | null;
+          fecha: string;
+          hora_desde: string | null;
+          hora_hasta: string | null;
+          titulo: string | null;
+          direccion: string | null;
+          notas: string | null;
+          estado: PlanificacionEventoEstado;
+          hecho_en: string | null;
+          hecho_por: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tipo: PlanificacionEventoTipo;
+          ot_id?: string | null;
+          medicion_id?: string | null;
+          venta_id?: string | null;
+          fecha: string;
+          hora_desde?: string | null;
+          hora_hasta?: string | null;
+          titulo?: string | null;
+          direccion?: string | null;
+          notas?: string | null;
+          estado?: PlanificacionEventoEstado;
+          hecho_en?: string | null;
+          hecho_por?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tipo?: PlanificacionEventoTipo;
+          ot_id?: string | null;
+          medicion_id?: string | null;
+          venta_id?: string | null;
+          fecha?: string;
+          hora_desde?: string | null;
+          hora_hasta?: string | null;
+          titulo?: string | null;
+          direccion?: string | null;
+          notas?: string | null;
+          estado?: PlanificacionEventoEstado;
+          hecho_en?: string | null;
+          hecho_por?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "planificacion_eventos_ot_id_fkey";
+            columns: ["ot_id"];
+            isOneToOne: false;
+            referencedRelation: "ordenes_trabajo";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "planificacion_eventos_medicion_id_fkey";
+            columns: ["medicion_id"];
+            isOneToOne: false;
+            referencedRelation: "presupuesto_mediciones";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "planificacion_eventos_venta_id_fkey";
+            columns: ["venta_id"];
+            isOneToOne: false;
+            referencedRelation: "ventas";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      planificacion_evento_empleados: {
+        Row: {
+          evento_id: string;
+          empleado_id: string;
+        };
+        Insert: {
+          evento_id: string;
+          empleado_id: string;
+        };
+        Update: {
+          evento_id?: string;
+          empleado_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "planificacion_evento_empleados_evento_id_fkey";
+            columns: ["evento_id"];
+            isOneToOne: false;
+            referencedRelation: "planificacion_eventos";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "planificacion_evento_empleados_empleado_id_fkey";
+            columns: ["empleado_id"];
+            isOneToOne: false;
+            referencedRelation: "empleados";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       vacaciones_empleado: {
         Row: {
           id: string;
@@ -823,6 +938,8 @@ export interface Database {
           bacha_id: string | null;
           nafe: string | null;
           plan_corte: Json | null;
+          tipo_entrega: TipoEntregaOt;
+          entregada_en: string | null;
         };
         Insert: {
           id?: string;
@@ -852,6 +969,8 @@ export interface Database {
           bacha_id?: string | null;
           nafe?: string | null;
           plan_corte?: Json | null;
+          tipo_entrega?: TipoEntregaOt;
+          entregada_en?: string | null;
         };
         Update: {
           id?: string;
@@ -881,6 +1000,8 @@ export interface Database {
           bacha_id?: string | null;
           nafe?: string | null;
           plan_corte?: Json | null;
+          tipo_entrega?: TipoEntregaOt;
+          entregada_en?: string | null;
         };
         Relationships: [
           {

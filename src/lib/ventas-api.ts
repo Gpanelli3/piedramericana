@@ -22,6 +22,7 @@ import type {
 } from "@/types/database";
 import type { PresupuestoPayloadV1 } from "@/types/presupuesto-payload";
 import { hydratePresupuestoPayloadV1, isPresupuestoPayloadV1 } from "@/types/presupuesto-payload";
+import { tipoEntregaDesdePayload } from "@/lib/planificacion-reglas";
 import {
   camposRequisitoBacha,
   esBloqueoPorBacha,
@@ -449,6 +450,7 @@ async function crearJobOtSiAusente(opts: {
 
   const id_cliente = await resolveClientId(opts.payload, opts.clienteNombre);
   const parsed = parsePayload(opts.payload);
+  const tipo_entrega = tipoEntregaDesdePayload(parsed);
   const ordenes = parsed?.ordenes ?? [];
   const now = new Date().toISOString();
   let medidasConfirmadas = false;
@@ -491,6 +493,7 @@ async function crearJobOtSiAusente(opts: {
             fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: orden.key,
             tipo: "normal" as const,
+            tipo_entrega,
             ...camposBachaDesdeOrden(orden),
             bacha_id: null as string | null,
             nafe: orden.nafe.trim() || null,
@@ -514,6 +517,7 @@ async function crearJobOtSiAusente(opts: {
             fecha_medidas_confirmadas: medidasConfirmadas ? now : null,
             orden_key: null as string | null,
             tipo: "normal" as const,
+            tipo_entrega,
           },
         ];
 

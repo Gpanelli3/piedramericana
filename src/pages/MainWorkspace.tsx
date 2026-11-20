@@ -17,6 +17,7 @@ import { VistaEquipo } from "@/components/vista-equipo";
 import { VistaReportes } from "@/components/vista-reportes";
 import { VistaComercioExterior } from "@/components/vista-comercio-exterior";
 import { VistaMedicion } from "@/components/vista-medicion";
+import { VistaPlanificacion } from "@/components/vista-planificacion";
 import { StockProvider } from "@/contexts/StockContext";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { WORKSPACE_TABS, type WorkspaceTab } from "@/types/workspace";
@@ -63,6 +64,7 @@ export function MainWorkspace() {
           <AppSidebar />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {activeTab === "dashboard" && <VistaDashboard />}
+            {activeTab === "planificacion" && <VistaPlanificacion />}
             {activeTab === "ventas" && <VistaVentas />}
             {activeTab === "clientes" && <VistaClientes />}
             {activeTab === "produccion" && <VistaProduccionShell />}

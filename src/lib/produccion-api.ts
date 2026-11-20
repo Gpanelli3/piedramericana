@@ -159,7 +159,7 @@ function trioDeOt(
   return pack.total;
 }
 
-async function enrichOts(
+export async function enrichOts(
   list: OrdenTrabajoRow[],
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
   if (list.length === 0) return { data: [], error: null };
@@ -252,7 +252,7 @@ async function enrichOts(
   return { data, error: null };
 }
 
-function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
+export function agruparPorVenta(items: OtProduccionItem[]): VentaGrupoOt[] {
   const map = new Map<string, VentaGrupoOt>();
   const sinVenta: VentaGrupoOt[] = [];
 
@@ -697,11 +697,30 @@ export async function setEtapaOt(
   return { error: null };
 }
 
-export async function marcarOtEntregada(otId: string): Promise<{ error: Error | null }> {
-  return persistJobOtProduccion({
+export async function marcarOtEntregada(
+  otId: string,
+  opts?: { usuarioId?: string | null },
+): Promise<{ error: Error | null }> {
+  const res = await persistJobOtProduccion({
     ordenTrabajoId: otId,
     patch: { status: "done" },
   });
+  if (res.error) return res;
+  const now = new Date().toISOString();
+  const up = await supabase
+    .from("ordenes_trabajo")
+    .update({ entregada_en: now })
+    .eq("id", otId);
+  if (up.error) return { error: new Error(up.error.message) };
+  // Si estaba agendada en Planificación, la entrega queda hecha también ahí.
+  const ev = await supabase
+    .from("planificacion_eventos")
+    .update({ estado: "hecho", hecho_en: now, hecho_por: opts?.usuarioId ?? null, updated_at: now })
+    .eq("ot_id", otId)
+    .eq("tipo", "entrega")
+    .eq("estado", "pendiente");
+  if (ev.error) return { error: new Error(ev.error.message) };
+  return { error: null };
 }
 
 export async function registrarRoturaBloqueo(opts: {
@@ -840,6 +859,7 @@ export async function crearOtReposicionDesdeOrigen(opts: {
       id_cliente: origen.id_cliente,
       estado: "pending",
       fecha_programada: origen.fecha_programada,
+      tipo_entrega: origen.tipo_entrega,
       notas: `Reposición de ${tituloBase}. ${motivo}`,
       actualizado_en: now,
       etapa: etapaHija,

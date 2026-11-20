@@ -1,5 +1,6 @@
 export const WORKSPACE_TABS = [
   "dashboard",
+  "planificacion",
   "ventas",
   "clientes",
   "articulos",
