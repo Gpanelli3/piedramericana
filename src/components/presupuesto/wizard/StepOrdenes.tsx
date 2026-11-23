@@ -240,32 +240,6 @@ export function StepOrdenes({
                             />
                             Lleva bacha
                           </label>
-                          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              id={`${ot.key}-piedra-cliente`}
-                              checked={ot.piedraDelCliente === true}
-                              onCheckedChange={(c) => {
-                                const on = Boolean(c);
-                                if (!on) {
-                                  patchOrden(ot.key, { piedraDelCliente: false });
-                                  return;
-                                }
-                                const nombreCatalogo =
-                                  materials.find((m) => m.id === ot.materialId)?.name ?? "";
-                                patchOrden(ot.key, {
-                                  piedraDelCliente: true,
-                                  materialId: "",
-                                  materialLibre:
-                                    (ot.materialLibre ?? "").trim() || nombreCatalogo,
-                                  chapaSugeridaId: null,
-                                  chapaSugeridaBulto: "",
-                                  chapaSugeridaLabel: "",
-                                  planCorte: null,
-                                });
-                              }}
-                            />
-                            La piedra la pone el cliente
-                          </label>
                         </div>
 
                         <PlanCorteOtBanner
@@ -302,8 +276,9 @@ export function StepOrdenes({
 
                         {ot.llevaBacha ? (
                           <div className="grid grid-cols-1 gap-3 border-t border-border/40 px-3 py-3 sm:grid-cols-2">
+                            <p className="text-sm font-medium text-foreground sm:col-span-2">Bacha</p>
                             <div className="min-w-0 space-y-1.5">
-                              <Label className="text-xs font-medium">Colocación</Label>
+                              <Label className="text-xs font-medium">Cómo se coloca</Label>
                               <Select
                                 value={ot.tipoColocacion}
                                 onValueChange={(v) =>
@@ -325,7 +300,7 @@ export function StepOrdenes({
                               </Select>
                             </div>
                             <div className="min-w-0 space-y-1.5">
-                              <Label className="text-xs font-medium">Origen</Label>
+                              <Label className="text-xs font-medium">Quién la pone</Label>
                               <Select
                                 value={ot.bachaOrigen}
                                 onValueChange={(v) =>
@@ -338,8 +313,8 @@ export function StepOrdenes({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="propia">Nuestra</SelectItem>
-                                  <SelectItem value="cliente">Del cliente</SelectItem>
+                                  <SelectItem value="propia">Bacha nuestra</SelectItem>
+                                  <SelectItem value="cliente">Bacha del cliente</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>

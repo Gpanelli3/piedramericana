@@ -77,11 +77,12 @@ export function VistaVentaRetenida() {
           loading={loading}
           emptyText="No hay OTs retenidas en este momento."
           onChanged={() => void refresh()}
-          renderRow={(item, { onVer }) => (
+          renderRow={(item, { onVer, numero }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              numero={numero}
               extra={
                 <div className="flex flex-wrap gap-2 pt-1">
                   {item.orden.bloqueada ? (

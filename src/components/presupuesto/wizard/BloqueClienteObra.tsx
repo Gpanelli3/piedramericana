@@ -254,34 +254,48 @@ export function BloqueClienteObra({
                     <span className="text-xs text-muted-foreground">%</span>
                   </div>
                 </div>
-                {mecActivo ? (
-                  <div className="w-36 space-y-1">
-                    <Label className="text-xs">Importe MEC (ARS)</Label>
+              </div>
+            </div>
+
+            {mecActivo ? (
+              <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/30 p-3 sm:grid-cols-[11rem_1fr] sm:p-4">
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="importe-mec">
+                    Importe MEC (ARS)
+                  </Label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      $
+                    </span>
                     <Input
-                      className="h-9 text-sm tabular-nums"
+                      id="importe-mec"
+                      className="h-10 bg-background pl-7 text-right text-base font-semibold tabular-nums"
                       inputMode="decimal"
                       value={totalMecGlobal}
                       onChange={(e) => setTotalMecGlobal(e.target.value)}
                     />
                   </div>
-                ) : null}
-              </div>
-            </div>
-
-            {mecActivo ? (
-              <div className="space-y-1">
-                <div className="flex items-baseline justify-between gap-3">
-                  <Label className="text-xs">Observaciones MEC</Label>
-                  <span className="text-[10px] tabular-nums text-muted-foreground">
-                    {obsServiciosMec.length}/500
-                  </span>
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    Medición, envío y colocación juntos. No lleva descuento.
+                  </p>
                 </div>
-                <Textarea
-                  className="min-h-16 resize-y text-sm"
-                  maxLength={500}
-                  value={obsServiciosMec}
-                  onChange={(e) => setObsServiciosMec(e.target.value)}
-                />
+                <div className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <Label className="text-xs" htmlFor="obs-mec">
+                      Observaciones MEC
+                    </Label>
+                    <span className="text-[10px] tabular-nums text-muted-foreground">
+                      {obsServiciosMec.length}/500
+                    </span>
+                  </div>
+                  <Textarea
+                    id="obs-mec"
+                    className="min-h-20 resize-y bg-background text-sm"
+                    maxLength={500}
+                    value={obsServiciosMec}
+                    onChange={(e) => setObsServiciosMec(e.target.value)}
+                  />
+                </div>
               </div>
             ) : null}
 

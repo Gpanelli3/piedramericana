@@ -258,7 +258,7 @@ export const GUIAS_MODULO: Partial<Record<WorkspaceTab, PasoGuia[]>> = {
       elemento: '[data-guia="medicion-conformidad"]',
       titulo: "Esperando conformidad",
       texto:
-        "Si al medir cambia el importe, la obra queda acá hasta que el cliente esté de acuerdo con el nuevo precio. Cuando acepta, lo confirmás y sigue.",
+        "Si al medir cambia el importe, la obra queda acá esperando al vendedor: él lo confirma con el cliente desde Presupuestos y, cuando acepta, pasa a producción.",
       lado: "bottom",
       opcional: true,
     },

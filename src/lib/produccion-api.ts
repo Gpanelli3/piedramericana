@@ -509,10 +509,50 @@ export async function setOtFechaProgramada(
     value = `${day}T12:00:00.000Z`;
   }
   const now = new Date().toISOString();
-  const { error } = await supabase
+  const { data: ot, error } = await supabase
     .from("ordenes_trabajo")
     .update({ fecha_programada: value, actualizado_en: now })
-    .eq("id", otId);
+    .eq("id", otId)
+    .select("id,venta_id,estado")
+    .maybeSingle();
+  if (error) return { error: new Error(error.message) };
+  if (!value || !ot || ot.estado === "done" || ot.estado === "cancelled") return { error: null };
+  return sincronizarEntregaPlanificada(ot.id, ot.venta_id, value.slice(0, 10));
+}
+
+/**
+ * La entrega comprometida aparece en Planificación ese día, "sin hora", para acomodarle el horario.
+ * Si ya estaba agendada, se mueve al nuevo día y conserva el horario.
+ */
+async function sincronizarEntregaPlanificada(
+  otId: string,
+  ventaId: string | null,
+  dia: string,
+): Promise<{ error: Error | null }> {
+  const { data: existente, error: e1 } = await supabase
+    .from("planificacion_eventos")
+    .select("id,fecha")
+    .eq("tipo", "entrega")
+    .eq("estado", "pendiente")
+    .eq("ot_id", otId)
+    .maybeSingle();
+  if (e1) return { error: new Error(e1.message) };
+  if (existente) {
+    if (existente.fecha === dia) return { error: null };
+    const { error } = await supabase
+      .from("planificacion_eventos")
+      .update({ fecha: dia, updated_at: new Date().toISOString() })
+      .eq("id", existente.id);
+    return { error: error ? new Error(error.message) : null };
+  }
+  const { error } = await supabase.from("planificacion_eventos").insert({
+    tipo: "entrega",
+    ot_id: otId,
+    venta_id: ventaId,
+    fecha: dia,
+    hora_desde: null,
+    hora_hasta: null,
+  });
   return { error: error ? new Error(error.message) : null };
 }
 

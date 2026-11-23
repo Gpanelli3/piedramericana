@@ -192,6 +192,33 @@ export async function guardarUsuario(opts: {
   return { error: error ? new Error(error.message) : null };
 }
 
+export async function crearUsuario(opts: {
+  email: string;
+  password: string;
+  fullName: string;
+  esAdmin: boolean;
+  roles: RolOperativo[];
+}): Promise<{ error: Error | null }> {
+  const { error } = await supabase.rpc("admin_crear_usuario", {
+    p_email: opts.email,
+    p_password: opts.password,
+    p_full_name: opts.fullName,
+    p_es_admin: opts.esAdmin,
+    p_roles: opts.roles,
+  });
+  return { error: error ? new Error(error.message) : null };
+}
+
+export async function cambiarPasswordUsuario(id: string, password: string): Promise<{ error: Error | null }> {
+  const { error } = await supabase.rpc("admin_cambiar_password", { p_id: id, p_password: password });
+  return { error: error ? new Error(error.message) : null };
+}
+
+export async function setUsuarioActivo(id: string, activo: boolean): Promise<{ error: Error | null }> {
+  const { error } = await supabase.rpc("admin_set_usuario_activo", { p_id: id, p_activo: activo });
+  return { error: error ? new Error(error.message) : null };
+}
+
 export async function reiniciarGuiaUsuario(id: string): Promise<{ error: Error | null }> {
   const { error } = await supabase.rpc("admin_reiniciar_guia", { p_id: id });
   return { error: error ? new Error(error.message) : null };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DollarSign, Pencil, RotateCcw, ShieldCheck } from "lucide-react";
+import { Ban, DollarSign, Pencil, RotateCcw, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,11 @@ import {
   ROLES_ASIGNABLES,
   guardarDatosEmpresa,
   guardarDolarHoy,
+  cambiarPasswordUsuario,
+  crearUsuario,
   guardarUsuario,
   listarUsuarios,
+  setUsuarioActivo,
   reiniciarGuiaUsuario,
   soyAdministrador,
   useConfiguracionEmpresa,
@@ -108,6 +111,7 @@ function UsuariosPanel({ miId }: { miId: string }) {
   const [filas, setFilas] = useState<UsuarioAdmin[]>([]);
   const [cargando, setCargando] = useState(true);
   const [editando, setEditando] = useState<UsuarioAdmin | null>(null);
+  const [creando, setCreando] = useState(false);
 
   const recargar = useCallback(async () => {
     setCargando(true);
@@ -123,11 +127,12 @@ function UsuariosPanel({ miId }: { miId: string }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Elegí qué puede ver cada persona. Los roles definen qué módulos le aparecen en el menú; un
-        administrador ve todo. Para sumar a alguien nuevo, tiene que crear su cuenta desde la pantalla de
-        ingreso y después aparece acá.
-      </p>
+      <div className="flex justify-end">
+        <Button type="button" className="gap-1.5" onClick={() => setCreando(true)} data-guia="usuario-nuevo">
+          <UserPlus className="h-4 w-4" />
+          Nuevo usuario
+        </Button>
+      </div>
       <div className="overflow-hidden rounded-lg border border-border bg-white" data-guia="lista">
         <Table>
           <TableHeader>
@@ -166,6 +171,11 @@ function UsuariosPanel({ miId }: { miId: string }) {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
+                      {!u.activo ? (
+                        <Badge variant="outline" className="text-[10px] text-destructive">
+                          Desactivado
+                        </Badge>
+                      ) : null}
                       {u.es_admin ? (
                         <Badge variant="success" className="gap-1 text-[10px]">
                           <ShieldCheck className="h-3 w-3" />
@@ -194,10 +204,15 @@ function UsuariosPanel({ miId }: { miId: string }) {
 
       <UsuarioDialog
         usuario={editando}
+        creando={creando}
         esYo={editando?.id === miId}
-        onClose={() => setEditando(null)}
+        onClose={() => {
+          setEditando(null);
+          setCreando(false);
+        }}
         onSaved={() => {
           setEditando(null);
+          setCreando(false);
           void recargar();
         }}
       />
@@ -207,26 +222,63 @@ function UsuariosPanel({ miId }: { miId: string }) {
 
 function UsuarioDialog({
   usuario,
+  creando,
   esYo,
   onClose,
   onSaved,
 }: {
   usuario: UsuarioAdmin | null;
+  creando: boolean;
   esYo: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [nombre, setNombre] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [admin, setAdmin] = useState(false);
   const [roles, setRoles] = useState<Set<string>>(new Set());
   const [guardando, setGuardando] = useState(false);
+  const abierto = creando || usuario !== null;
 
   useEffect(() => {
+    setPassword("");
+    if (usuario) {
+      setNombre(usuario.full_name ?? "");
+      setEmail(usuario.email ?? "");
+      setAdmin(usuario.es_admin);
+      setRoles(new Set(usuario.roles));
+    } else if (creando) {
+      setNombre("");
+      setEmail("");
+      setAdmin(false);
+      setRoles(new Set());
+    }
+  }, [usuario, creando]);
+
+  const cambiarPassword = async () => {
     if (!usuario) return;
-    setNombre(usuario.full_name ?? "");
-    setAdmin(usuario.es_admin);
-    setRoles(new Set(usuario.roles));
-  }, [usuario]);
+    setGuardando(true);
+    const { error } = await cambiarPasswordUsuario(usuario.id, password);
+    setGuardando(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setPassword("");
+    toast.success("Contraseña actualizada.");
+  };
+
+  const alternarActivo = async () => {
+    if (!usuario) return;
+    const { error } = await setUsuarioActivo(usuario.id, !usuario.activo);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(usuario.activo ? "Cuenta desactivada: ya no puede ingresar." : "Cuenta reactivada.");
+    onSaved();
+  };
 
   const toggleRol = (r: string, on: boolean) =>
     setRoles((prev) => {
@@ -237,20 +289,19 @@ function UsuarioDialog({
     });
 
   const guardar = async () => {
-    if (!usuario) return;
     setGuardando(true);
-    const { error } = await guardarUsuario({
-      id: usuario.id,
-      fullName: nombre,
-      esAdmin: admin,
-      roles: [...roles] as RolOperativo[],
-    });
+    const rolesArr = [...roles] as RolOperativo[];
+    const { error } = usuario
+      ? await guardarUsuario({ id: usuario.id, fullName: nombre, esAdmin: admin, roles: rolesArr })
+      : await crearUsuario({ email, password, fullName: nombre, esAdmin: admin, roles: rolesArr });
     setGuardando(false);
     if (error) {
       toast.error(error.message);
       return;
     }
-    toast.success("Permisos guardados. La persona los ve la próxima vez que entre.");
+    toast.success(
+      usuario ? "Permisos guardados. La persona los ve la próxima vez que entre." : "Cuenta creada. Ya puede ingresar.",
+    );
     onSaved();
   };
 
@@ -262,11 +313,11 @@ function UsuarioDialog({
   };
 
   return (
-    <Dialog open={usuario !== null} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={abierto} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className={dialogFormClassName} showCloseButton>
         <DialogHeader>
-          <DialogTitle>{usuario?.full_name || usuario?.email || "Usuario"}</DialogTitle>
-          <DialogDescription>{usuario?.email ?? ""}</DialogDescription>
+          <DialogTitle>{usuario ? usuario.full_name || usuario.email || "Usuario" : "Nuevo usuario"}</DialogTitle>
+          <DialogDescription>{usuario ? (usuario.email ?? "") : "Mail y contraseña con los que va a ingresar."}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
@@ -274,6 +325,52 @@ function UsuarioDialog({
             <Label className="text-xs">Nombre para mostrar</Label>
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Francisco Pérez" />
           </div>
+
+          {!usuario ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Mail</Label>
+                <Input
+                  type="email"
+                  autoComplete="off"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nombre@empresa.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Contraseña</Label>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Label className="text-xs">Cambiar contraseña</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Nueva contraseña (mínimo 6 caracteres)"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={guardando || password.length < 6}
+                  onClick={() => void cambiarPassword()}
+                >
+                  Cambiar
+                </Button>
+              </div>
+            </div>
+          )}
 
           <label
             className={`flex items-start gap-3 rounded-lg border border-border p-3 ${esYo ? "opacity-70" : "cursor-pointer"}`}
@@ -323,21 +420,35 @@ function UsuarioDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button
-            type="button"
-            variant="ghost"
-            className="mr-auto gap-1.5"
-            onClick={() => void reiniciarGuia()}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Volver a mostrar la guía
-          </Button>
+          {usuario ? (
+            <div className="mr-auto flex flex-wrap gap-1">
+              <Button type="button" variant="ghost" className="gap-1.5" onClick={() => void reiniciarGuia()}>
+                <RotateCcw className="h-4 w-4" />
+                Volver a mostrar la guía
+              </Button>
+              {!esYo ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className={`gap-1.5 ${usuario.activo ? "text-destructive" : ""}`}
+                  onClick={() => void alternarActivo()}
+                >
+                  <Ban className="h-4 w-4" />
+                  {usuario.activo ? "Desactivar cuenta" : "Reactivar cuenta"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <DialogClose asChild>
             <Button type="button" variant="outline">
               Cancelar
             </Button>
           </DialogClose>
-          <Button type="button" disabled={guardando} onClick={() => void guardar()}>
+          <Button
+            type="button"
+            disabled={guardando || (!usuario && (!email.trim() || password.length < 6))}
+            onClick={() => void guardar()}
+          >
             {guardando ? "Guardando…" : "Guardar"}
           </Button>
         </DialogFooter>

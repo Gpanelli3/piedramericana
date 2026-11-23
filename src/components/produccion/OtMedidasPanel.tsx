@@ -197,7 +197,9 @@ export function OtMedidasPanel({
       }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium text-foreground">Medidas del presupuesto</p>
+        <p className="text-sm font-medium text-foreground">
+          {mostrarForm ? "Medidas del presupuesto" : "Medidas definitivas"}
+        </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {nroVersion > 1 ? (
             <span className="rounded-sm border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
@@ -220,18 +222,20 @@ export function OtMedidasPanel({
         </p>
       ) : null}
 
-      <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
-        <div className="grid grid-cols-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          <span>Importe cotizado</span>
-          <span className="text-right">Importe vigente</span>
+      {mostrarForm ? (
+        <div className="overflow-hidden rounded-md border border-border/70 bg-background text-xs">
+          <div className="grid grid-cols-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span>Importe cotizado</span>
+            <span className="text-right">Importe vigente</span>
+          </div>
+          <div className="grid grid-cols-2 items-baseline px-3 py-2 tabular-nums">
+            <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
+            <span className="text-right font-medium text-foreground">
+              {formatMonto(totalVigente, moneda)}
+            </span>
+          </div>
         </div>
-        <div className="grid grid-cols-2 items-baseline px-3 py-2 tabular-nums">
-          <span className="text-muted-foreground">{formatMonto(totalVenta, moneda)}</span>
-          <span className="text-right font-medium text-foreground">
-            {formatMonto(totalVigente, moneda)}
-          </span>
-        </div>
-      </div>
+      ) : null}
 
       {mostrarForm ? (
         <div className="space-y-4">
@@ -340,33 +344,23 @@ export function OtMedidasPanel({
               <p className="border-b border-border/60 bg-muted/40 px-3 py-1.5 text-[11px] font-semibold text-foreground">
                 {grupo.ordenTitulo}
               </p>
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="grid grid-cols-[1fr_auto_4rem] gap-x-4 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 <span>Pieza</span>
                 <span>Medidas</span>
-                <span className="text-right">Cotizado</span>
-                <span className="text-right">En obra</span>
+                <span className="text-right">m²</span>
               </div>
               <ul>
                 {grupo.items.map((it) => (
                   <li
                     key={`${it.ordenKey}-${it.itemKey}`}
-                    className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-3 border-t border-border/40 px-3 py-2 text-xs"
+                    className="grid grid-cols-[1fr_auto_4rem] items-baseline gap-x-4 border-t border-border/40 px-3 py-2 text-sm"
                   >
                     <span className="min-w-0 truncate font-medium text-foreground">
                       {it.articuloLabel}
                     </span>
-                    <span className="tabular-nums text-muted-foreground">{medidasItemTexto(it)}</span>
-                    <span className="text-right tabular-nums text-muted-foreground">
-                      {formatMetraje(it.m2Cotizado)}
-                    </span>
-                    <span
-                      className={
-                        m2Distinto(it.m2Cotizado, it.m2Approx)
-                          ? "text-right tabular-nums font-medium text-foreground"
-                          : "text-right tabular-nums text-foreground"
-                      }
-                    >
-                      {formatMetraje(it.m2Approx)}
+                    <span className="tabular-nums text-foreground">{medidasItemTexto(it)}</span>
+                    <span className="text-right tabular-nums font-medium text-foreground">
+                      {it.m2Approx > 0 ? formatMetraje(it.m2Approx) : "—"}
                     </span>
                   </li>
                 ))}

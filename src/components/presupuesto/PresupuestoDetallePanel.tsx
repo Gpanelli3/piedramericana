@@ -37,6 +37,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
 import { HojaDeTrabajoDocumento } from "@/components/presupuesto/HojaDeTrabajoDocumento";
+import { ConformidadBanner } from "@/components/presupuesto/ConformidadPendiente";
+import type { MedicionColaItem } from "@/lib/medicion-api";
 import {
   getPresupuestoById,
   getPresupuestoVersion,
@@ -107,6 +109,9 @@ type Props = {
   onRechazar: (id: string) => Promise<void>;
   statusBusy?: boolean;
   refreshKey?: number;
+  /** Si al medir cambió el importe y falta que el vendedor lo confirme con el cliente. */
+  conformidad?: MedicionColaItem | null;
+  onConformidadCambio?: () => void;
 };
 
 type DocVista = "pdf" | "hoja" | null;
@@ -121,6 +126,8 @@ export function PresupuestoDetallePanel({
   onRechazar,
   statusBusy = false,
   refreshKey = 0,
+  conformidad = null,
+  onConformidadCambio,
 }: Props) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +150,6 @@ export function PresupuestoDetallePanel({
   const [docVista, setDocVista] = useState<DocVista>(null);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
-  const [marcandoEnvio, setMarcandoEnvio] = useState(false);
 
   const recargarEventosYArchivos = useCallback(async (id: string) => {
     const [ev, ar] = await Promise.all([listEventosPrecio(id), listPlanosByPresupuesto(id)]);
@@ -314,24 +320,6 @@ export function PresupuestoDetallePanel({
     }
   }, [fila]);
 
-  const marcarEnviadoHoy = useCallback(async () => {
-    if (!fila) return;
-    setMarcandoEnvio(true);
-    const res = await registrarEventoPrecio({
-      presupuestoId: fila.id,
-      tipo: "enviado_pdf",
-      monto: fila.total,
-      moneda: fila.moneda,
-    });
-    setMarcandoEnvio(false);
-    if (res.error) {
-      toast.error(res.error.message);
-      return;
-    }
-    toast.success("Marcado como enviado hoy.");
-    await recargarEventosYArchivos(fila.id);
-  }, [fila, recargarEventosYArchivos]);
-
   const registrarEnvioPdf = useCallback(async () => {
     if (!fila) return;
     await registrarEventoPrecio({
@@ -410,7 +398,6 @@ export function PresupuestoDetallePanel({
 
   const pendiente = fila?.status === "pendiente";
   const aprobado = fila?.status === "aprobado";
-  const otsAGenerar = payload?.ordenes.filter((o) => o.titulo.trim() || o.items.length > 0).length ?? 0;
   const nroMostrado = viendoNro ?? nroVigente;
 
   return (
@@ -578,19 +565,17 @@ export function PresupuestoDetallePanel({
                   <h2 className="text-2xl font-bold tracking-tight">
                     {payload.clienteNombre || fila.cliente}
                   </h2>
-                  {pendiente && !enviadoEvento ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-1 h-8 gap-1.5"
-                      disabled={marcandoEnvio}
-                      onClick={() => void marcarEnviadoHoy()}
-                    >
-                      Ponerle la fecha de hoy
-                    </Button>
-                  ) : null}
+                  <p className="text-sm text-muted-foreground">
+                    Generado el {formatFechaLarga(fila.created_at)}
+                  </p>
                 </div>
+
+                {conformidad ? (
+                  <ConformidadBanner
+                    item={conformidad}
+                    onCambio={() => onConformidadCambio?.()}
+                  />
+                ) : null}
 
                 <div className="rounded-2xl bg-zinc-900 text-white px-5 py-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
@@ -662,7 +647,7 @@ export function PresupuestoDetallePanel({
                               </p>
                               {amb.colocacion > 0 ? (
                                 <p className="text-sm text-muted-foreground">
-                                  Colocación {formatMoneyCard(amb.colocacion)}
+                                  Servicios {formatMoneyCard(amb.colocacion)}
                                   {amb.m2 > 0 ? ` · ${formatMetrajeDetalle(amb.m2)}` : null}
                                 </p>
                               ) : amb.m2 > 0 ? (
@@ -711,23 +696,28 @@ export function PresupuestoDetallePanel({
                 ) : null}
 
                 <section className="space-y-2">
-                  <h3 className="text-sm font-semibold">
-                    Servicios <span className="font-normal text-muted-foreground">global</span>
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Medición{" "}
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {formatMoneyCard(vista.serviciosSplit.medicion)}
-                    </span>
-                    <span className="mx-3">Envío</span>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {formatMoneyCard(vista.serviciosSplit.envio)}
-                    </span>
-                    <span className="mx-3">Colocación</span>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {formatMoneyCard(vista.serviciosSplit.colocacion)}
-                    </span>
-                  </p>
+                  <h3 className="text-sm font-semibold">Servicios</h3>
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                    {vista.serviciosSplit.incluidos.length > 0 ? (
+                      <>
+                        <div className="flex flex-wrap gap-1.5">
+                          {vista.serviciosSplit.incluidos.map((s) => (
+                            <span
+                              key={s}
+                              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="shrink-0 font-semibold tabular-nums">
+                          {formatMoneyCard(vista.serviciosSplit.total)}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Sin servicios</p>
+                    )}
+                  </div>
                 </section>
 
                 <section className="space-y-2">
@@ -872,7 +862,6 @@ export function PresupuestoDetallePanel({
               >
                 <Check className="h-4 w-4" />
                 Aprobar presupuesto
-                {otsAGenerar > 0 ? ` · genera ${otsAGenerar} OT` : null}
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button

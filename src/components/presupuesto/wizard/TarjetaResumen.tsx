@@ -85,6 +85,30 @@ export function TarjetaResumen({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="mec-resumen" className="text-muted-foreground font-normal">
+              Servicios MEC
+            </Label>
+            {mecActivo ? (
+              <div className="flex w-28 items-center gap-1">
+                <span className="text-xs text-muted-foreground">$</span>
+                <Input
+                  id="mec-resumen"
+                  className="h-8 text-right text-sm tabular-nums"
+                  inputMode="decimal"
+                  value={totalMecGlobal}
+                  onChange={(e) => setTotalMecGlobal(e.target.value)}
+                />
+              </div>
+            ) : (
+              <dd className="tabular-nums text-muted-foreground">$0,00</dd>
+            )}
+          </div>
+          {mecActivo ? (
+            <p className="text-right text-[11px] tabular-nums text-muted-foreground">
+              ${formatMoney(totalMecImporte)} ARS
+            </p>
+          ) : null}
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="desc-global-resumen" className="text-muted-foreground font-normal">
               Descuento
             </Label>
@@ -108,30 +132,6 @@ export function TarjetaResumen({
                 {formatMoney(netoItems)}
               </dd>
             </div>
-          ) : null}
-          <div className="flex items-center justify-between gap-3">
-            <Label htmlFor="mec-resumen" className="text-muted-foreground font-normal">
-              Servicios MEC
-            </Label>
-            {mecActivo ? (
-              <div className="flex w-28 items-center gap-1">
-                <span className="text-xs text-muted-foreground">$</span>
-                <Input
-                  id="mec-resumen"
-                  className="h-8 text-right text-sm tabular-nums"
-                  inputMode="decimal"
-                  value={totalMecGlobal}
-                  onChange={(e) => setTotalMecGlobal(e.target.value)}
-                />
-              </div>
-            ) : (
-              <dd className="tabular-nums text-muted-foreground">$0,00</dd>
-            )}
-          </div>
-          {mecActivo ? (
-            <p className="text-right text-[11px] tabular-nums text-muted-foreground">
-              ${formatMoney(totalMecImporte)} ARS
-            </p>
           ) : null}
         </dl>
       </div>

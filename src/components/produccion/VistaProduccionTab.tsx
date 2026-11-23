@@ -47,11 +47,12 @@ export function VistaProduccionTab() {
           loading={loading}
           emptyText="No hay OTs en producción."
           onChanged={() => void refresh()}
-          renderRow={(item, { onVer }) => (
+          renderRow={(item, { onVer, numero }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              numero={numero}
               primaryAction={{
                 label: "Abrir",
                 onClick: onVer,

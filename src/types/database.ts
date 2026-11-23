@@ -3091,7 +3091,20 @@ export interface Database {
           roles: string[];
           ultimo_ingreso: string | null;
           creado: string;
+          activo: boolean;
         }>;
+      };
+      admin_crear_usuario: {
+        Args: { p_email: string; p_password: string; p_full_name: string; p_es_admin: boolean; p_roles: RolOperativo[] };
+        Returns: string;
+      };
+      admin_cambiar_password: {
+        Args: { p_id: string; p_password: string };
+        Returns: undefined;
+      };
+      admin_set_usuario_activo: {
+        Args: { p_id: string; p_activo: boolean };
+        Returns: undefined;
       };
       admin_guardar_usuario: {
         Args: { p_id: string; p_full_name: string; p_es_admin: boolean; p_roles: RolOperativo[] };

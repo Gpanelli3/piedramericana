@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { FechaInput } from "@/components/ui/fecha-input";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,7 +74,7 @@ type VistaOt = "resumen" | "medidas" | "stock" | "estado";
 
 function DatoFila({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
+    <div className="flex min-h-12 items-center justify-between gap-3 py-2.5">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-right font-medium text-foreground">{children}</dd>
     </div>
@@ -119,9 +118,8 @@ function OtEtapaStepper({
   onSelect: (e: EtapaOtId) => void;
 }) {
   const currentIdx = ETAPAS_OT_ORDEN.indexOf(etapa);
-  const last = ETAPAS_OT_ORDEN.length - 1;
   return (
-    <ol className="flex w-full items-start">
+    <ol className="grid w-full gap-1.5" style={{ gridTemplateColumns: `repeat(${ETAPAS_OT_ORDEN.length}, minmax(0, 1fr))` }}>
       {ETAPAS_OT_ORDEN.map((e, i) => {
         const isCurrent = !done && i === currentIdx;
         const isPast = done || i < currentIdx;
@@ -133,49 +131,37 @@ function OtEtapaStepper({
             ? "Etapa actual"
             : `Ir a ${label}`;
         return (
-          <li key={e} className="flex min-w-0 flex-1 flex-col items-center">
-            <div className="flex w-full items-center">
-              <span
-                className={cn(
-                  "h-0.5 flex-1",
-                  i === 0 ? "bg-transparent" : isPast || isCurrent ? "bg-foreground/50" : "bg-border",
-                )}
-                aria-hidden
-              />
-              <button
-                type="button"
-                disabled={!canClick}
-                onClick={() => onSelect(e)}
-                aria-current={isCurrent ? "step" : undefined}
-                title={title}
-                className={cn(
-                  "relative z-[1] flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors",
-                  isCurrent && "border-foreground bg-foreground text-background",
-                  isPast && !isCurrent && "border-foreground/40 bg-muted text-foreground",
-                  !isPast && !isCurrent && "border-border bg-background text-muted-foreground",
-                  canClick &&
-                    "cursor-pointer hover:border-foreground hover:bg-foreground hover:text-background",
-                  disabled && !isCurrent && "opacity-60",
-                )}
-              >
-                {isPast && !isCurrent ? <Check className="h-3.5 w-3.5" /> : i + 1}
-              </button>
-              <span
-                className={cn(
-                  "h-0.5 flex-1",
-                  i === last ? "bg-transparent" : isPast ? "bg-foreground/50" : "bg-border",
-                )}
-                aria-hidden
-              />
-            </div>
-            <span
+          <li key={e} className="min-w-0">
+            <button
+              type="button"
+              disabled={!canClick}
+              onClick={() => onSelect(e)}
+              aria-current={isCurrent ? "step" : undefined}
+              title={title}
               className={cn(
-                "mt-1 max-w-full truncate px-0.5 text-center text-[10px] font-medium",
-                isCurrent ? "text-foreground" : "text-muted-foreground",
+                "group flex w-full flex-col gap-1.5 text-left",
+                canClick ? "cursor-pointer" : "cursor-default",
               )}
             >
-              {label}
-            </span>
+              <span
+                className={cn(
+                  "flex items-center gap-1 truncate text-xs font-medium transition-colors",
+                  isCurrent ? "font-semibold text-white" : isPast ? "text-white/70" : "text-white/40",
+                  canClick && "group-hover:text-white",
+                )}
+              >
+                {isPast && !isCurrent ? <Check className="h-3 w-3 shrink-0" aria-hidden /> : null}
+                {label}
+              </span>
+              <span
+                className={cn(
+                  "h-1 w-full rounded-full transition-colors",
+                  isCurrent ? "bg-amber-500" : isPast ? "bg-white/60" : "bg-white/15",
+                  canClick && !isCurrent && "group-hover:bg-white/80",
+                )}
+                aria-hidden
+              />
+            </button>
           </li>
         );
       })}
@@ -455,71 +441,54 @@ export function OtDetalleDialog({
 
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[min(44rem,88vh)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-3.5 pr-12 text-left">
-            <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {item.orden.titulo}
-                    {item.presupuestoNumero &&
-                    !item.orden.titulo?.includes(item.presupuestoNumero)
-                      ? ` · ${item.presupuestoNumero}`
-                      : ""}
+        <DialogContent className="flex max-h-[min(46rem,90vh)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl [&>[data-slot=dialog-close]]:!bg-transparent [&>[data-slot=dialog-close]]:!text-white" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader className="shrink-0 gap-0 bg-zinc-900 px-6 pt-5 pb-4 pr-14 text-left text-white">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs text-white/60">
+                  {item.orden.titulo}
+                  {item.presupuestoNumero && !item.orden.titulo?.includes(item.presupuestoNumero)
+                    ? ` · ${item.presupuestoNumero}`
+                    : ""}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    done
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : bloqueada
+                        ? "bg-rose-500/20 text-rose-300"
+                        : pausada
+                          ? "bg-white/10 text-white/70"
+                          : "bg-emerald-500/15 text-emerald-300",
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                  {done ? "Entregada" : bloqueada ? "Bloqueada" : pausada ? "Pausada" : "Activa"}
+                </span>
+                {item.esReposicion ? (
+                  <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+                    Reposición{item.otOrigenTitulo ? ` · ${item.otOrigenTitulo}` : ""}
                   </span>
-                  {item.esReposicion ? (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-semibold uppercase tracking-wide border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200"
-                    >
-                      Reposición
-                      {item.otOrigenTitulo ? ` · ${item.otOrigenTitulo}` : ""}
-                    </Badge>
-                  ) : null}
-                  {done || bloqueada || pausada ? (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[10px] font-semibold uppercase tracking-wide",
-                        done
-                          ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300"
-                          : bloqueada
-                            ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
-                            : "border-gray-200 bg-gray-100 text-gray-600",
-                      )}
-                    >
-                      {done ? "Entregada" : bloqueada ? "Bloqueada" : "Pausada"}
-                    </Badge>
-                  ) : null}
-                  <UrgenciaBadge fechaProgramada={item.orden.fecha_programada} />
-                </div>
-                <DialogTitle className="text-lg font-bold leading-tight text-foreground">
-                  {item.cliente}
-                </DialogTitle>
-                {item.direccionObra !== "—" ? (
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{item.direccionObra}</span>
-                  </p>
                 ) : null}
-                <DialogDescription className="sr-only">
-                  Detalle de la orden de trabajo {item.orden.titulo}
-                </DialogDescription>
+                {!done ? <UrgenciaBadge fechaProgramada={item.orden.fecha_programada} /> : null}
               </div>
-            {bloqueada && item.orden.motivo_bloqueo ? (
-              <div className="mt-2 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {item.orden.motivo_bloqueo}
-              </div>
-            ) : bachaPendiente ? (
-              <div className="mt-2 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Falta bacha
-              </div>
-            ) : null}
-          </DialogHeader>
+              <DialogTitle className="mt-1.5 truncate text-2xl font-bold leading-tight text-white">
+                {item.cliente}
+              </DialogTitle>
+              {item.direccionObra !== "—" ? (
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-white/60">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{item.direccionObra}</span>
+                </p>
+              ) : null}
+              <DialogDescription className="sr-only">
+                Detalle de la orden de trabajo {item.orden.titulo}
+              </DialogDescription>
+            </div>
 
-          <div className="shrink-0 border-b border-border px-5 py-2.5">
-            <OtEtapaStepper
+            <div className="mt-5">
+              <OtEtapaStepper
               etapa={etapa}
               done={done}
               disabled={!puedeMover}
@@ -535,9 +504,26 @@ export function OtDetalleDialog({
               }
               onSelect={(e) => void onEtapaSelect(e)}
             />
-          </div>
+            </div>
+          </DialogHeader>
 
-          <div className="flex shrink-0 items-stretch gap-2 border-b border-border pl-2 pr-3">
+          {(bloqueada && item.orden.motivo_bloqueo) || bachaPendiente ? (
+            <div className="flex shrink-0 items-center gap-2 border-b border-rose-200 bg-rose-50 px-6 py-2 text-sm font-medium text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {bloqueada && item.orden.motivo_bloqueo ? `Bloqueada: ${item.orden.motivo_bloqueo}` : "Falta bacha"}
+              {!bloqueada && bachaPendiente ? (
+                <button
+                  type="button"
+                  className="ml-auto text-xs font-semibold underline-offset-2 hover:underline"
+                  onClick={() => setVista("stock")}
+                >
+                  Asignar
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex shrink-0 items-stretch gap-2 border-b border-border bg-card pl-3 pr-4">
             <div
               role="tablist"
               className="flex min-w-0 flex-1 items-end overflow-x-auto overflow-y-hidden"
@@ -559,9 +545,9 @@ export function OtDetalleDialog({
                     aria-selected={activo}
                     onClick={() => setVista(sec.id)}
                     className={cn(
-                      "-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors",
+                      "-mb-px shrink-0 border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors",
                       activo
-                        ? "border-foreground text-foreground"
+                        ? "border-amber-600 text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -586,7 +572,7 @@ export function OtDetalleDialog({
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   disabled={rotuloBusy}
                   onClick={() => void descargarRotulo(item.orden.id)}
                 >
@@ -596,7 +582,7 @@ export function OtDetalleDialog({
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   disabled={planoBusy}
                   onClick={() => void descargarPlano(item.orden.id)}
                 >
@@ -609,18 +595,17 @@ export function OtDetalleDialog({
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {vista === "resumen" ? (
-            <div className="px-5 py-4">
-              <div className="grid gap-8 sm:grid-cols-2">
-                <section className="min-w-0">
+            <div className="grid min-h-full sm:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                <section className="min-w-0 px-6 py-5">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Pieza
                   </p>
                   <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <h3 className="text-lg font-semibold leading-tight text-foreground">
+                    <h3 className="text-xl font-bold leading-tight text-foreground">
                       {item.materialLabel}
                     </h3>
                     {item.m2Obra > 0 ? (
-                      <span className="text-sm tabular-nums text-muted-foreground">
+                      <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs tabular-nums text-foreground">
                         {formatMetraje(item.m2Obra)} m²
                       </span>
                     ) : null}
@@ -628,7 +613,7 @@ export function OtDetalleDialog({
                   {loadingExtra ? (
                     <p className="mt-3 text-xs text-muted-foreground">Cargando…</p>
                   ) : medidaItems.length > 0 ? (
-                    <ul className="mt-3 divide-y divide-border/70 overflow-hidden rounded-lg border border-border bg-background">
+                    <ul className="mt-4 divide-y divide-border/70 overflow-hidden rounded-xl border border-border bg-card">
                       {grupos.flatMap((g, gi) =>
                         g.items.map((it, ii) => {
                           const tieneMedidas = it.muestraAlto || it.muestraAncho;
@@ -646,7 +631,7 @@ export function OtDetalleDialog({
                           return (
                             <li
                               key={`${gi}-${ii}`}
-                              className="px-3 py-2.5 text-sm"
+                              className="px-4 py-3 text-sm"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
@@ -659,7 +644,7 @@ export function OtDetalleDialog({
                                     </p>
                                   ) : null}
                                 </div>
-                                <span className="shrink-0 tabular-nums text-muted-foreground">
+                                <span className="shrink-0 font-mono text-[13px] tabular-nums text-foreground">
                                   {it.m2Approx > 0
                                     ? `${formatMetraje(it.m2Approx)} m²`
                                     : it.cantidad
@@ -675,7 +660,7 @@ export function OtDetalleDialog({
                   ) : (
                     <p className="mt-3 text-xs text-muted-foreground">Sin ítems cargados.</p>
                   )}
-                  <div className="mt-3">
+                  <div className="mt-4">
                     <OtBachaControl
                       otId={item.orden.id}
                       clienteNombre={item.cliente}
@@ -690,7 +675,7 @@ export function OtDetalleDialog({
                   </div>
                 </section>
 
-                <section className="min-w-0">
+                <section className="min-w-0 border-t border-border bg-muted/40 px-6 py-5 sm:border-t-0 sm:border-l">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                     Datos
                   </p>
@@ -745,7 +730,6 @@ export function OtDetalleDialog({
                     </DatoFila>
                   </dl>
                 </section>
-              </div>
             </div>
             ) : null}
 
@@ -907,7 +891,7 @@ export function OtDetalleDialog({
             ) : null}
           </div>
 
-          <div className="shrink-0 border-t border-border bg-background px-4 py-2.5">
+          <div className="shrink-0 border-t border-border bg-card px-5 py-3">
             <div className="flex flex-wrap items-center gap-2">
               {puedeNavegar ? (
                 <div className="flex items-center gap-0.5">
@@ -948,7 +932,7 @@ export function OtDetalleDialog({
                 {!done && nextEtapa ? (
                   <Button
                     type="button"
-                    size="sm"
+                    className="h-10 gap-1 bg-amber-700 px-5 text-white hover:bg-amber-800"
                     disabled={!puedeMover || busy}
                     onClick={() => void onAvanzar()}
                   >
@@ -958,7 +942,7 @@ export function OtDetalleDialog({
                 ) : permitirEntregar && !done && etapa === "despacho" ? (
                   <Button
                     type="button"
-                    size="sm"
+                    className="h-10 gap-1 bg-amber-700 px-5 text-white hover:bg-amber-800"
                     disabled={!puedeMover || busy}
                     onClick={() => void onEntregar()}
                   >

@@ -209,11 +209,12 @@ export function VistaProduccion() {
               : "No hay órdenes de trabajo confirmadas. Aparecen acá cuando se confirman las medidas en Medición."
           }
           onChanged={() => void refresh()}
-          renderRow={(item, { onVer }) => (
+          renderRow={(item, { onVer, numero }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              numero={numero}
               primaryAction={{
                 label: "Abrir",
                 onClick: onVer,

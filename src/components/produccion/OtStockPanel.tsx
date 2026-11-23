@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, History, Layers } from "lucide-react";
+import { AlertTriangle, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,13 +18,11 @@ import { OtBachaControl } from "@/components/produccion/OtBachaControl";
 import {
   listChapasDisponibles,
   listChapasPorOt,
-  listTrazabilidadStockPorOt,
   lotesDistintosEnChapas,
   materialSinChapasDisponibles,
   listChapasRoturaPorOt,
   reservarChapasAOt,
   type ChapaInventarioRow,
-  type MovimientoStockRow,
 } from "@/lib/stock-ot-api";
 import { bajaPedazoBloqueadoYReponer } from "@/lib/produccion-api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,18 +53,6 @@ function m2(l: number, a: number) {
   return ((l / 100) * (a / 100)).toFixed(2);
 }
 
-function etiquetaMov(t: MovimientoStockRow["tipo"]): string {
-  const map: Record<MovimientoStockRow["tipo"], string> = {
-    reserva: "Reserva",
-    liberacion: "Liberación",
-    consumo: "Consumo",
-    baja: "Baja",
-    retazo_alta: "Retazo",
-    bloqueo: "Bloqueo",
-  };
-  return map[t] ?? t;
-}
-
 async function toastSiAgotado(materialId?: string | null, materialLabel?: string | null) {
   const r = await materialSinChapasDisponibles({ materialId, materialLabel });
   if (r.agotado) {
@@ -93,8 +79,6 @@ export function OtStockPanel({
   const { reloadChapas } = useStock();
   const [reservadas, setReservadas] = useState<ChapaInventarioRow[]>([]);
   const [usadas, setUsadas] = useState<ChapaInventarioRow[]>([]);
-  const [previstos, setPrevistos] = useState<ChapaInventarioRow[]>([]);
-  const [movimientos, setMovimientos] = useState<MovimientoStockRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [reservarOpen, setReservarOpen] = useState(false);
   const [disponibles, setDisponibles] = useState<ChapaInventarioRow[]>([]);
@@ -109,23 +93,17 @@ export function OtStockPanel({
   const reload = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const [r, u, pv, rot, mov] = await Promise.all([
+    const [r, u, rot] = await Promise.all([
       listChapasPorOt(otId, ["Reservada"]),
       listChapasPorOt(otId, ["Usada", "Baja"]),
-      listChapasPorOt(otId, ["Prevista"]),
       listChapasRoturaPorOt(otId),
-      listTrazabilidadStockPorOt(otId),
     ]);
     if (r.error) toast.error(r.error.message);
     if (u.error) toast.error(u.error.message);
-    if (pv.error) toast.error(pv.error.message);
     if (rot.error) toast.error(rot.error.message);
-    if (mov.error) toast.error(mov.error.message);
     setReservadas(r.data);
     setUsadas(u.data);
-    setPrevistos(pv.data);
     setBloqueadas(rot.data);
-    setMovimientos(mov.data);
     setLoading(false);
   }, [otId]);
 
@@ -231,7 +209,7 @@ export function OtStockPanel({
           <Layers className="h-3.5 w-3.5" />
           Placas
         </p>
-        {reservadas.length === 0 && usadas.length === 0 && previstos.length === 0 && !esperaReponer ? (
+        {reservadas.length === 0 && usadas.length === 0 && !esperaReponer ? (
           <Button
             type="button"
             size="sm"
@@ -284,7 +262,7 @@ export function OtStockPanel({
 
       {loading ? (
         <p className="text-xs text-muted-foreground">Cargando…</p>
-      ) : reservadas.length === 0 && usadas.length === 0 && previstos.length === 0 ? (
+      ) : reservadas.length === 0 && usadas.length === 0 ? (
         !reservaPendiente && !esperaReponer ? (
           <p className="text-xs text-muted-foreground">
             Sin placas asignadas. Si señalaste una chapa en el presupuesto, se reserva al señar; si no,
@@ -330,23 +308,6 @@ export function OtStockPanel({
               </Badge>
             </li>
           ))}
-          {previstos.map((c) => (
-            <li
-              key={c.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50/60 px-2.5 py-1.5 text-xs dark:border-sky-900 dark:bg-sky-950/30"
-            >
-              <div className="min-w-0">
-                <span className="font-mono">{c.bulto}</span>
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {Number(c.largo_cm)}×{Number(c.ancho_cm)} cm
-                </span>
-              </div>
-              <Badge variant="outline" className="border-sky-200 text-[10px] text-sky-800">
-                Sobrante previsto
-              </Badge>
-            </li>
-          ))}
         </ul>
       )}
 
@@ -361,28 +322,6 @@ export function OtStockPanel({
         bachaId={bachaId}
         onChanged={onChanged}
       />
-
-      {movimientos.length > 0 ? (
-        <div className="space-y-1.5 border-t border-border/60 pt-2">
-          <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <History className="h-3 w-3" />
-            Historial de stock
-          </p>
-          <ul className="max-h-28 space-y-1 overflow-y-auto">
-            {movimientos.slice(0, 12).map((m) => (
-              <li key={m.id} className="flex justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>
-                  <span className="font-medium text-foreground">{etiquetaMov(m.tipo)}</span>
-                  {m.chapa_bulto ? ` · ${m.chapa_bulto}` : ""}
-                  {m.chapa_lote ? ` · lote ${m.chapa_lote}` : ""}
-                  {!m.chapa_bulto && m.detalle ? ` · ${m.detalle}` : ""}
-                </span>
-                <span className="shrink-0 tabular-nums">{m.created_at.slice(0, 10)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
 
       <Dialog open={reemplazoOpen} onOpenChange={setReemplazoOpen}>
         <DialogContent className="sm:max-w-md" aria-describedby={undefined}>

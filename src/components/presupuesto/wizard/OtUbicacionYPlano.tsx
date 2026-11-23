@@ -219,7 +219,7 @@ export function OtUbicacionYPlano({
         ) : cabecera ? (
           <label
             className={cn(
-              "inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-amber-800 hover:underline",
+              "relative inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-amber-800 hover:underline",
               uploading && "pointer-events-none opacity-70",
             )}
           >
@@ -241,7 +241,7 @@ export function OtUbicacionYPlano({
         ) : (
           <label
             className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border/80 bg-muted/10 px-4 py-6 text-center transition-colors hover:bg-muted/25",
+              "relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border/80 bg-muted/10 px-4 py-6 text-center transition-colors hover:bg-muted/25",
               uploading && "pointer-events-none opacity-70",
             )}
           >

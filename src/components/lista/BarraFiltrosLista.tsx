@@ -66,6 +66,14 @@ type Props = {
   mostrarCliente?: boolean;
   idPrefix: string;
   trailing?: ReactNode;
+  /** Filtro de sí/no propio de la lista (se muestra dentro de Filtros y suma al contador). */
+  filtroExtra?: {
+    titulo: string;
+    label: string;
+    cantidad?: number;
+    activo: boolean;
+    onToggle: () => void;
+  };
 };
 
 function interactOutsideEsPortalAnidado(target: EventTarget | null): boolean {
@@ -92,8 +100,9 @@ export function BarraFiltrosLista({
   mostrarCliente = true,
   idPrefix,
   trailing,
+  filtroExtra,
 }: Props) {
-  const count = contarFiltrosActivos(filtros);
+  const count = contarFiltrosActivos(filtros) + (filtroExtra?.activo ? 1 : 0);
   const vendedorNombre =
     filtros.vendedorId === VENDEDOR_SIN
       ? "Sin vendedor"
@@ -159,6 +168,30 @@ export function BarraFiltrosLista({
             }}
           >
             <div className="flex flex-col gap-3.5">
+              {filtroExtra ? (
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">{filtroExtra.titulo}</p>
+                  <button
+                    type="button"
+                    aria-pressed={filtroExtra.activo}
+                    onClick={filtroExtra.onToggle}
+                    className={cn(
+                      "flex h-10 w-full items-center justify-center gap-2 rounded-full border text-sm transition-colors",
+                      filtroExtra.activo
+                        ? "border-accent bg-accent/15 font-medium text-foreground"
+                        : "border-border bg-card text-foreground hover:bg-muted/50",
+                    )}
+                  >
+                    {filtroExtra.label}
+                    {filtroExtra.cantidad ? (
+                      <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold tabular-nums text-amber-900">
+                        {filtroExtra.cantidad}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
+              ) : null}
+
               <div className="space-y-1.5">
                 <Label htmlFor={`${idPrefix}-estado`}>Estado</Label>
                 <Select
@@ -184,7 +217,7 @@ export function BarraFiltrosLista({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor={`${idPrefix}-vendedor`} className="text-muted-foreground">
+                <Label htmlFor={`${idPrefix}-vendedor`}>
                   <User className="h-3.5 w-3.5" aria-hidden />
                   Vendedor
                 </Label>
@@ -216,7 +249,7 @@ export function BarraFiltrosLista({
 
               {mostrarCliente ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor={`${idPrefix}-cliente`} className="text-muted-foreground">
+                  <Label htmlFor={`${idPrefix}-cliente`}>
                     Cliente
                   </Label>
                   <Select
@@ -244,7 +277,7 @@ export function BarraFiltrosLista({
               ) : null}
 
               <div className="space-y-1.5">
-                <p className="text-sm font-medium text-muted-foreground">Cobro</p>
+                <p className="text-sm font-medium text-foreground">Cobro</p>
                 <button
                   type="button"
                   aria-pressed={filtros.soloSaldoPendiente}
@@ -258,7 +291,7 @@ export function BarraFiltrosLista({
                     "flex h-10 w-full items-center justify-center rounded-full border text-sm transition-colors",
                     filtros.soloSaldoPendiente
                       ? "border-accent bg-accent/15 font-medium text-foreground"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted/50",
+                      : "border-border bg-card text-foreground hover:bg-muted/50",
                   )}
                 >
                   Solo con saldo pendiente
@@ -328,8 +361,21 @@ export function BarraFiltrosLista({
         {trailing}
       </div>
 
-      {hayFiltrosActivos(filtros) ? (
+      {hayFiltrosActivos(filtros) || filtroExtra?.activo ? (
         <div className="flex flex-wrap items-center gap-1.5">
+          {filtroExtra?.activo ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-foreground">
+              {filtroExtra.label}
+              <button
+                type="button"
+                className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={filtroExtra.onToggle}
+                aria-label={`Quitar filtro ${filtroExtra.label}`}
+              >
+                <X className="h-3 w-3" aria-hidden />
+              </button>
+            </span>
+          ) : null}
           {chips.map((chip) => (
             <span
               key={chip.id}
@@ -351,7 +397,10 @@ export function BarraFiltrosLista({
             variant="ghost"
             size="sm"
             className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-            onClick={() => onFiltrosChange({ ...FILTROS_LISTA_VACIOS })}
+            onClick={() => {
+              onFiltrosChange({ ...FILTROS_LISTA_VACIOS });
+              if (filtroExtra?.activo) filtroExtra.onToggle();
+            }}
           >
             Limpiar
           </Button>

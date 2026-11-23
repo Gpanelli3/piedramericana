@@ -9,6 +9,7 @@ import {
   type PresupuestoFiltroTab,
 } from "@/components/presupuesto/PresupuestosLista";
 import { PresupuestoDetallePanel } from "@/components/presupuesto/PresupuestoDetallePanel";
+import { esperaConformidad } from "@/components/presupuesto/ConformidadPendiente";
 import { AprobarPresupuestoDialog } from "@/components/presupuesto/AprobarPresupuestoDialog";
 import { ElegirChapaReemplazoDialog } from "@/components/presupuesto/ElegirChapaReemplazoDialog";
 import type { ChapaReservaPendiente } from "@/lib/ventas-api";
@@ -19,7 +20,11 @@ import {
 } from "@/lib/presupuestos-api";
 import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
 import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
-import { listarMedicionesPorPresupuestos } from "@/lib/medicion-api";
+import {
+  listarColaMedicion,
+  listarMedicionesPorPresupuestos,
+  type MedicionColaItem,
+} from "@/lib/medicion-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
@@ -40,6 +45,12 @@ export function VistaVentas() {
   const [rows, setRows] = useState<PresupuestoRowLista[]>([]);
   const [listaCargando, setListaCargando] = useState(true);
   const [medicionPorId, setMedicionPorId] = useState<Record<string, MedicionEstado>>({});
+  /** Presupuestos donde el vendedor tiene que confirmar con el cliente el importe que cambió al medir. */
+  const [conformidadItems, setConformidadItems] = useState<MedicionColaItem[]>([]);
+  const aConfirmarIds = useMemo(
+    () => new Set(conformidadItems.map((i) => i.presupuestoId)),
+    [conformidadItems],
+  );
 
   const [detalleId, setDetalleId] = useState<string | null>(null);
   const [detalleRefresh, setDetalleRefresh] = useState(0);
@@ -65,12 +76,16 @@ export function VistaVentas() {
     } else {
       setRows(data ?? []);
       const ids = (data ?? []).map((r) => r.id);
-      const med = await listarMedicionesPorPresupuestos(ids);
+      const [med, cola] = await Promise.all([
+        listarMedicionesPorPresupuestos(ids),
+        listarColaMedicion(),
+      ]);
       if (!med.error) {
         const map: Record<string, MedicionEstado> = {};
         for (const [id, row] of med.data) map[id] = row.estado;
         setMedicionPorId(map);
       }
+      if (!cola.error) setConformidadItems(cola.data.filter(esperaConformidad));
     }
     setListaCargando(false);
   }, []);
@@ -268,6 +283,7 @@ export function VistaVentas() {
             tab={tab}
             onVerResumen={abrirResumenPorId}
             medicionPorId={medicionPorId}
+            aConfirmarIds={aConfirmarIds}
           />
         )}
       </main>
@@ -281,6 +297,11 @@ export function VistaVentas() {
         onRechazar={onRechazar}
         statusBusy={Boolean(detalleId && statusBusyId === detalleId)}
         refreshKey={detalleRefresh}
+        conformidad={conformidadItems.find((i) => i.presupuestoId === detalleId) ?? null}
+        onConformidadCambio={() => {
+          void refreshLista();
+          setDetalleRefresh((n) => n + 1);
+        }}
       />
 
       <AprobarPresupuestoDialog

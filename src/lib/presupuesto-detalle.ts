@@ -41,9 +41,8 @@ export type SuperficieMaterial = {
 };
 
 export type ServiciosDetalle = {
-  medicion: number;
-  envio: number;
-  colocacion: number;
+  /** Servicios marcados (Medición, Envío, Colocación) que cubre el importe MEC. */
+  incluidos: string[];
   total: number;
 };
 
@@ -175,8 +174,7 @@ export function buildPresupuestoDetalleVista(opts: {
     })
     .reduce((s, a) => s + a.m2, 0);
 
-  const colocacionActiva = payload.mColocacionGlobal;
-  if (colocacionActiva && servicios > 0) {
+  if (servicios > 0) {
     for (const amb of ambientes) {
       const ot = payload.ordenes.find((o) => o.key === amb.key);
       if (ot?.excluirMec) continue;
@@ -186,10 +184,14 @@ export function buildPresupuestoDetalleVista(opts: {
     }
   }
 
-  const split: ServiciosDetalle = { medicion: 0, envio: 0, colocacion: 0, total: servicios };
-  if (payload.mColocacionGlobal) split.colocacion = servicios;
-  else if (payload.mEntregaGlobal) split.envio = servicios;
-  else if (payload.mMedicionGlobal) split.medicion = servicios;
+  // El MEC es un único importe para todos los servicios marcados.
+  const incluidos: string[] = [];
+  if (servicios > 0) {
+    if (payload.mMedicionGlobal) incluidos.push("Medición");
+    if (payload.mEntregaGlobal) incluidos.push("Envío");
+    if (payload.mColocacionGlobal) incluidos.push("Colocación");
+  }
+  const split: ServiciosDetalle = { incluidos, total: servicios };
 
   const porMaterial = new Map<string, number>();
   for (const amb of ambientes) {

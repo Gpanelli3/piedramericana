@@ -152,6 +152,8 @@ type Props = {
   tab: PresupuestoFiltroTab;
   onVerResumen: (id: string) => void;
   medicionPorId?: Record<string, MedicionEstado>;
+  /** Presupuestos donde el vendedor tiene que confirmar con el cliente el importe que cambió al medir. */
+  aConfirmarIds?: Set<string>;
 };
 
 export function PresupuestosLista({
@@ -160,8 +162,15 @@ export function PresupuestosLista({
   tab,
   onVerResumen,
   medicionPorId,
+  aConfirmarIds,
 }: Props) {
   const [q, setQ] = useState("");
+  const [soloAConfirmar, setSoloAConfirmar] = useState(false);
+  const cantAConfirmar = useMemo(
+    () => rows.filter((r) => aConfirmarIds?.has(r.id)).length,
+    [rows, aConfirmarIds],
+  );
+  const filtroAConfirmar = soloAConfirmar && cantAConfirmar > 0;
   const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
   const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
 
@@ -170,7 +179,9 @@ export function PresupuestosLista({
 
   const visibles = useMemo(() => {
     const filtradas = rows.filter(
-      (r) => filaPasaTab(r, tab) && filaPasaFiltros(r, filtros),
+      (r) =>
+        (filtroAConfirmar ? aConfirmarIds?.has(r.id) : filaPasaTab(r, tab)) &&
+        filaPasaFiltros(r, filtros),
     );
     const needle = q.trim().toLowerCase();
     const buscadas = !needle
@@ -183,7 +194,7 @@ export function PresupuestosLista({
             r.tel.toLowerCase().includes(needle),
         );
     return ordenarFilas(buscadas, orden);
-  }, [rows, tab, filtros, q, orden]);
+  }, [rows, tab, filtros, q, orden, filtroAConfirmar, aConfirmarIds]);
 
   const estadoVacioMsj = (): string => {
     if (q.trim() || hayFiltrosActivos(filtros)) {
@@ -198,7 +209,7 @@ export function PresupuestosLista({
     <div className="flex flex-1 flex-col gap-5">
       <div className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold tracking-tight text-foreground">
-          {tituloFiltro(tab)}
+          {filtroAConfirmar ? "A confirmar con el cliente" : tituloFiltro(tab)}
         </h2>
         <BarraFiltrosLista
           busqueda={q}
@@ -213,6 +224,17 @@ export function PresupuestosLista({
           haySinVendedor={vendedoresOpciones.haySinVendedor}
           clientes={clientesOpciones}
           idPrefix="presupuestos"
+          filtroExtra={
+            cantAConfirmar > 0
+              ? {
+                  titulo: "Medición",
+                  label: "A confirmar con el cliente",
+                  cantidad: cantAConfirmar,
+                  activo: filtroAConfirmar,
+                  onToggle: () => setSoloAConfirmar((v) => !v),
+                }
+              : undefined
+          }
         />
       </div>
 
@@ -282,7 +304,14 @@ export function PresupuestosLista({
                         >
                           {etiquetaEstado(r)}
                         </Badge>
-                        {medicionPorId && medEstado !== "sin_solicitar" ? (
+                        {aConfirmarIds?.has(r.id) ? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-50 text-[10px] font-medium text-amber-900"
+                          >
+                            Confirmar con el cliente
+                          </Badge>
+                        ) : medicionPorId && medEstado !== "sin_solicitar" ? (
                           <Badge variant="outline" className="text-[10px] font-medium">
                             {etiquetaMedicionEstado(medEstado)}
                           </Badge>

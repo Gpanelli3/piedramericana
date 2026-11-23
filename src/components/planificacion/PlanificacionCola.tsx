@@ -115,7 +115,7 @@ export function PlanificacionCola({
   return (
     <aside
       className={cn(
-        "flex min-h-0 flex-col rounded-xl border border-border bg-card transition-colors",
+        "flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card transition-colors",
         dropActivo && "border-primary bg-primary/5",
       )}
       onDragOver={onDragOver}

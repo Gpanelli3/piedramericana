@@ -61,11 +61,12 @@ export function VistaLogistica() {
           loading={loading}
           emptyText="No hay OTs en instalaciones."
           onChanged={() => void refresh()}
-          renderRow={(item, { onVer }) => (
+          renderRow={(item, { onVer, numero }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              numero={numero}
               primaryAction={{
                 label: "Entregar",
                 disabled:

@@ -317,7 +317,7 @@ export function VistaPlanificacion() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 sm:p-4 md:flex-row md:overflow-hidden">
-        <div className="h-80 shrink-0 md:h-auto md:w-80" data-guia="planificacion-cola">
+        <div className="flex h-80 min-h-0 shrink-0 flex-col md:h-auto md:w-80" data-guia="planificacion-cola">
           <PlanificacionCola
             cola={cola}
             loading={loading}

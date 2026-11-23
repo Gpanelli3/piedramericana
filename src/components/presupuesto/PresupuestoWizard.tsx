@@ -1289,32 +1289,16 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               inputClass,
               !line.precioUnitario.trim() && "placeholder:text-muted-foreground/40",
               hasArt &&
-                !line.sinCargo &&
                 parseDecimalInput(line.precioUnitario) <= 0 &&
                 "border-destructive/60",
             )}
             inputMode="decimal"
             placeholder="—"
-            value={line.sinCargo ? "0" : line.precioUnitario}
-            disabled={line.sinCargo === true}
+            value={line.precioUnitario}
             onChange={(e) =>
-              patchItem(ot.key, line.key, { precioUnitario: e.target.value })
+              patchItem(ot.key, line.key, { precioUnitario: e.target.value, sinCargo: undefined })
             }
           />
-          <label className="mt-1 flex cursor-pointer items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-3 w-3"
-              checked={line.sinCargo === true}
-              onChange={(e) =>
-                patchItem(ot.key, line.key, {
-                  sinCargo: e.target.checked,
-                  ...(e.target.checked ? { precioUnitario: "0" } : {}),
-                })
-              }
-            />
-            Sin cargo
-          </label>
         </TableCell>
         <TableCell className="px-2.5 py-2 align-middle text-right">
           <span

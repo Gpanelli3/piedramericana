@@ -46,11 +46,12 @@ export function VistaEntregadas() {
           emptyText="Todavía no hay OTs entregadas."
           onChanged={() => void refresh()}
           permitirEntregar={false}
-          renderRow={(item, { onVer }) => (
+          renderRow={(item, { onVer, numero }) => (
             <OtListRow
               key={item.orden.id}
               item={item}
               onVer={onVer}
+              numero={numero}
               extra={
                 <p className="text-[11px] text-muted-foreground">
                   Cerrada {formatFechaCorta(item.orden.actualizado_en)}

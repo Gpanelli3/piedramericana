@@ -179,16 +179,17 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ap-total">Total aprobado ({monedaLabel})</Label>
-              <Input
-                id="ap-total"
-                type="number"
-                min={0}
-                step="any"
-                inputMode="decimal"
-                value={totalStr}
-                onChange={(e) => setTotalStr(e.target.value)}
-              />
+              <p className="text-sm font-medium">Total aprobado ({monedaLabel})</p>
+              <p className="text-2xl font-semibold tabular-nums">
+                ${" "}
+                {Number(totalStr || 0).toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Es el total del presupuesto. Para cambiarlo, editá el presupuesto.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -315,7 +316,7 @@ export function AprobarPresupuestoDialog({ open, onOpenChange, row, busy, onConf
             onClick={() => void handleSubmit()}
             disabled={busy || !row || senaInvalida}
           >
-            {busy ? "Guardando…" : "Aprobar y pasar a ventas"}
+            {busy ? "Guardando…" : "Aprobar"}
           </Button>
         </DialogFooter>
       </DialogContent>
