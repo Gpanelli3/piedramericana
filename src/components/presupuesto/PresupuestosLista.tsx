@@ -225,7 +225,7 @@ export function PresupuestosLista({
           {estadoVacioMsj()}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <div className="overflow-x-auto rounded-lg border border-border bg-card" data-guia="lista">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-muted/40">

@@ -93,9 +93,10 @@ type ExportacionFichaProps = {
   exportacion: ExportacionListRow;
   onBack: () => void;
   onUpdated: (row: ExportacionListRow) => void;
+  onDeleted: (id: string) => void;
 };
 
-export function ExportacionFicha({ exportacion, onBack, onUpdated }: ExportacionFichaProps) {
+export function ExportacionFicha({ exportacion, onBack, onUpdated, onDeleted }: ExportacionFichaProps) {
   const { user } = useAuth();
   const [detalle, setDetalle] = useState<ExportacionDetalle | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -625,6 +626,7 @@ export function ExportacionFicha({ exportacion, onBack, onUpdated }: Exportacion
 
       <ExportacionFormDialog
         open={editOpen}
+        onDeleted={onDeleted}
         onOpenChange={setEditOpen}
         exportacion={exp}
         onSaved={(row) => {

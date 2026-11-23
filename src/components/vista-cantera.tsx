@@ -125,16 +125,16 @@ export function VistaCantera() {
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="flex flex-col gap-3 px-5 pt-6 pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:pt-6 sm:pb-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl" data-guia="modulo-titulo">
             Stock Cantera
           </h1>
         </div>
         <div className="flex gap-2 self-start">
-          <Button type="button" className="h-9 gap-1.5" onClick={() => setDialogOpen(true)}>
+          <Button type="button" className="h-9 gap-1.5" onClick={() => setDialogOpen(true)} data-guia="accion-principal">
             <Plus className="h-4 w-4" />
             Nuevo ingreso
           </Button>
-          <Button type="button" variant="outline" className="h-9 gap-1.5" onClick={() => setProcesarOpen(true)}>
+          <Button type="button" variant="outline" className="h-9 gap-1.5" onClick={() => setProcesarOpen(true)} data-guia="cantera-procesar">
             <Factory className="h-4 w-4" />
             Procesar
           </Button>
@@ -149,7 +149,7 @@ export function VistaCantera() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-guia="cantera-kpis">
           <KpiCard
             label="Bruto ingresado"
             value={loading ? "…" : fmtKg(totalBruto)}

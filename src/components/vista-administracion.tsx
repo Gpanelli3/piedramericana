@@ -223,7 +223,7 @@ export function VistaAdministracion() {
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
       <header className="border-b border-border bg-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl" data-guia="modulo-titulo">
             Ventas — Caja y cuentas corrientes
           </h1>
           <DropdownMenu>
@@ -234,6 +234,7 @@ export function VistaAdministracion() {
                 size="sm"
                 disabled={exportBusy || cargando}
                 className="h-9 shrink-0 gap-1.5 self-start sm:self-auto"
+                data-guia="exportar"
               >
                 <Download className="h-4 w-4" aria-hidden />
                 Exportar
@@ -355,7 +356,7 @@ export function VistaAdministracion() {
           idPrefix="ventas"
         />
 
-        <Card className="border-border shadow-sm">
+        <Card className="border-border shadow-sm" data-guia="lista">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   calcularTotalesLiquidacion,
-  pagosAlCerrar,
   parseMonto,
+  saldoLiquidacion,
   sumaPagos,
 } from "@/lib/sueldos-calculos";
 
@@ -29,26 +29,15 @@ describe("calcularTotalesLiquidacion", () => {
   });
 });
 
-describe("pagosAlCerrar", () => {
-  it("si los tramos están en 0, deja el neto en efectivo del 30", () => {
-    const p = pagosAlCerrar(
-      { pago_efectivo_15: 0, pago_banco_30: 0, pago_efectivo_30: 0 },
-      180000,
-    );
-    expect(p.pago_efectivo_30).toBe(180000);
-    expect(sumaPagos(p)).toBe(180000);
+describe("pagos y saldo", () => {
+  it("suma los pagos", () => {
+    expect(sumaPagos([{ monto: 80000 }, { monto: 50000.5 }])).toBe(130000.5);
   });
 
-  it("respeta tramos cargados", () => {
-    const p = pagosAlCerrar(
-      { pago_efectivo_15: 80000, pago_banco_30: 50000, pago_efectivo_30: 20000 },
-      150000,
-    );
-    expect(p).toEqual({
-      pago_efectivo_15: 80000,
-      pago_banco_30: 50000,
-      pago_efectivo_30: 20000,
-    });
+  it("el saldo es el neto menos lo pagado", () => {
+    expect(saldoLiquidacion(150000, [{ monto: 80000 }, { monto: 50000 }])).toBe(20000);
+    expect(saldoLiquidacion(150000, [])).toBe(150000);
+    expect(saldoLiquidacion(150000, [{ monto: 150000 }])).toBe(0);
   });
 });
 

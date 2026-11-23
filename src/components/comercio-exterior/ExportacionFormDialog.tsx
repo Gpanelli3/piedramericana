@@ -37,6 +37,7 @@ import {
   EXPORTACION_DOCUMENTOS,
   fetchExportacionDocumentos,
   getExportacionDocumentoSignedUrl,
+  deleteExportacion,
   insertExportacion,
   updateExportacion,
   uploadExportacionDocumento,
@@ -130,6 +131,8 @@ type ExportacionFormDialogProps = {
   onOpenChange: (open: boolean) => void;
   exportacion?: ExportacionListRow | null;
   onSaved: (row: ExportacionListRow) => void;
+  /** Si se pasa, el popup ofrece eliminar (solo al editar). */
+  onDeleted?: (id: string) => void;
 };
 
 export function ExportacionFormDialog({
@@ -137,6 +140,7 @@ export function ExportacionFormDialog({
   onOpenChange,
   exportacion = null,
   onSaved,
+  onDeleted,
 }: ExportacionFormDialogProps) {
   const { user } = useAuth();
   const editando = Boolean(exportacion?.id);
@@ -301,6 +305,22 @@ export function ExportacionFormDialog({
     }
   };
 
+
+  const eliminar = async () => {
+    if (!exportacion || !onDeleted) return;
+    if (!window.confirm(`¿Eliminar la exportación "${exportacion.descripcion}"? No se puede deshacer.`)) return;
+    setGuardando(true);
+    try {
+      await deleteExportacion(exportacion.id);
+      toast.success("Exportacion eliminada.".replace("cion", "ción"));
+      onOpenChange(false);
+      onDeleted(exportacion.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo eliminar.");
+    } finally {
+      setGuardando(false);
+    }
+  };
   return (
     <>
       <ClienteFormDialog
@@ -643,6 +663,18 @@ export function ExportacionFormDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
+            {editando && exportacion && onDeleted ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="mr-auto gap-1.5 text-destructive hover:text-destructive"
+                disabled={guardando}
+                onClick={() => void eliminar()}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar
+              </Button>
+            ) : null}
             <DialogClose asChild>
               <Button type="button" variant="outline">
                 Cancelar

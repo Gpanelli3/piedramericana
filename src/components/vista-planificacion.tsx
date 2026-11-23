@@ -233,7 +233,7 @@ export function VistaPlanificacion() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="space-y-3 border-b border-border bg-white px-4 py-3 sm:px-6 dark:bg-background">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="mr-2 flex items-center gap-2 text-lg font-semibold">
+          <h1 className="mr-2 flex items-center gap-2 text-lg font-semibold" data-guia="modulo-titulo">
             <CalendarDays className="h-5 w-5" aria-hidden />
             Planificación
           </h1>
@@ -245,7 +245,7 @@ export function VistaPlanificacion() {
           />
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDialogEvento({ evento: null })}>
+            <Button variant="outline" size="sm" onClick={() => setDialogEvento({ evento: null })} data-guia="accion-principal">
               <Plus className="mr-1 h-4 w-4" />
               Nueva tarea
             </Button>
@@ -317,7 +317,7 @@ export function VistaPlanificacion() {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 sm:p-4 md:flex-row md:overflow-hidden">
-        <div className="h-80 shrink-0 md:h-auto md:w-80">
+        <div className="h-80 shrink-0 md:h-auto md:w-80" data-guia="planificacion-cola">
           <PlanificacionCola
             cola={cola}
             loading={loading}

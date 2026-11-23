@@ -10,7 +10,7 @@ import { VistaCantera } from "@/components/vista-cantera";
 import { VistaProduccionShell } from "@/components/vista-produccion-shell";
 import { VistaStock } from "@/components/vista-stock";
 import { VistaVentas } from "@/components/vista-ventas";
-import { VistaModuloPendiente } from "@/components/vista-modulo-pendiente";
+import { VistaConfiguracion } from "@/components/vista-configuracion";
 import { VistaClientes } from "@/components/vista-clientes";
 import { VistaProveedores } from "@/components/vista-proveedores";
 import { VistaEquipo } from "@/components/vista-equipo";
@@ -19,9 +19,10 @@ import { VistaComercioExterior } from "@/components/vista-comercio-exterior";
 import { VistaMedicion } from "@/components/vista-medicion";
 import { VistaPlanificacion } from "@/components/vista-planificacion";
 import { StockProvider } from "@/contexts/StockContext";
+import { GuiaProvider } from "@/components/guia/GuiaProvider";
+import { cargarConfiguracionEmpresa } from "@/lib/configuracion-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { WORKSPACE_TABS, type WorkspaceTab } from "@/types/workspace";
-import { Settings } from "lucide-react";
 
 const KNOWN_WS = new Set<WorkspaceTab>(WORKSPACE_TABS);
 
@@ -35,6 +36,11 @@ export function MainWorkspace() {
     () => workspaceDesdeSearchParams(searchParams.get("ws")),
     [searchParams],
   );
+
+  // Datos de la empresa y dólar del día: se usan en presupuestos y documentos.
+  useEffect(() => {
+    void cargarConfiguracionEmpresa();
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "articulos") return;
@@ -51,6 +57,7 @@ export function MainWorkspace() {
 
   return (
     <StockProvider>
+      <GuiaProvider>
       <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background">
         <Toaster
           richColors
@@ -77,16 +84,11 @@ export function MainWorkspace() {
             {activeTab === "finanzas" && <VistaFinanzas />}
             {activeTab === "equipo" && <VistaEquipo />}
             {activeTab === "reportes" && <VistaReportes />}
-            {activeTab === "configuracion" && (
-              <VistaModuloPendiente
-                titulo="Configuración"
-                resumen="Usuarios, roles, datos de la empresa y parámetros del flujo."
-                icono={Settings}
-              />
-            )}
+            {activeTab === "configuracion" && <VistaConfiguracion />}
           </div>
         </div>
       </div>
+      </GuiaProvider>
     </StockProvider>
   );
 }

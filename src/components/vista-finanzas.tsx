@@ -47,7 +47,7 @@ import {
 } from "@/lib/finanzas-api";
 import { fetchSuppliers, type SupplierRow } from "@/lib/suppliers-api";
 import { etiquetaCajon } from "@/components/finanzas/finanzas-helpers";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function emptyTransfForm(hoy: string) {
   return {
@@ -211,33 +211,24 @@ function FinanzasShell({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="flex items-end gap-4 px-5 pt-3 sm:px-6">
-          <h1 className="shrink-0 pb-2.5 text-lg font-semibold tracking-tight">Finanzas</h1>
-          <nav className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-          {FINANZAS_TABS_HEADER.map((tab) => {
-            const active = seccion === tab;
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => onGoto(tab)}
-                className={cn(
-                  "shrink-0 border-b-2 px-3 pb-2.5 text-sm transition-colors",
-                  active
-                    ? "border-foreground font-semibold text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {FINANZAS_SECCION_LABELS[tab]}
-              </button>
-            );
-          })}
-          </nav>
+      <header className="border-b border-border bg-white">
+        <div className="px-5 pt-5 pb-5 sm:px-6">
+          <h1 className="text-xl font-bold tracking-tight text-foreground" data-guia="modulo-titulo">
+            Finanzas
+          </h1>
         </div>
       </header>
 
-      <div className="space-y-4 px-5 py-4 sm:px-6">
+      <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
+        <Tabs value={seccion} onValueChange={(v) => onGoto(v as FinanzasSeccion)}>
+          <TabsList data-guia="pestanas" className="max-w-full overflow-x-auto">
+            {FINANZAS_TABS_HEADER.map((tab) => (
+              <TabsTrigger key={tab} value={tab}>
+                {FINANZAS_SECCION_LABELS[tab]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         {seccion === "resumen" ? (
           <FinanzasResumen
             saldos={saldos}

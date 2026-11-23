@@ -216,7 +216,7 @@ export function ClientesCatalogo() {
         mostrarCliente={false}
         idPrefix="clientes"
         trailing={
-          <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo}>
+          <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo} data-guia="accion-principal">
             <Plus className="h-4 w-4" />
             Nuevo cliente
           </Button>
@@ -228,7 +228,7 @@ export function ClientesCatalogo() {
           Configurá Supabase para ver y editar el maestro de clientes.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <div className="overflow-hidden rounded-lg border border-border bg-white" data-guia="lista">
           <Table>
             <TableHeader>
               <TableRow>

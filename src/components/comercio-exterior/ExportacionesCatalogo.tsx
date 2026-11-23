@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Package, Plus, Search, Trash2 } from "lucide-react";
+import { Package, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import {
 import { ExportacionFormDialog } from "@/components/comercio-exterior/ExportacionFormDialog";
 import { ExportacionFicha } from "@/components/comercio-exterior/ExportacionFicha";
 import {
-  deleteExportacion,
   estadoExportacionLabel,
   EXPORTACION_ESTADOS,
   fetchExportaciones,
@@ -123,7 +122,15 @@ export function ExportacionesCatalogo() {
 
   if (ficha) {
     return (
-      <ExportacionFicha exportacion={ficha} onBack={() => setFicha(null)} onUpdated={onSaved} />
+      <ExportacionFicha
+        exportacion={ficha}
+        onBack={() => setFicha(null)}
+        onUpdated={onSaved}
+        onDeleted={(id) => {
+          setFilas((prev) => prev.filter((f) => f.id !== id));
+          setFicha(null);
+        }}
+      />
     );
   }
 
@@ -210,19 +217,18 @@ export function ExportacionesCatalogo() {
                 <TableHead className="hidden md:table-cell">Destino</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="hidden lg:table-cell">Factura</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filtrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay exportaciones. Creá la primera."
                       : "Ninguna exportación coincide con el filtro."}
@@ -248,29 +254,6 @@ export function ExportacionesCatalogo() {
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {r.nro_factura ? `${r.nro_factura} · ${fmtMonto(r.monto_factura, r.moneda)}` : fmtFecha(r.fecha_pedido)}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        title="Eliminar"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!confirm(`¿Eliminar la exportación "${r.descripcion}"?`)) return;
-                          void deleteExportacion(r.id)
-                            .then(() => {
-                              setFilas((prev) => prev.filter((f) => f.id !== r.id));
-                              toast.success("Exportación eliminada.");
-                            })
-                            .catch((err) =>
-                              toast.error(err instanceof Error ? err.message : "No se pudo eliminar."),
-                            );
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))

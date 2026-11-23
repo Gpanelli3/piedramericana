@@ -126,7 +126,7 @@ export function VistaReportes() {
           <p className="shrink-0 text-sm font-medium capitalize text-foreground/80">
             {fechaLargaHoy()}
           </p>
-          <div className="relative min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1" data-guia="buscar">
             <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={q}
@@ -177,7 +177,7 @@ export function VistaReportes() {
           </p>
         ) : (
           <>
-            <section>
+            <section data-guia="reportes-resumen">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-base font-semibold tracking-tight text-foreground">
                   Resumen de hoy

@@ -157,3 +157,98 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+/* ── Guía de uso (driver.js) con la estética de la app ─────────────────── */
+/* driver.js le pone overflow:hidden al padre del elemento marcado. En contenedores
+   flex eso los achica (el pie del menú tapaba módulos, el encabezado recortaba el
+   título). Se anula y cada contenedor vuelve a su overflow original. */
+.driver-active :not(body):has(> .driver-active-element) {
+  overflow: revert-layer !important;
+}
+.driver-popover.guia-popover {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 40px -12px oklch(0.22 0.008 60 / 0.28), 0 4px 10px -4px oklch(0.22 0.008 60 / 0.12);
+  padding: 18px 18px 14px;
+  min-width: 260px;
+  max-width: 320px;
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+}
+.guia-popover .driver-popover-title {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  padding-right: 20px;
+}
+.guia-popover .driver-popover-description {
+  font: inherit;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.guia-popover .driver-popover-close-btn {
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 18px;
+  transition: background-color 0.15s, color 0.15s;
+}
+.guia-popover .driver-popover-close-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.guia-popover .driver-popover-footer {
+  margin-top: 16px;
+  align-items: center;
+}
+.guia-popover .driver-popover-progress-text {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.guia-popover .driver-popover-navigation-btns {
+  gap: 6px;
+}
+.guia-popover .driver-popover-footer button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  transition: background-color 0.15s, transform 0.1s;
+  margin: 0;
+}
+.guia-popover .driver-popover-footer button:hover {
+  background: var(--muted);
+}
+.guia-popover .driver-popover-footer button:active {
+  transform: scale(0.98);
+}
+.guia-popover .driver-popover-footer .driver-popover-next-btn {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.guia-popover .driver-popover-footer .driver-popover-next-btn:hover {
+  background: oklch(0.32 0.012 60);
+}
+.guia-popover .driver-popover-footer button.driver-popover-btn-disabled,
+.guia-popover .driver-popover-footer button:disabled {
+  /* driver.js fija display inline; en el primer paso no tiene sentido "Anterior" */
+  display: none !important;
+}
+.guia-popover .driver-popover-arrow-side-left { border-left-color: var(--card); }
+.guia-popover .driver-popover-arrow-side-right { border-right-color: var(--card); }
+.guia-popover .driver-popover-arrow-side-top { border-top-color: var(--card); }
+.guia-popover .driver-popover-arrow-side-bottom { border-bottom-color: var(--card); }

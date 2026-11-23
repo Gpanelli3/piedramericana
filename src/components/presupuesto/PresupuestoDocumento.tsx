@@ -1,5 +1,6 @@
 "use client";
 
+import { EmpresaCabecera, useNombreEmpresa } from "@/components/documentos/EmpresaCabecera";
 import { Fragment } from "react";
 import {
   articuloConPrecioToMock,
@@ -158,6 +159,7 @@ export function PresupuestoDocumento({
   versionLabel = "",
   className,
 }: PresupuestoDocumentoProps) {
+  const nombreEmpresa = useNombreEmpresa();
   const suf = monedaSuffix(moneda);
   const grupos: GrupoDoc[] = [];
   let subtotalItems = 0;
@@ -256,13 +258,7 @@ export function PresupuestoDocumento({
     >
       {/* Cabecera */}
       <header className="grid grid-cols-[1fr_auto_1fr] gap-3 border border-neutral-800 mb-3">
-        <div className="flex items-center justify-center bg-neutral-900 px-3 py-4 text-white">
-          <p className="text-center text-sm font-bold tracking-[0.12em] uppercase">
-            Piedra
-            <br />
-            Americana
-          </p>
-        </div>
+        <EmpresaCabecera />
         <div className="flex flex-col items-center justify-center px-6 py-3 min-w-[10rem] border-x border-neutral-800">
           <p className="text-[10px] uppercase tracking-wide text-neutral-500">Presupuesto</p>
           <p className="text-base font-bold tabular-nums">
@@ -488,7 +484,7 @@ export function PresupuestoDocumento({
       <div className="mt-10 grid grid-cols-2 gap-8 sm:gap-16 print:mt-14">
         <div className="flex flex-col items-center pt-2">
           <div className="mb-2 h-14 w-full max-w-[14rem] border-b border-neutral-800" />
-          <p className="text-xs font-semibold text-neutral-900">Piedra Americana</p>
+          <p className="text-xs font-semibold text-neutral-900">{nombreEmpresa}</p>
           <p className="mt-0.5 text-[10px] text-neutral-500">Firma y aclaración</p>
         </div>
         <div className="flex flex-col items-center pt-2">

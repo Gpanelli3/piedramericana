@@ -265,7 +265,7 @@ export function VistaMedicion() {
       <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Medición</h1>
+            <h1 className="text-xl font-bold text-foreground" data-guia="modulo-titulo">Medición</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
               Confirmá las medidas de cada visita. Después pasa a producción.
             </p>
@@ -281,7 +281,7 @@ export function VistaMedicion() {
           <p className="text-sm text-muted-foreground">Cargando medición…</p>
         ) : (
           <>
-            <Seccion titulo="Para medir" icono={<CalendarClock className="h-4 w-4" />}>
+            <Seccion titulo="Para medir" icono={<CalendarClock className="h-4 w-4" />} guia="medicion-para-medir">
               {gruposSemana.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No hay visitas pendientes.</p>
               ) : (
@@ -326,6 +326,7 @@ export function VistaMedicion() {
             {esperandoConformidad.length > 0 ? (
               <Seccion
                 titulo="Esperando conformidad del cliente"
+                guia="medicion-conformidad"
                 icono={<Handshake className="h-4 w-4" />}
               >
                 <p className="-mt-1 text-xs text-muted-foreground">
@@ -388,7 +389,7 @@ export function VistaMedicion() {
               </Seccion>
             ) : null}
 
-            <Seccion titulo="Confirmadas" icono={<Ruler className="h-4 w-4" />}>
+            <Seccion titulo="Confirmadas" icono={<Ruler className="h-4 w-4" />} guia="medicion-confirmadas">
               {confirmadas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Todavía no hay medidas confirmadas.</p>
               ) : (
@@ -450,13 +451,16 @@ function Seccion({
   titulo,
   icono,
   children,
+  guia,
 }: {
   titulo: string;
   icono: ReactNode;
   children: ReactNode;
+  /** Marca para la guía de uso. */
+  guia?: string;
 }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-guia={guia}>
       <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
         {icono}
         {titulo}

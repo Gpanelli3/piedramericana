@@ -85,6 +85,11 @@ import {
   piezasDesdeOrden,
   planificarCorte,
 } from "@/lib/plan-corte";
+import {
+  DOLAR_SIN_CARGAR,
+  getConfiguracionEmpresa,
+  useConfiguracionEmpresa,
+} from "@/lib/configuracion-api";
 import { listChapasCandidatasPlan } from "@/lib/plan-corte-stock";
 import {
   esChapaRetazo,
@@ -193,8 +198,15 @@ function buildPresupuestoPayloadV1(opts: {
 export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   const { onPersisted, presupuestoId = null } = props;
   const { user } = useAuth();
-  const [dolarHoy, setDolarHoy] = useState(1250.5);
+  const empresa = useConfiguracionEmpresa();
+  // Dólar del día cargado en Configuración; un presupuesto existente conserva el suyo.
+  const [dolarHoy, setDolarHoy] = useState(
+    () => getConfiguracionEmpresa().dolar_hoy ?? DOLAR_SIN_CARGAR,
+  );
   const editando = Boolean(presupuestoId);
+  useEffect(() => {
+    if (!editando && empresa.dolar_hoy) setDolarHoy(empresa.dolar_hoy);
+  }, [editando, empresa.dolar_hoy]);
   /** En la 1ª carga de artículos en edición no pisamos precios guardados. */
   const omitirSyncPreciosRef = useRef(editando);
   const [editCargando, setEditCargando] = useState(editando);

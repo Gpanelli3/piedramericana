@@ -4,6 +4,7 @@ import { useMemo, useCallback, useState, useEffect, useRef } from "react";
 import type { FocusEvent, ReactNode } from "react";
 import {
   BarChart3,
+  CircleHelp,
   CalendarDays,
   ChevronRight,
   FileText,
@@ -25,6 +26,14 @@ import { cn } from "@/lib/utils";
 import { MarmoGestMark } from "@/components/marmogest-mark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRol } from "@/hooks/useRol";
+import { useGuia } from "@/components/guia/GuiaProvider";
+import { useGuiaActiva } from "@/lib/guia/estado";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   EQUIPO_SECCION_LABELS,
   EQUIPO_SECCIONES,
@@ -224,7 +233,7 @@ function ExpandableNavItem({
   const submenuVisible = expandido && menuAbierto && active;
 
   return (
-    <div>
+    <div data-guia={`nav-${item.id}`}>
       <div
         className={cn(
           "flex w-full items-stretch rounded-xl transition-colors",
@@ -310,7 +319,10 @@ export function AppSidebar() {
   const [hover, setHover] = useState(false);
   const [foco, setFoco] = useState(false);
   const cierreRef = useRef<number | null>(null);
-  const expandido = hover || foco;
+  const guiaActiva = useGuiaActiva();
+  const { iniciarRecorridoGeneral, iniciarGuiaPantalla } = useGuia();
+  const [menuAyudaAbierto, setMenuAyudaAbierto] = useState(false);
+  const expandido = hover || foco || guiaActiva || menuAyudaAbierto;
 
   const cancelarCierre = useCallback(() => {
     if (cierreRef.current != null) {
@@ -560,7 +572,7 @@ export function AppSidebar() {
       </div>
 
       {/* User */}
-      <div className="border-y border-sidebar-border px-2 py-4">
+      <div className="border-y border-sidebar-border px-2 py-4" data-guia="usuario">
         <div className="flex items-center gap-2.5">
           <div className="flex w-12 shrink-0 items-center justify-center">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent-foreground">
@@ -586,15 +598,7 @@ export function AppSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-0.5 px-2 py-4">
-        <p
-          className={cn(
-            "overflow-hidden px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 transition-[max-height,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-            expandido ? "mb-2 max-h-6 opacity-100" : "mb-0 max-h-0 opacity-0",
-          )}
-        >
-          Navegación
-        </p>
+      <nav className="flex-1 space-y-0.5 px-2 py-4" data-guia="nav">
         {navItems.map((item) => {
           if (item.id === "ventas") {
             return (
@@ -722,6 +726,7 @@ export function AppSidebar() {
             <button
               key={item.id}
               type="button"
+              data-guia={`nav-${item.id}`}
               onClick={() => gotoWorkspace(item.id)}
               aria-label={!expandido ? item.label : undefined}
               className={cn(
@@ -742,14 +747,39 @@ export function AppSidebar() {
 
       {/* Footer */}
       <div className="space-y-2 border-t border-sidebar-border px-2 py-4">
+        <DropdownMenu open={menuAyudaAbierto} onOpenChange={setMenuAyudaAbierto}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-guia="ayuda"
+              aria-label={!expandido ? "Guía de uso" : undefined}
+              className="flex w-full items-center rounded-xl py-2.5 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-muted"
+            >
+              <span className="flex w-12 shrink-0 items-center justify-center">
+                <CircleHelp className="h-[18px] w-[18px]" />
+              </span>
+              <span aria-hidden={!expandido} className={sidebarFadeCn(expandido, "whitespace-nowrap")}>
+                Guía de uso
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="end" className="w-60">
+            <DropdownMenuItem onSelect={() => iniciarRecorridoGeneral()}>
+              Ver recorrido general
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => iniciarGuiaPantalla()}>
+              Ver guía de esta pantalla
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <button
           type="button"
           onClick={() => void signOut()}
           aria-label={!expandido ? "Cerrar sesión" : undefined}
-          className="flex w-full items-center rounded-lg py-2 text-left text-sm text-sidebar-foreground/60 transition-colors hover:bg-muted hover:text-sidebar-foreground"
+          className="flex w-full items-center rounded-xl py-2.5 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-muted"
         >
           <span className="flex w-12 shrink-0 items-center justify-center">
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-[18px] w-[18px]" />
           </span>
           <span aria-hidden={!expandido} className={sidebarFadeCn(expandido, "whitespace-nowrap")}>
             Cerrar sesión

@@ -86,44 +86,13 @@ export function calcularTotalesLiquidacion(
   };
 }
 
-export function sumaPagos(p: {
-  pago_efectivo_15: number;
-  pago_banco_30: number;
-  pago_efectivo_30: number;
-}): number {
-  return round2(
-    (Number(p.pago_efectivo_15) || 0) +
-      (Number(p.pago_banco_30) || 0) +
-      (Number(p.pago_efectivo_30) || 0),
-  );
+export function sumaPagos(pagos: { monto: number }[]): number {
+  return round2(pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0));
 }
 
-/** Si los tramos están en 0, deja el neto en efectivo del 30. */
-export function pagosAlCerrar(
-  pagos: {
-    pago_efectivo_15: number;
-    pago_banco_30: number;
-    pago_efectivo_30: number;
-  },
-  neto: number,
-): {
-  pago_efectivo_15: number;
-  pago_banco_30: number;
-  pago_efectivo_30: number;
-} {
-  const suma = sumaPagos(pagos);
-  if (suma === 0 && neto !== 0) {
-    return {
-      pago_efectivo_15: 0,
-      pago_banco_30: 0,
-      pago_efectivo_30: round2(neto),
-    };
-  }
-  return {
-    pago_efectivo_15: round2(Number(pagos.pago_efectivo_15) || 0),
-    pago_banco_30: round2(Number(pagos.pago_banco_30) || 0),
-    pago_efectivo_30: round2(Number(pagos.pago_efectivo_30) || 0),
-  };
+/** Lo que falta pagar del neto. Si se pagó de más, queda negativo. */
+export function saldoLiquidacion(neto: number, pagos: { monto: number }[]): number {
+  return round2(neto - sumaPagos(pagos));
 }
 
 export function formatPesos(n: number | string | null | undefined): string {

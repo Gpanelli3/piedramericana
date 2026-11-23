@@ -141,7 +141,7 @@ export function VistaDashboard() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-background">
-      <header className="px-5 pt-6 pb-2 sm:px-6 sm:pt-6 sm:pb-3">
+      <header className="px-5 pt-6 pb-2 sm:px-6 sm:pt-6 sm:pb-3" data-guia="dashboard-saludo">
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           {saludoSegunHora()}
         </h1>
@@ -157,7 +157,7 @@ export function VistaDashboard() {
           </Card>
         ) : (
           <>
-            <Card>
+            <Card data-guia="dashboard-accesos">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-semibold">Accesos rápidos</CardTitle>
               </CardHeader>
@@ -181,7 +181,7 @@ export function VistaDashboard() {
               </CardContent>
             </Card>
 
-            <section>
+            <section data-guia="dashboard-operacion">
               <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Operación</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard

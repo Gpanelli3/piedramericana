@@ -88,9 +88,10 @@ type ImportacionFichaProps = {
   importacion: ImportacionListRow;
   onBack: () => void;
   onUpdated: (row: ImportacionListRow) => void;
+  onDeleted: (id: string) => void;
 };
 
-export function ImportacionFicha({ importacion, onBack, onUpdated }: ImportacionFichaProps) {
+export function ImportacionFicha({ importacion, onBack, onUpdated, onDeleted }: ImportacionFichaProps) {
   const { user } = useAuth();
   const { chapas, setChapas, reloadChapas } = useStock();
   const [detalle, setDetalle] = useState<ImportacionDetalle | null>(null);
@@ -599,6 +600,7 @@ export function ImportacionFicha({ importacion, onBack, onUpdated }: Importacion
 
       <ImportacionFormDialog
         open={editOpen}
+        onDeleted={onDeleted}
         onOpenChange={setEditOpen}
         importacion={imp}
         onSaved={(row) => {

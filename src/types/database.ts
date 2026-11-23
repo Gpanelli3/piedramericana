@@ -123,18 +123,21 @@ export interface Database {
           full_name: string | null;
           role: ProfileRole;
           created_at: string;
+          guias_vistas: string[];
         };
         Insert: {
           id: string;
           full_name?: string | null;
           role?: ProfileRole;
           created_at?: string;
+          guias_vistas?: string[];
         };
         Update: {
           id?: string;
           full_name?: string | null;
           role?: ProfileRole;
           created_at?: string;
+          guias_vistas?: string[];
         };
         Relationships: [];
       };
@@ -755,6 +758,38 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "liquidacion_conceptos_liquidacion_id_fkey";
+            columns: ["liquidacion_id"];
+            isOneToOne: false;
+            referencedRelation: "liquidaciones";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      liquidacion_pagos: {
+        Row: {
+          id: string;
+          liquidacion_id: string;
+          fecha: string;
+          monto: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          liquidacion_id: string;
+          fecha: string;
+          monto: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          liquidacion_id?: string;
+          fecha?: string;
+          monto?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "liquidacion_pagos_liquidacion_id_fkey";
             columns: ["liquidacion_id"];
             isOneToOne: false;
             referencedRelation: "liquidaciones";
@@ -2914,6 +2949,57 @@ export interface Database {
           },
         ];
       };
+      configuracion_empresa: {
+        Row: {
+          id: number;
+          razon_social: string;
+          nombre_fantasia: string | null;
+          cuit: string | null;
+          condicion_iva: string | null;
+          direccion: string | null;
+          localidad: string | null;
+          telefono: string | null;
+          email: string | null;
+          sitio_web: string | null;
+          dolar_hoy: number | null;
+          dolar_actualizado_en: string | null;
+          dolar_actualizado_por: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          razon_social?: string;
+          nombre_fantasia?: string | null;
+          cuit?: string | null;
+          condicion_iva?: string | null;
+          direccion?: string | null;
+          localidad?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          sitio_web?: string | null;
+          dolar_hoy?: number | null;
+          dolar_actualizado_en?: string | null;
+          dolar_actualizado_por?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          razon_social?: string;
+          nombre_fantasia?: string | null;
+          cuit?: string | null;
+          condicion_iva?: string | null;
+          direccion?: string | null;
+          localidad?: string | null;
+          telefono?: string | null;
+          email?: string | null;
+          sitio_web?: string | null;
+          dolar_hoy?: number | null;
+          dolar_actualizado_en?: string | null;
+          dolar_actualizado_por?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       v_saldos_cuentas: {
@@ -2994,6 +3080,26 @@ export interface Database {
       tiene_rol: {
         Args: { p_rol: RolOperativo };
         Returns: boolean;
+      };
+      admin_listar_usuarios: {
+        Args: Record<never, never>;
+        Returns: Array<{
+          id: string;
+          email: string | null;
+          full_name: string | null;
+          es_admin: boolean;
+          roles: string[];
+          ultimo_ingreso: string | null;
+          creado: string;
+        }>;
+      };
+      admin_guardar_usuario: {
+        Args: { p_id: string; p_full_name: string; p_es_admin: boolean; p_roles: RolOperativo[] };
+        Returns: undefined;
+      };
+      admin_reiniciar_guia: {
+        Args: { p_id: string };
+        Returns: undefined;
       };
     };
     Enums: {

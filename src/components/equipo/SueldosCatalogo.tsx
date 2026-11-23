@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -20,21 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { LiquidacionFormDialog } from "@/components/equipo/LiquidacionFormDialog";
 import { nombreEmpleado } from "@/lib/empleados-api";
 import {
-  armarLiquidacionesDelMes,
-  deleteLiquidacion,
+  sincronizarSueldosDelMes,
   listLiquidaciones,
   type LiquidacionConDetalle,
 } from "@/lib/sueldos-api";
@@ -42,6 +29,8 @@ import {
   formatPesos,
   MESES_LABEL,
   periodoActual,
+  saldoLiquidacion,
+  sumaPagos,
 } from "@/lib/sueldos-calculos";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,9 +44,6 @@ export function SueldosCatalogo() {
   const [cargando, setCargando] = useState(true);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editando, setEditando] = useState<LiquidacionConDetalle | null>(null);
-  const [aBorrar, setABorrar] = useState<LiquidacionConDetalle | null>(null);
-  const [borrando, setBorrando] = useState(false);
-  const [armando, setArmando] = useState(false);
 
   const recargar = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -66,6 +52,11 @@ export function SueldosCatalogo() {
       return;
     }
     setCargando(true);
+    // Sueldos automáticos: el mes en curso se arma solo (y se actualiza con adelantos nuevos).
+    if (mes === actual.mes && anio === actual.anio) {
+      const sync = await sincronizarSueldosDelMes({ mes, anio, created_by: user?.id ?? null });
+      if (sync.error) toast.error(`No se pudieron armar los sueldos del mes: ${sync.error.message}`);
+    }
     const { data, error } = await listLiquidaciones({ mes, anio });
     if (error) {
       toast.error(`No se pudieron cargar las liquidaciones: ${error.message}`);
@@ -80,7 +71,7 @@ export function SueldosCatalogo() {
       );
     }
     setCargando(false);
-  }, [mes, anio]);
+  }, [mes, anio, actual.mes, actual.anio, user?.id]);
 
   useEffect(() => {
     void recargar();
@@ -90,8 +81,9 @@ export function SueldosCatalogo() {
     const bruto = filas.reduce((s, r) => s + r.total_bruto, 0);
     const desc = filas.reduce((s, r) => s + r.total_descuentos, 0);
     const neto = filas.reduce((s, r) => s + r.total_neto, 0);
-    const borradores = filas.filter((r) => r.estado === "borrador").length;
-    return { bruto, desc, neto, borradores, n: filas.length };
+    const pagado = filas.reduce((s, r) => s + sumaPagos(r.liquidacion_pagos), 0);
+    const saldo = filas.reduce((s, r) => s + saldoLiquidacion(r.total_neto, r.liquidacion_pagos), 0);
+    return { bruto, desc, neto, pagado, saldo, n: filas.length };
   }, [filas]);
 
   const anios = useMemo(() => {
@@ -114,43 +106,6 @@ export function SueldosCatalogo() {
     });
   };
 
-  const armarMes = async () => {
-    setArmando(true);
-    try {
-      const res = await armarLiquidacionesDelMes({
-        mes,
-        anio,
-        created_by: user?.id ?? null,
-      });
-      if (res.error) {
-        toast.error(res.error.message);
-        return;
-      }
-      toast.success(
-        res.creadas === 0
-          ? `Nada nuevo: ${res.omitidas} empleado(s) ya tenían liquidación o no tenían conceptos.`
-          : `Se armaron ${res.creadas} borrador(es). ${res.omitidas} omitido(s).`,
-      );
-      await recargar();
-    } finally {
-      setArmando(false);
-    }
-  };
-
-  const confirmarBorrar = async () => {
-    if (!aBorrar) return;
-    setBorrando(true);
-    const { error } = await deleteLiquidacion(aBorrar.id);
-    setBorrando(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setFilas((prev) => prev.filter((r) => r.id !== aBorrar.id));
-    setABorrar(null);
-    toast.success("Liquidación eliminada");
-  };
-
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
@@ -160,8 +115,9 @@ export function SueldosCatalogo() {
           <p className="text-[11px] text-muted-foreground">{kpis.n} liquidación(es)</p>
         </div>
         <div className="rounded-lg border border-border bg-white px-4 py-3">
-          <p className="text-xs text-muted-foreground">Bruto</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums">{formatPesos(kpis.bruto)}</p>
+          <p className="text-xs text-muted-foreground">Pagado</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums">{formatPesos(kpis.pagado)}</p>
+          <p className="text-[11px] text-muted-foreground">Pagos registrados del mes</p>
         </div>
         <div className="rounded-lg border border-border bg-white px-4 py-3">
           <p className="text-xs text-muted-foreground">Descuentos</p>
@@ -169,9 +125,9 @@ export function SueldosCatalogo() {
           <p className="text-[11px] text-muted-foreground">Adelantos, cargas, otros</p>
         </div>
         <div className="rounded-lg border border-border bg-white px-4 py-3">
-          <p className="text-xs text-muted-foreground">Borradores</p>
-          <p className="mt-1 text-lg font-semibold tabular-nums">{kpis.borradores}</p>
-          <p className="text-[11px] text-muted-foreground">Pendientes de cierre</p>
+          <p className="text-xs text-muted-foreground">Saldo por pagar</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums">{formatPesos(kpis.saldo)}</p>
+          <p className="text-[11px] text-muted-foreground">Neto menos lo pagado</p>
         </div>
       </div>
 
@@ -202,29 +158,6 @@ export function SueldosCatalogo() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 gap-1.5"
-            disabled={armando || !isSupabaseConfigured}
-            onClick={() => void armarMes()}
-          >
-            <Users className="h-4 w-4" />
-            {armando ? "Armando…" : "Armar mes"}
-          </Button>
-          <Button
-            type="button"
-            className="h-9 gap-1.5"
-            onClick={() => {
-              setEditando(null);
-              setDialogAbierto(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Nueva liquidación
-          </Button>
-        </div>
       </div>
 
       {!isSupabaseConfigured ? (
@@ -240,26 +173,34 @@ export function SueldosCatalogo() {
                 <TableHead className="hidden md:table-cell text-right">Bruto</TableHead>
                 <TableHead className="hidden md:table-cell text-right">Desc.</TableHead>
                 <TableHead className="text-right">Neto</TableHead>
+                <TableHead className="text-right">Pagado</TableHead>
+                <TableHead className="text-right">Saldo</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filas.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    No hay liquidaciones en este mes. Usá Armar mes o creá una.
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    No hay sueldos en este mes.
                   </TableCell>
                 </TableRow>
               ) : (
                 filas.map((r) => (
-                  <TableRow key={r.id}>
+                  <TableRow
+                    key={r.id}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setEditando(r);
+                      setDialogAbierto(true);
+                    }}
+                  >
                     <TableCell className="font-medium">
                       {r.empleados ? nombreEmpleado(r.empleados) : "—"}
                     </TableCell>
@@ -272,40 +213,20 @@ export function SueldosCatalogo() {
                     <TableCell className="text-right tabular-nums font-medium">
                       {formatPesos(r.total_neto)}
                     </TableCell>
-                    <TableCell>
-                      {r.estado === "cerrada" ? (
-                        <Badge variant="success">Cerrada</Badge>
-                      ) : (
-                        <Badge variant="warning">Borrador</Badge>
-                      )}
+                    <TableCell className="text-right tabular-nums">
+                      {formatPesos(sumaPagos(r.liquidacion_pagos))}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {formatPesos(saldoLiquidacion(r.total_neto, r.liquidacion_pagos))}
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-end gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Abrir"
-                          onClick={() => {
-                            setEditando(r);
-                            setDialogAbierto(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Eliminar"
-                          disabled={r.estado === "cerrada"}
-                          onClick={() => setABorrar(r)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      {saldoLiquidacion(r.total_neto, r.liquidacion_pagos) <= 0 ? (
+                        <Badge variant="success">Pagado</Badge>
+                      ) : r.liquidacion_pagos.length > 0 ? (
+                        <Badge variant="warning">Pago parcial</Badge>
+                      ) : (
+                        <Badge variant="outline">Sin pagar</Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -319,34 +240,8 @@ export function SueldosCatalogo() {
         open={dialogAbierto}
         onOpenChange={setDialogAbierto}
         liquidacion={editando}
-        mesDefault={mes}
-        anioDefault={anio}
         onSaved={onSaved}
       />
-
-      <AlertDialog open={Boolean(aBorrar)} onOpenChange={(o) => !o && setABorrar(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar este borrador?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Los adelantos vinculados vuelven a quedar pendientes. No se puede borrar una
-              liquidación cerrada.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={borrando}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={borrando}
-              onClick={(e) => {
-                e.preventDefault();
-                void confirmarBorrar();
-              }}
-            >
-              {borrando ? "Eliminando…" : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

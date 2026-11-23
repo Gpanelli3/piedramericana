@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Plus, Search, Ship, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Search, Ship } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import {
 import { ImportacionFormDialog } from "@/components/comercio-exterior/ImportacionFormDialog";
 import { ImportacionFicha } from "@/components/comercio-exterior/ImportacionFicha";
 import {
-  deleteImportacion,
   estadoLabel,
   fetchImportaciones,
   hoyISO,
@@ -120,13 +119,17 @@ export function ImportacionesCatalogo() {
         importacion={ficha}
         onBack={() => setFicha(null)}
         onUpdated={onSaved}
+        onDeleted={(id) => {
+          setFilas((prev) => prev.filter((f) => f.id !== id));
+          setFicha(null);
+        }}
       />
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3" data-guia="comex-resumen">
         <button type="button" className="text-left" onClick={() => setFiltroEstado("activas")}>
           <Card className={`gap-0 py-0 ${filtroEstado === "activas" ? "border-primary" : ""}`}>
             <CardContent className="flex items-center gap-3 p-3">
@@ -162,7 +165,7 @@ export function ImportacionesCatalogo() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 gap-2">
-          <div className="relative max-w-md flex-1">
+          <div className="relative max-w-md flex-1" data-guia="buscar">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-9 pl-9"
@@ -172,7 +175,7 @@ export function ImportacionesCatalogo() {
             />
           </div>
           <Select value={filtroEstado} onValueChange={setFiltroEstado}>
-            <SelectTrigger className="h-9 w-48">
+            <SelectTrigger className="h-9 w-48" data-guia="comex-estado">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -188,6 +191,7 @@ export function ImportacionesCatalogo() {
         <Button
           type="button"
           className="h-9 gap-1.5 shrink-0"
+          data-guia="accion-principal"
           onClick={() => {
             setEditando(null);
             setDialogAbierto(true);
@@ -203,7 +207,7 @@ export function ImportacionesCatalogo() {
           Configurá Supabase para ver y editar las importaciones.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <div className="overflow-hidden rounded-lg border border-border bg-white" data-guia="lista">
           <Table>
             <TableHeader>
               <TableRow>
@@ -212,19 +216,18 @@ export function ImportacionesCatalogo() {
                 <TableHead className="hidden md:table-cell">País</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="hidden lg:table-cell">Llegada estimada</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filtrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay importaciones. Creá la primera."
                       : "Ninguna importación coincide con el filtro."}
@@ -260,29 +263,6 @@ export function ImportacionesCatalogo() {
                         </div>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">{fmtFecha(r.fecha_estimada_llegada)}</TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          title="Eliminar"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!confirm(`¿Eliminar la importación "${r.descripcion}"?`)) return;
-                            void deleteImportacion(r.id)
-                              .then(() => {
-                                setFilas((prev) => prev.filter((f) => f.id !== r.id));
-                                toast.success("Importación eliminada.");
-                              })
-                              .catch((err) =>
-                                toast.error(err instanceof Error ? err.message : "No se pudo eliminar."),
-                              );
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })

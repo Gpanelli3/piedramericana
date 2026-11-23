@@ -145,7 +145,7 @@ export function VistaProduccion() {
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="border-b border-border bg-white px-5 py-4 sm:px-6 dark:bg-background">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-xl font-bold text-foreground">Órdenes de Trabajo</h1>
+          <h1 className="text-xl font-bold text-foreground" data-guia="modulo-titulo">Órdenes de Trabajo</h1>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 shrink-0" />
@@ -159,7 +159,7 @@ export function VistaProduccion() {
       </header>
 
       <main className="p-4 sm:p-6">
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6" data-guia="produccion-etapas">
           <button
             type="button"
             aria-pressed={filtro === null}

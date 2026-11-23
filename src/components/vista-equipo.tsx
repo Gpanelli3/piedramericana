@@ -24,7 +24,7 @@ function EquipoShell({
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <header className="border-b border-border bg-white">
         <div className="px-5 pt-5 pb-5 sm:px-6">
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
+          <h1 className="text-xl font-bold tracking-tight text-foreground" data-guia="modulo-titulo">
             Equipo · {EQUIPO_SECCION_LABELS[seccion]}
           </h1>
         </div>

@@ -197,7 +197,7 @@ export function VistaStock() {
       <header className="border-b border-border bg-card px-5 py-4 sm:px-6 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl" data-guia="modulo-titulo">
               Stock
               {slabsLoading ? (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -208,17 +208,17 @@ export function VistaStock() {
           </div>
           {stockTab === "placas" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" className="h-9 gap-1.5" onClick={() => setRemitoOpen(true)}>
+              <Button type="button" className="h-9 gap-1.5" onClick={() => setRemitoOpen(true)} data-guia="accion-principal">
                 <Truck className="h-4 w-4" />
                 Ingreso remito
               </Button>
-              <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={exportCsv}>
+              <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={exportCsv} data-guia="stock-exportar">
                 <Download className="h-4 w-4" />
                 Exportar CSV
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="outline" className="h-10 gap-1.5">
+                  <Button type="button" variant="outline" className="h-10 gap-1.5" data-guia="stock-mas">
                     Más
                     <ChevronDown className="h-4 w-4 opacity-70" />
                   </Button>
@@ -242,7 +242,7 @@ export function VistaStock() {
 
       <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
         <Tabs value={stockTab} onValueChange={setStockTab} className="gap-5">
-          <TabsList>
+          <TabsList data-guia="pestanas">
             <TabsTrigger value="placas">Placas</TabsTrigger>
             <TabsTrigger value="productos">Productos</TabsTrigger>
             <TabsTrigger value="bloqueados">Pedazos bloqueados</TabsTrigger>

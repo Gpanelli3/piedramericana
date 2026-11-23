@@ -249,7 +249,7 @@ export function VistaVentas() {
       {vista === "wizard" ? null : (
         <header className="border-b border-border bg-white">
           <div className="px-5 pt-5 pb-5 sm:px-6">
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Presupuestos</h1>
+            <h1 className="text-xl font-bold text-foreground tracking-tight" data-guia="modulo-titulo">Presupuestos</h1>
           </div>
         </header>
       )}

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { EmpresaCabecera, useNombreEmpresa } from "@/components/documentos/EmpresaCabecera";
 import { etiquetaMetodo } from "@/lib/finanzas-api";
 
 export type CobrosComprobantePago = {
@@ -78,6 +79,7 @@ export function CobrosComprobanteDocumento({
   fechaEmision,
   className,
 }: CobrosComprobanteDocumentoProps) {
+  const nombreEmpresa = useNombreEmpresa();
   const fechaMostrada =
     fechaEmision?.trim() ||
     new Date().toLocaleDateString("es-AR", {
@@ -102,13 +104,7 @@ export function CobrosComprobanteDocumento({
       )}
     >
       <header className="mb-3 grid grid-cols-[1fr_auto_1fr] gap-3 border border-neutral-800">
-        <div className="flex items-center justify-center bg-neutral-900 px-3 py-4 text-white">
-          <p className="text-center text-sm font-bold uppercase tracking-[0.12em]">
-            Piedra
-            <br />
-            Americana
-          </p>
-        </div>
+        <EmpresaCabecera />
         <div className="flex min-w-[10rem] flex-col items-center justify-center border-x border-neutral-800 px-6 py-3">
           <p className="text-[10px] uppercase tracking-wide text-neutral-500">
             Comprobante de cobros
@@ -282,7 +278,7 @@ export function CobrosComprobanteDocumento({
 
       <footer className="mt-8 grid grid-cols-2 gap-8 sm:gap-16 print:mt-12">
         <div className="border-t border-neutral-400 pt-2">
-          <p className="text-xs font-semibold text-neutral-900">Piedra Americana</p>
+          <p className="text-xs font-semibold text-neutral-900">{nombreEmpresa}</p>
           <p className="text-[10px] text-neutral-500">Comprobante informativo de cuenta corriente</p>
         </div>
         <div className="border-t border-neutral-400 pt-2 text-right">
@@ -333,6 +329,7 @@ export function CobrosComprobanteUnico({
   saldoObra,
   className,
 }: CobrosComprobanteUnicoProps) {
+  const nombreEmpresa = useNombreEmpresa();
   const esPago = tipo === "pago";
   const ret = retencionMonto > 0.009 ? retencionMonto : 0;
   const neto = monto - ret;
@@ -346,13 +343,7 @@ export function CobrosComprobanteUnico({
       )}
     >
       <header className="mb-3 grid grid-cols-[1fr_auto_1fr] gap-3 border border-neutral-800">
-        <div className="flex items-center justify-center bg-neutral-900 px-3 py-4 text-white">
-          <p className="text-center text-sm font-bold uppercase tracking-[0.12em]">
-            Piedra
-            <br />
-            Americana
-          </p>
-        </div>
+        <EmpresaCabecera />
         <div className="flex min-w-[10rem] flex-col items-center justify-center border-x border-neutral-800 px-6 py-3">
           <p className="text-[10px] uppercase tracking-wide text-neutral-500">
             {esPago ? "Recibo de pago" : "Cargo a cuenta"}
@@ -435,7 +426,7 @@ export function CobrosComprobanteUnico({
 
       <footer className="mt-8 grid grid-cols-2 gap-8 sm:gap-16 print:mt-12">
         <div className="border-t border-neutral-400 pt-2">
-          <p className="text-xs font-semibold text-neutral-900">Piedra Americana</p>
+          <p className="text-xs font-semibold text-neutral-900">{nombreEmpresa}</p>
           <p className="text-[10px] text-neutral-500">
             {esPago ? "Recibo de un pago" : "Comprobante de cargo"}
           </p>

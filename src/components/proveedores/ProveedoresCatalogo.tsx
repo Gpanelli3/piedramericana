@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,6 @@ import { ProveedorFormDialog } from "@/components/proveedores/ProveedorFormDialo
 import { ProveedorFicha } from "@/components/proveedores/ProveedorFicha";
 import {
   fetchSuppliers,
-  deleteSupplier,
   rubroLabel,
   origenLabel,
   RUBROS_PROVEEDOR,
@@ -112,6 +111,10 @@ export function ProveedoresCatalogo() {
         onBack={() => setFichaAbierta(null)}
         onEdit={() => abrirEditar(fichaAbierta)}
         onUpdated={onSaved}
+        onDeleted={(id) => {
+          setFilas((prev) => prev.filter((f) => f.id !== id));
+          setFichaAbierta(null);
+        }}
         dialogAbierto={dialogAbierto}
         setDialogAbierto={setDialogAbierto}
         editando={editando}
@@ -123,7 +126,7 @@ export function ProveedoresCatalogo() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 gap-2">
-          <div className="relative max-w-md flex-1">
+          <div className="relative max-w-md flex-1" data-guia="buscar">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-9 pl-9"
@@ -144,7 +147,7 @@ export function ProveedoresCatalogo() {
             </SelectContent>
           </Select>
         </div>
-        <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo}>
+        <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo} data-guia="accion-principal">
           <Plus className="h-4 w-4" />
           Nuevo proveedor
         </Button>
@@ -155,7 +158,7 @@ export function ProveedoresCatalogo() {
           Configurá Supabase para ver y editar el maestro de proveedores.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <div className="overflow-hidden rounded-lg border border-border bg-white" data-guia="lista">
           <Table>
             <TableHeader>
               <TableRow>
@@ -165,19 +168,18 @@ export function ProveedoresCatalogo() {
                 <TableHead className="hidden md:table-cell">CUIT</TableHead>
                 <TableHead className="hidden lg:table-cell">Teléfono</TableHead>
                 <TableHead className="hidden lg:table-cell">Contacto</TableHead>
-                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {cargando ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               ) : filtrados.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     {filas.length === 0
                       ? "Todavía no hay proveedores. Creá el primero."
                       : "Ningún proveedor coincide con la búsqueda."}
@@ -219,44 +221,6 @@ export function ProveedoresCatalogo() {
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       {s.contact_name || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Editar"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            abrirEditar(s);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          title="Eliminar"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!confirm(`¿Eliminar a "${s.name}"? Si tiene remitos o lotes vinculados, quedará sin proveedor.`)) return;
-                            void deleteSupplier(s.id)
-                              .then(() => {
-                                setFilas((prev) => prev.filter((f) => f.id !== s.id));
-                                toast.success("Proveedor eliminado.");
-                              })
-                              .catch((err) =>
-                                toast.error(err instanceof Error ? err.message : "No se pudo eliminar."),
-                              );
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
                     </TableCell>
                   </TableRow>
                 ))

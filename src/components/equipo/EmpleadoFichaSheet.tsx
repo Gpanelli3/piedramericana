@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Pencil, Plus, Trash2, Upload, Wallet } from "lucide-react";
+import { Banknote, ChevronDown, ChevronUp, ExternalLink, Pencil, Plus, Trash2, Upload, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,12 +25,17 @@ import { Separator } from "@/components/ui/separator";
 import { AdelantoFormDialog } from "@/components/equipo/AdelantoFormDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { puestoLabel, type EmpleadoRow } from "@/lib/empleados-api";
+import { LiquidacionFormDialog } from "@/components/equipo/LiquidacionFormDialog";
 import {
+  getLiquidacion,
   listAdelantos,
   listLiquidacionesEmpleado,
+  sincronizarSueldosDelMes,
   type AdelantoConEmpleado,
-  type LiquidacionRow,
+  type LiquidacionConDetalle,
+  type LiquidacionConPagos,
 } from "@/lib/sueldos-api";
+import { periodoActual, saldoLiquidacion } from "@/lib/sueldos-calculos";
 import { etiquetaIncentivoTipo, listIncentivos, type IncentivoConEmpleado } from "@/lib/incentivos-api";
 import {
   createVacacion,
@@ -128,13 +133,53 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
   const empleadoId = empleado?.id ?? null;
 
   const [adelantos, setAdelantos] = useState<AdelantoConEmpleado[]>([]);
-  const [liquidaciones, setLiquidaciones] = useState<LiquidacionRow[]>([]);
+  const [liquidaciones, setLiquidaciones] = useState<LiquidacionConPagos[]>([]);
   const [incentivos, setIncentivos] = useState<IncentivoConEmpleado[]>([]);
   const [vacaciones, setVacaciones] = useState<VacacionRow[]>([]);
   const [documentos, setDocumentos] = useState<EmpleadoDocumentoRow[]>([]);
   const [cargando, setCargando] = useState(false);
 
   const [adelantoAbierto, setAdelantoAbierto] = useState(false);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [liqAbierta, setLiqAbierta] = useState(false);
+  const [armandoSueldo, setArmandoSueldo] = useState(false);
+  const [liqActual, setLiqActual] = useState<LiquidacionConDetalle | null>(null);
+
+  const abrirLiquidacion = async (id: string | null) => {
+    if (!id) {
+      const { mes, anio } = periodoActual();
+      const delMes = liquidaciones.find((l) => l.periodo_mes === mes && l.periodo_anio === anio);
+      if (delMes) {
+        await abrirLiquidacion(delMes.id);
+        return;
+      }
+      // El sueldo del mes se crea solo; si todavía no existe, lo armamos y lo abrimos.
+      if (!empleadoId) return;
+      setArmandoSueldo(true);
+      const sync = await sincronizarSueldosDelMes({ mes, anio, created_by: user?.id ?? null });
+      const lista = await listLiquidacionesEmpleado(empleadoId);
+      setArmandoSueldo(false);
+      if (sync.error || lista.error) {
+        toast.error((sync.error ?? lista.error)?.message ?? "No se pudo armar el sueldo");
+        return;
+      }
+      setLiquidaciones(lista.data);
+      const nueva = lista.data.find((l) => l.periodo_mes === mes && l.periodo_anio === anio);
+      if (!nueva) {
+        toast.error("Este empleado no tiene sueldo base cargado. Cargalo en “Editar datos”.");
+        return;
+      }
+      await abrirLiquidacion(nueva.id);
+      return;
+    }
+    const { data, error } = await getLiquidacion(id);
+    if (error || !data) {
+      toast.error(error?.message ?? "No se pudo abrir la liquidación");
+      return;
+    }
+    setLiqActual(data);
+    setLiqAbierta(true);
+  };
 
   // Vacaciones: formulario
   const [vDesde, setVDesde] = useState("");
@@ -310,7 +355,7 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
               <Separator />
 
               <Seccion
-                titulo={`Adelantos pendientes (${adelantosPendientes.length})`}
+                titulo="Adelantos"
                 accion={
                   <Button
                     type="button"
@@ -326,31 +371,68 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
               >
                 {cargando ? (
                   <Vacio>Cargando…</Vacio>
-                ) : adelantosPendientes.length === 0 ? (
-                  <Vacio>Sin adelantos pendientes.</Vacio>
+                ) : adelantos.length === 0 ? (
+                  <Vacio>Sin adelantos registrados.</Vacio>
                 ) : (
                   <>
-                    <ul className="space-y-2">
-                      {adelantosPendientes.map((a) => (
-                        <li
-                          key={a.id}
-                          className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
-                        >
-                          <span>
-                            {fmtFecha(a.fecha)} · {a.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
-                          </span>
-                          <span className="font-mono tabular-nums">{fmtMonto(a.monto)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Dato label="Total pendiente" value={fmtMonto(totalPendiente)} />
+                    <Dato
+                      label={`Pendientes de descontar (${adelantosPendientes.length})`}
+                      value={fmtMonto(totalPendiente)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={() => setHistorialAbierto((v) => !v)}
+                    >
+                      {historialAbierto ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                      {historialAbierto ? "Ocultar historial" : `Ver historial (${adelantos.length})`}
+                    </Button>
+                    {historialAbierto && (
+                      <ul className="space-y-2">
+                        {adelantos.map((a) => (
+                          <li
+                            key={a.id}
+                            className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                          >
+                            <span>
+                              {fmtFecha(a.fecha)} · {a.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
+                              <Badge variant="outline" className="ml-2 text-[10px]">
+                                {a.liquidacion_id ? "Descontado" : "Pendiente"}
+                              </Badge>
+                            </span>
+                            <span className="font-mono tabular-nums">{fmtMonto(a.monto)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </>
                 )}
               </Seccion>
 
               <Separator />
 
-              <Seccion titulo="Sueldos (liquidaciones)">
+              <Seccion
+                titulo="Sueldos (liquidaciones)"
+                accion={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    disabled={armandoSueldo}
+                    onClick={() => void abrirLiquidacion(null)}
+                  >
+                    <Banknote className="h-3.5 w-3.5" />
+                    Pagar sueldo
+                  </Button>
+                }
+              >
                 {cargando ? (
                   <Vacio>Cargando…</Vacio>
                 ) : liquidaciones.length === 0 ? (
@@ -358,17 +440,24 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
                 ) : (
                   <ul className="space-y-2">
                     {liquidaciones.map((l) => (
-                      <li
-                        key={l.id}
-                        className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                      >
-                        <span className="capitalize">
-                          {MESES[l.periodo_mes - 1]} {l.periodo_anio}
-                          <Badge variant="outline" className="ml-2 text-[10px]">
-                            {l.estado === "cerrada" ? "Cerrada" : "Borrador"}
-                          </Badge>
-                        </span>
-                        <span className="font-mono tabular-nums">{fmtMonto(l.total_neto)}</span>
+                      <li key={l.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
+                          onClick={() => void abrirLiquidacion(l.id)}
+                        >
+                          <span className="capitalize">
+                            {MESES[l.periodo_mes - 1]} {l.periodo_anio}
+                            <Badge variant="outline" className="ml-2 text-[10px]">
+                              {saldoLiquidacion(l.total_neto, l.liquidacion_pagos) <= 0
+                                ? "Pagado"
+                                : l.liquidacion_pagos.length > 0
+                                  ? "Pago parcial"
+                                  : "Sin pagar"}
+                            </Badge>
+                          </span>
+                          <span className="font-mono tabular-nums">{fmtMonto(l.total_neto)}</span>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -394,33 +483,6 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
                           {i.descripcion ? <span className="text-muted-foreground"> — {i.descripcion}</span> : null}
                         </span>
                         <span className="font-mono tabular-nums">{fmtMonto(i.monto)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Seccion>
-
-              <Separator />
-
-              <Seccion titulo="Historial de adelantos">
-                {cargando ? (
-                  <Vacio>Cargando…</Vacio>
-                ) : adelantos.length === 0 ? (
-                  <Vacio>Sin adelantos registrados.</Vacio>
-                ) : (
-                  <ul className="space-y-2">
-                    {adelantos.map((a) => (
-                      <li
-                        key={a.id}
-                        className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                      >
-                        <span>
-                          {fmtFecha(a.fecha)} · {a.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
-                          {a.liquidacion_id ? (
-                            <Badge variant="outline" className="ml-2 text-[10px]">Descontado</Badge>
-                          ) : null}
-                        </span>
-                        <span className="font-mono tabular-nums">{fmtMonto(a.monto)}</span>
                       </li>
                     ))}
                   </ul>
@@ -595,6 +657,14 @@ export function EmpleadoFichaSheet({ empleado, open, onOpenChange, onEdit }: Pro
               open={adelantoAbierto}
               onOpenChange={setAdelantoAbierto}
               empleadoIdInicial={empleado.id}
+              onSaved={() => {
+                if (empleadoId) void cargarTodo(empleadoId);
+              }}
+            />
+            <LiquidacionFormDialog
+              open={liqAbierta}
+              onOpenChange={setLiqAbierta}
+              liquidacion={liqActual}
               onSaved={() => {
                 if (empleadoId) void cargarTodo(empleadoId);
               }}

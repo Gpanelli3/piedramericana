@@ -132,7 +132,7 @@ export function EmpleadosCatalogo() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 gap-2">
-          <div className="relative max-w-md flex-1">
+          <div className="relative max-w-md flex-1" data-guia="equipo-buscar">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-9 pl-9"
@@ -154,7 +154,7 @@ export function EmpleadosCatalogo() {
             </SelectContent>
           </Select>
         </div>
-        <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo}>
+        <Button type="button" className="h-9 gap-1.5 shrink-0" onClick={abrirNuevo} data-guia="equipo-nuevo">
           <Plus className="h-4 w-4" />
           Nuevo empleado
         </Button>
@@ -165,7 +165,7 @@ export function EmpleadosCatalogo() {
           Configurá Supabase para ver y editar el maestro de empleados.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
+        <div className="overflow-hidden rounded-lg border border-border bg-white" data-guia="equipo-tabla">
           <Table>
             <TableHeader>
               <TableRow>

@@ -1,17 +1,17 @@
-import type { Database, LiquidacionConceptoTipo, LiquidacionEstado } from "@/types/database";
+import type { Database, LiquidacionConceptoTipo } from "@/types/database";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { listEmpleados, type EmpleadoRow } from "@/lib/empleados-api";
 import {
   calcularTotalesLiquidacion,
   formatFechaIso,
   hoyIso,
-  pagosAlCerrar,
   parseMonto,
 } from "@/lib/sueldos-calculos";
 
 export type AdelantoRow = Database["public"]["Tables"]["adelantos_empleado"]["Row"];
 export type LiquidacionRow = Database["public"]["Tables"]["liquidaciones"]["Row"];
 export type LiquidacionConceptoRow = Database["public"]["Tables"]["liquidacion_conceptos"]["Row"];
+export type LiquidacionPagoRow = Database["public"]["Tables"]["liquidacion_pagos"]["Row"];
 
 type EmpleadoMini = Pick<EmpleadoRow, "id" | "nombre" | "apellido" | "puesto" | "activo" | "sueldo_base">;
 
@@ -22,6 +22,7 @@ export type AdelantoConEmpleado = AdelantoRow & {
 export type LiquidacionConDetalle = LiquidacionRow & {
   empleados: Pick<EmpleadoRow, "nombre" | "apellido" | "puesto" | "activo"> | null;
   liquidacion_conceptos: LiquidacionConceptoRow[];
+  liquidacion_pagos: LiquidacionPagoRow[];
 };
 
 export type AdelantoInput = {
@@ -40,14 +41,17 @@ export type ConceptoInput = {
   referencia_id?: string | null;
 };
 
+export type PagoInput = {
+  fecha: string;
+  monto: number;
+};
+
 export type LiquidacionInput = {
   empleado_id: string;
   periodo_mes: number;
   periodo_anio: number;
   conceptos: ConceptoInput[];
-  pago_efectivo_15: number;
-  pago_banco_30: number;
-  pago_efectivo_30: number;
+  pagos: PagoInput[];
   notas?: string;
   created_by?: string | null;
 };
@@ -70,6 +74,10 @@ function coerceConcepto(row: LiquidacionConceptoRow): LiquidacionConceptoRow {
   return { ...row, monto: num(row.monto) };
 }
 
+function coercePago(row: LiquidacionPagoRow): LiquidacionPagoRow {
+  return { ...row, monto: num(row.monto) };
+}
+
 function coerceLiquidacion(row: LiquidacionRow): LiquidacionRow {
   return {
     ...row,
@@ -87,6 +95,9 @@ function coerceLiquidacionDetalle(row: LiquidacionConDetalle): LiquidacionConDet
     ...coerceLiquidacion(row),
     empleados: row.empleados,
     liquidacion_conceptos: (row.liquidacion_conceptos ?? []).map(coerceConcepto),
+    liquidacion_pagos: (row.liquidacion_pagos ?? [])
+      .map(coercePago)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha)),
   };
 }
 
@@ -233,7 +244,7 @@ export async function listLiquidaciones(opts: {
   }
   const { data, error } = await supabase
     .from("liquidaciones")
-    .select("*, empleados(nombre, apellido, puesto, activo), liquidacion_conceptos(*)")
+    .select("*, empleados(nombre, apellido, puesto, activo), liquidacion_conceptos(*), liquidacion_pagos(*)")
     .eq("periodo_mes", opts.mes)
     .eq("periodo_anio", opts.anio)
     .order("created_at", { ascending: false });
@@ -252,7 +263,7 @@ export async function getLiquidacion(
   }
   const { data, error } = await supabase
     .from("liquidaciones")
-    .select("*, empleados(nombre, apellido, puesto, activo), liquidacion_conceptos(*)")
+    .select("*, empleados(nombre, apellido, puesto, activo), liquidacion_conceptos(*), liquidacion_pagos(*)")
     .eq("id", id)
     .maybeSingle();
   if (error) return { data: null, error: new Error(error.message) };
@@ -296,6 +307,19 @@ async function syncConceptos(liquidacionId: string, conceptos: ConceptoInput[]):
       monto: c.monto,
       referencia_id: c.referencia_id ?? null,
     })),
+  );
+  return error ? new Error(error.message) : null;
+}
+
+async function syncPagos(liquidacionId: string, pagos: PagoInput[]): Promise<Error | null> {
+  const { error: delErr } = await supabase
+    .from("liquidacion_pagos")
+    .delete()
+    .eq("liquidacion_id", liquidacionId);
+  if (delErr) return new Error(delErr.message);
+  if (pagos.length === 0) return null;
+  const { error } = await supabase.from("liquidacion_pagos").insert(
+    pagos.map((p) => ({ liquidacion_id: liquidacionId, fecha: p.fecha, monto: p.monto })),
   );
   return error ? new Error(error.message) : null;
 }
@@ -350,24 +374,17 @@ export async function saveLiquidacion(
   if ("error" in parsed) return { data: null, error: new Error(parsed.error) };
 
   const totales = calcularTotalesLiquidacion(parsed.ok);
-  const pagos = {
-    pago_efectivo_15: Number(input.pago_efectivo_15) || 0,
-    pago_banco_30: Number(input.pago_banco_30) || 0,
-    pago_efectivo_30: Number(input.pago_efectivo_30) || 0,
-  };
+  const pagosOk: PagoInput[] = [];
+  for (const p of input.pagos) {
+    const monto = parseMonto(p.monto);
+    if (!p.fecha) return { data: null, error: new Error("Cada pago necesita una fecha") };
+    if (!Number.isFinite(monto) || monto <= 0) {
+      return { data: null, error: new Error("Cada pago necesita un monto mayor a 0") };
+    }
+    pagosOk.push({ fecha: p.fecha, monto });
+  }
 
   if (opts?.id) {
-    const { data: actual, error: loadErr } = await supabase
-      .from("liquidaciones")
-      .select("id, estado")
-      .eq("id", opts.id)
-      .maybeSingle();
-    if (loadErr) return { data: null, error: new Error(loadErr.message) };
-    if (!actual) return { data: null, error: new Error("Liquidación no encontrada") };
-    if ((actual.estado as LiquidacionEstado) === "cerrada") {
-      return { data: null, error: new Error("La liquidación está cerrada; reapriala para editar") };
-    }
-
     const { error: updErr } = await supabase
       .from("liquidaciones")
       .update({
@@ -375,7 +392,6 @@ export async function saveLiquidacion(
         periodo_mes: input.periodo_mes,
         periodo_anio: input.periodo_anio,
         ...totales,
-        ...pagos,
         notas: blankToNull(input.notas),
         updated_at: new Date().toISOString(),
       })
@@ -391,6 +407,8 @@ export async function saveLiquidacion(
     if (cErr) return { data: null, error: cErr };
     const aErr = await syncAdelantosVinculados(opts.id, parsed.ok);
     if (aErr) return { data: null, error: aErr };
+    const pErr = await syncPagos(opts.id, pagosOk);
+    if (pErr) return { data: null, error: pErr };
     return fetchDetalle(opts.id);
   }
 
@@ -403,7 +421,6 @@ export async function saveLiquidacion(
       periodo_anio: input.periodo_anio,
       estado: "borrador",
       ...totales,
-      ...pagos,
       notas: blankToNull(input.notas),
       created_by: createdBy,
     })
@@ -425,6 +442,8 @@ export async function saveLiquidacion(
   }
   const aErr = await syncAdelantosVinculados(inserted.id, parsed.ok);
   if (aErr) return { data: null, error: aErr };
+  const pErr = await syncPagos(inserted.id, pagosOk);
+  if (pErr) return { data: null, error: pErr };
   return fetchDetalle(inserted.id);
 }
 
@@ -437,27 +456,53 @@ export async function cerrarLiquidacion(
   if (actual.data.estado === "cerrada") return actual;
 
   const totales = calcularTotalesLiquidacion(actual.data.liquidacion_conceptos);
-  const pagos = pagosAlCerrar(
-    {
-      pago_efectivo_15: actual.data.pago_efectivo_15,
-      pago_banco_30: actual.data.pago_banco_30,
-      pago_efectivo_30: actual.data.pago_efectivo_30,
-    },
-    totales.total_neto,
-  );
-
   const { error } = await supabase
     .from("liquidaciones")
     .update({
       estado: "cerrada",
       fecha_cierre: hoyIso(),
       ...totales,
-      ...pagos,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
   if (error) return { data: null, error: new Error(error.message) };
   return fetchDetalle(id);
+}
+
+/** Registra un pago (se guarda en el acto, no depende de "Guardar"). */
+export async function registrarPagoLiquidacion(
+  liquidacionId: string,
+  pago: PagoInput,
+): Promise<{ data: LiquidacionConDetalle | null; error: Error | null }> {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: new Error("Supabase no está configurado") };
+  }
+  const monto = parseMonto(pago.monto);
+  if (!pago.fecha) return { data: null, error: new Error("Indicá la fecha del pago") };
+  if (!Number.isFinite(monto) || monto <= 0) {
+    return { data: null, error: new Error("El monto del pago tiene que ser mayor a 0") };
+  }
+  const { error } = await supabase
+    .from("liquidacion_pagos")
+    .insert({ liquidacion_id: liquidacionId, fecha: pago.fecha, monto });
+  if (error) return { data: null, error: new Error(error.message) };
+  return fetchDetalle(liquidacionId);
+}
+
+export async function quitarPagoLiquidacion(
+  liquidacionId: string,
+  pagoId: string,
+): Promise<{ data: LiquidacionConDetalle | null; error: Error | null }> {
+  if (!isSupabaseConfigured) {
+    return { data: null, error: new Error("Supabase no está configurado") };
+  }
+  const { error } = await supabase
+    .from("liquidacion_pagos")
+    .delete()
+    .eq("id", pagoId)
+    .eq("liquidacion_id", liquidacionId);
+  if (error) return { data: null, error: new Error(error.message) };
+  return fetchDetalle(liquidacionId);
 }
 
 export async function reabrirLiquidacion(
@@ -479,22 +524,17 @@ export async function deleteLiquidacion(id: string): Promise<{ error: Error | nu
   if (!isSupabaseConfigured) {
     return { error: new Error("Supabase no está configurado") };
   }
-  const { data: actual, error: loadErr } = await supabase
-    .from("liquidaciones")
-    .select("id, estado")
-    .eq("id", id)
-    .maybeSingle();
-  if (loadErr) return { error: new Error(loadErr.message) };
-  if (!actual) return { error: new Error("Liquidación no encontrada") };
-  if ((actual.estado as LiquidacionEstado) === "cerrada") {
-    return { error: new Error("Reabrí la liquidación antes de borrarla") };
-  }
-
   const { error: unlinkErr } = await supabase
     .from("adelantos_empleado")
     .update({ liquidacion_id: null })
     .eq("liquidacion_id", id);
   if (unlinkErr) return { error: new Error(unlinkErr.message) };
+
+  const { error: pagosErr } = await supabase
+    .from("liquidacion_pagos")
+    .delete()
+    .eq("liquidacion_id", id);
+  if (pagosErr) return { error: new Error(pagosErr.message) };
 
   const { error: concErr } = await supabase
     .from("liquidacion_conceptos")
@@ -530,66 +570,124 @@ export function conceptosDesdeEmpleadoYAdelantos(
   return conceptos;
 }
 
-export async function armarLiquidacionesDelMes(opts: {
+/**
+ * Deja al día los sueldos de un mes, sin intervención del usuario:
+ * - crea el sueldo de cada empleado activo que todavía no tiene (sueldo base + adelantos pendientes);
+ * - suma a los sueldos ya creados los adelantos que quedaron pendientes después.
+ */
+type ResultadoSync = { creadas: number; actualizadas: number; error: Error | null };
+const syncEnCurso = new Map<string, Promise<ResultadoSync>>();
+
+export function sincronizarSueldosDelMes(opts: {
   mes: number;
   anio: number;
   created_by?: string | null;
-}): Promise<{ creadas: number; omitidas: number; error: Error | null }> {
+}): Promise<ResultadoSync> {
+  // Evita corridas simultáneas del mismo mes (duplicarían conceptos).
+  const key = `${opts.anio}-${opts.mes}`;
+  const previa = syncEnCurso.get(key);
+  if (previa) return previa;
+  const p = sincronizar(opts).finally(() => syncEnCurso.delete(key));
+  syncEnCurso.set(key, p);
+  return p;
+}
+
+async function sincronizar(opts: {
+  mes: number;
+  anio: number;
+  created_by?: string | null;
+}): Promise<ResultadoSync> {
+  const fail = (error: Error) => ({ creadas: 0, actualizadas: 0, error });
   const empleadosRes = await listEmpleados();
-  if (empleadosRes.error) return { creadas: 0, omitidas: 0, error: empleadosRes.error };
+  if (empleadosRes.error) return fail(empleadosRes.error);
   const activos = empleadosRes.data.filter((e) => e.activo);
 
   const existentes = await listLiquidaciones({ mes: opts.mes, anio: opts.anio });
-  if (existentes.error) return { creadas: 0, omitidas: 0, error: existentes.error };
-  const ya = new Set(existentes.data.map((l) => l.empleado_id));
+  if (existentes.error) return fail(existentes.error);
+  const porEmpleado = new Map(existentes.data.map((l) => [l.empleado_id, l]));
 
   const adelantosRes = await listAdelantos({ pendientes: true });
-  if (adelantosRes.error) return { creadas: 0, omitidas: 0, error: adelantosRes.error };
+  if (adelantosRes.error) return fail(adelantosRes.error);
 
   let creadas = 0;
-  let omitidas = 0;
+  let actualizadas = 0;
+
+  // Adelantos nuevos para sueldos ya creados
+  for (const liq of existentes.data) {
+    const nuevos = adelantosRes.data.filter((a) => a.empleado_id === liq.empleado_id);
+    if (nuevos.length === 0) continue;
+    const conceptos: ConceptoInput[] = [
+      ...liq.liquidacion_conceptos.map((c) => ({
+        tipo: c.tipo,
+        descripcion: c.descripcion,
+        monto: num(c.monto),
+        referencia_id: c.referencia_id,
+      })),
+      ...nuevos.map((a) => ({
+        tipo: "adelanto" as const,
+        descripcion: `Adelanto ${formatFechaIso(a.fecha)}`,
+        monto: num(a.monto),
+        referencia_id: a.id,
+      })),
+    ];
+    const saved = await saveLiquidacion(
+      {
+        empleado_id: liq.empleado_id,
+        periodo_mes: liq.periodo_mes,
+        periodo_anio: liq.periodo_anio,
+        conceptos,
+        pagos: liq.liquidacion_pagos.map((p) => ({ fecha: p.fecha, monto: num(p.monto) })),
+        notas: liq.notas ?? undefined,
+      },
+      { id: liq.id },
+    );
+    if (saved.error) return fail(saved.error);
+    actualizadas += 1;
+  }
+
+  // Sueldos que faltan
   for (const emp of activos) {
-    if (ya.has(emp.id)) {
-      omitidas += 1;
-      continue;
-    }
+    if (porEmpleado.has(emp.id)) continue;
     const adelantos = adelantosRes.data.filter((a) => a.empleado_id === emp.id);
     const conceptos = conceptosDesdeEmpleadoYAdelantos(emp, adelantos).filter((c) => c.monto > 0);
-    if (conceptos.length === 0) {
-      omitidas += 1;
-      continue;
-    }
+    if (conceptos.length === 0) continue;
     const saved = await saveLiquidacion({
       empleado_id: emp.id,
       periodo_mes: opts.mes,
       periodo_anio: opts.anio,
       conceptos,
-      pago_efectivo_15: 0,
-      pago_banco_30: 0,
-      pago_efectivo_30: 0,
+      pagos: [],
       created_by: opts.created_by,
     });
-    if (saved.error) return { creadas, omitidas, error: saved.error };
-    creadas += 1;
+    // Si otra carga simultánea ya lo creó, no es un error.
+    if (saved.error && !saved.error.message.includes("Ya hay una liquidación")) {
+      return { creadas, actualizadas, error: saved.error };
+    }
+    if (!saved.error) creadas += 1;
   }
-  return { creadas, omitidas, error: null };
+  return { creadas, actualizadas, error: null };
 }
+
+export type LiquidacionConPagos = LiquidacionRow & { liquidacion_pagos: LiquidacionPagoRow[] };
 
 export async function listLiquidacionesEmpleado(
   empleadoId: string,
-): Promise<{ data: LiquidacionRow[]; error: Error | null }> {
+): Promise<{ data: LiquidacionConPagos[]; error: Error | null }> {
   if (!isSupabaseConfigured) {
     return { data: [], error: new Error("Supabase no está configurado") };
   }
   const { data, error } = await supabase
     .from("liquidaciones")
-    .select("*")
+    .select("*, liquidacion_pagos(*)")
     .eq("empleado_id", empleadoId)
     .order("periodo_anio", { ascending: false })
     .order("periodo_mes", { ascending: false });
   if (error) return { data: [], error: new Error(error.message) };
   return {
-    data: ((data ?? []) as LiquidacionRow[]).map(coerceLiquidacion),
+    data: ((data ?? []) as LiquidacionConPagos[]).map((r) => ({
+      ...coerceLiquidacion(r),
+      liquidacion_pagos: (r.liquidacion_pagos ?? []).map(coercePago),
+    })),
     error: null,
   };
 }

@@ -30,6 +30,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { parseDecimalInput } from "@/lib/presupuesto-calculos";
 import { ConversionesMaestroHints } from "@/features/cantera/ConversionesMaestroHints";
 import { useCanteraProcesamientos } from "@/features/cantera/useCanteraProcesamientos";
+import { ProductoCanteraPicker } from "@/features/cantera/ProductoCanteraPicker";
 
 function newLineKey() {
   return typeof crypto !== "undefined" ? crypto.randomUUID() : `p-${Math.random().toString(36).slice(2)}`;
@@ -120,7 +121,7 @@ export function CanteraProcesarDialog({
     for (const ln of productLines) {
       const cantidad = parseDecimalInput(ln.cantidad);
       if (!ln.nombre.trim() || cantidad <= 0) {
-        toast.error("Completá nombre y cantidad (> 0) en cada producto.");
+        toast.error("Elegí el producto y la cantidad (> 0) en cada fila.");
         return;
       }
     }
@@ -171,7 +172,7 @@ export function CanteraProcesarDialog({
         <DialogHeader>
           <DialogTitle>Procesar piedra bruta</DialogTitle>
           <DialogDescription>
-            Consumí kg de un lote y registrá los productos terminados (adoquines, laja, etc.). Si el producto no existe, se crea automáticamente.
+            Consumí kg de un lote y registrá los productos terminados, elegidos del listado de productos de la empresa.
           </DialogDescription>
         </DialogHeader>
 
@@ -246,12 +247,10 @@ export function CanteraProcesarDialog({
                       className="grid gap-3 rounded-xl bg-muted/40 p-3 sm:grid-cols-[1fr_6rem_6rem_auto] sm:items-end"
                     >
                       <div className="space-y-1 min-w-0">
-                        <Label className="text-[11px] text-muted-foreground">Nombre del producto</Label>
-                        <Input
-                          className="h-9 text-sm"
-                          placeholder="ej. Adoquines 10x20"
+                        <Label className="text-[11px] text-muted-foreground">Producto</Label>
+                        <ProductoCanteraPicker
                           value={ln.nombre}
-                          onChange={(e) => patchProductLine(ln.key, { nombre: e.target.value })}
+                          onChange={(p) => patchProductLine(ln.key, { nombre: p.nombre, unit: p.unidad })}
                         />
                       </div>
                       <div className="space-y-1">

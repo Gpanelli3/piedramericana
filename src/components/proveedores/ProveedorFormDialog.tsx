@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  deleteSupplier,
   insertSupplier,
   updateSupplier,
   RUBROS_PROVEEDOR,
@@ -98,6 +100,8 @@ type ProveedorFormDialogProps = {
   onOpenChange: (open: boolean) => void;
   supplier?: SupplierRow | null;
   onSaved: (supplier: SupplierRow) => void;
+  /** Si se pasa, el popup ofrece eliminar al proveedor (solo al editar). */
+  onDeleted?: (id: string) => void;
   defaultOrigen?: SupplierOrigen;
 };
 
@@ -106,6 +110,7 @@ export function ProveedorFormDialog({
   onOpenChange,
   supplier = null,
   onSaved,
+  onDeleted,
   defaultOrigen = "nacional",
 }: ProveedorFormDialogProps) {
   const editando = Boolean(supplier?.id);
@@ -178,6 +183,22 @@ export function ProveedorFormDialog({
     }
   };
 
+
+  const eliminar = async () => {
+    if (!supplier || !onDeleted) return;
+    if (!window.confirm(`¿Eliminar a "${supplier.name}"? Si tiene remitos o lotes vinculados, quedarán sin proveedor.`)) return;
+    setGuardando(true);
+    try {
+      await deleteSupplier(supplier.id);
+      toast.success("Proveedor eliminado.");
+      onOpenChange(false);
+      onDeleted(supplier.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo eliminar.");
+    } finally {
+      setGuardando(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={dialogFormClassName}>
@@ -374,6 +395,18 @@ export function ProveedorFormDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
+          {editando && supplier && onDeleted ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="mr-auto gap-1.5 text-destructive hover:text-destructive"
+              disabled={guardando}
+              onClick={() => void eliminar()}
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar
+            </Button>
+          ) : null}
           <DialogClose asChild>
             <Button type="button" variant="outline">Cancelar</Button>
           </DialogClose>

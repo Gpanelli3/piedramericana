@@ -47,6 +47,7 @@ type ProveedorFichaProps = {
   onBack: () => void;
   onEdit: () => void;
   onUpdated: (s: SupplierRow) => void;
+  onDeleted: (id: string) => void;
   dialogAbierto: boolean;
   setDialogAbierto: (v: boolean) => void;
   editando: SupplierRow | null;
@@ -57,6 +58,7 @@ export function ProveedorFicha({
   onBack,
   onEdit,
   onUpdated,
+  onDeleted,
   dialogAbierto,
   setDialogAbierto,
   editando,
@@ -306,6 +308,7 @@ export function ProveedorFicha({
         onOpenChange={setDialogAbierto}
         supplier={editando}
         onSaved={onUpdated}
+        onDeleted={onDeleted}
       />
     </div>
   );
