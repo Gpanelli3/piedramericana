@@ -83,18 +83,26 @@ async function hidratarEventos(rows: EventoRow[]): Promise<Res<PlanEvento[]>> {
   const otIds = [...new Set(rows.map((r) => r.ot_id).filter((x): x is string => Boolean(x)))];
   const tieneMediciones = rows.some((r) => r.tipo === "medicion");
 
-  const [asigRes, otsRes, medRes] = await Promise.all([
+  // Las OTs se completan apenas llegan, sin esperar a la cola de mediciones (son cadenas independientes).
+  const otsEnriquecidas: Promise<Res<OtProduccionItem[]>> =
+    otIds.length > 0
+      ? (async () => {
+          const r = await supabase.from("ordenes_trabajo").select("*").in("id", otIds);
+          if (r.error) return { data: [], error: err(r.error) };
+          return enrichOts((r.data ?? []) as OrdenTrabajoRow[]);
+        })()
+      : Promise.resolve({ data: [], error: null });
+
+  const [asigRes, enriched, medRes] = await Promise.all([
     supabase
       .from("planificacion_evento_empleados")
       .select("evento_id, empleados(id,nombre,apellido,puesto)")
       .in("evento_id", ids),
-    otIds.length > 0
-      ? supabase.from("ordenes_trabajo").select("*").in("id", otIds)
-      : Promise.resolve({ data: [] as OrdenTrabajoRow[], error: null }),
+    otsEnriquecidas,
     tieneMediciones ? listarColaMedicion() : Promise.resolve({ data: [] as MedicionColaItem[], error: null }),
   ]);
   if (asigRes.error) return { data: [], error: err(asigRes.error) };
-  if (otsRes.error) return { data: [], error: err(otsRes.error) };
+  if (enriched.error) return { data: [], error: enriched.error };
   if (medRes.error) return { data: [], error: medRes.error };
 
   const empleadosPorEvento = new Map<string, EmpleadoAsignable[]>();
@@ -108,8 +116,6 @@ async function hidratarEventos(rows: EventoRow[]): Promise<Res<PlanEvento[]>> {
     empleadosPorEvento.set(a.evento_id, list);
   }
 
-  const enriched = await enrichOts((otsRes.data ?? []) as OrdenTrabajoRow[]);
-  if (enriched.error) return { data: [], error: enriched.error };
   const otPorId = new Map(enriched.data.map((o) => [o.orden.id, o]));
   const medPorId = new Map(medRes.data.map((m) => [m.medicion.id, m]));
 
@@ -186,36 +192,50 @@ export type ColaPlanificacion = {
 /** Lo que queda por agendar (panel "OTs activas"). */
 export async function listarCola(): Promise<Res<ColaPlanificacion>> {
   const empty = { grupos: [], mediciones: [] };
-  const [otsRes, pendRes, medRes] = await Promise.all([
-    supabase
-      .from("ordenes_trabajo")
-      .select("*")
-      .not("venta_id", "is", null)
-      .neq("estado", "cancelled")
-      .neq("estado", "done")
-      .neq("etapa", "medicion")
-      .order("creado_en", { ascending: true }),
+  // Promise.resolve dispara el pedido una sola vez: un builder de Supabase pide de nuevo en cada await.
+  const pendientesP = Promise.resolve(
     supabase
       .from("planificacion_eventos")
       .select("tipo,ot_id,medicion_id")
       .eq("estado", "pendiente")
       .in("tipo", ["entrega", "medicion"]),
+  );
+
+  // OTs sin agendar: se completan en cuanto llegan OTs y eventos, en paralelo con la cola de mediciones.
+  const otsSinAgendarP = (async (): Promise<Res<OtProduccionItem[]>> => {
+    const [otsRes, pendRes] = await Promise.all([
+      supabase
+        .from("ordenes_trabajo")
+        .select("*")
+        .not("venta_id", "is", null)
+        .neq("estado", "cancelled")
+        .neq("estado", "done")
+        .neq("etapa", "medicion")
+        .order("creado_en", { ascending: true }),
+      pendientesP,
+    ]);
+    if (otsRes.error) return { data: [], error: err(otsRes.error) };
+    if (pendRes.error) return { data: [], error: err(pendRes.error) };
+    const otsAgendadas = new Set(
+      (pendRes.data ?? []).filter((e) => e.tipo === "entrega" && e.ot_id).map((e) => e.ot_id as string),
+    );
+    const sinAgendar = ((otsRes.data ?? []) as OrdenTrabajoRow[]).filter((o) => !otsAgendadas.has(o.id));
+    return enrichOts(sinAgendar);
+  })();
+
+  const [enriched, pendRes, medRes] = await Promise.all([
+    otsSinAgendarP,
+    pendientesP,
     listarColaMedicion(),
   ]);
-  if (otsRes.error) return { data: empty, error: err(otsRes.error) };
+  if (enriched.error) return { data: empty, error: enriched.error };
   if (pendRes.error) return { data: empty, error: err(pendRes.error) };
   if (medRes.error) return { data: empty, error: medRes.error };
 
-  const otsAgendadas = new Set<string>();
   const medAgendadas = new Set<string>();
   for (const e of pendRes.data ?? []) {
-    if (e.tipo === "entrega" && e.ot_id) otsAgendadas.add(e.ot_id);
     if (e.tipo === "medicion" && e.medicion_id) medAgendadas.add(e.medicion_id);
   }
-
-  const sinAgendar = ((otsRes.data ?? []) as OrdenTrabajoRow[]).filter((o) => !otsAgendadas.has(o.id));
-  const enriched = await enrichOts(sinAgendar);
-  if (enriched.error) return { data: empty, error: enriched.error };
 
   const mediciones = medRes.data.filter(
     (m) => m.medicion.estado === "listo_para_medir" && !medAgendadas.has(m.medicion.id),

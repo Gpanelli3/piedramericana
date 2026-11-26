@@ -1,41 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useOtsGrupos } from "@/hooks/useOtsGrupos";
 import { OtListRow } from "@/components/produccion/OtListRow";
 import { OtSeccionHeader } from "@/components/produccion/OtFiltroActivoPill";
 import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  getOtsAgrupadasPorFiltro,
   marcarOtEntregada,
   type OtProduccionItem,
-  type VentaGrupoOt,
 } from "@/lib/produccion-api";
 export function VistaLogistica() {
-  const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { grupos, loading, refresh } = useOtsGrupos("logistica");
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setGrupos([]);
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await getOtsAgrupadasPorFiltro("logistica");
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      setGrupos([]);
-      return;
-    }
-    setGrupos(data);
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   const onEntregar = async (item: OtProduccionItem) => {
     setBusyId(item.orden.id);

@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { formatAuthError } from "../lib/auth-errors";
+import { queryClient } from "../lib/query-client";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 type AuthContextValue = {
@@ -34,7 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      // Sesión vencida o cerrada desde otra pestaña: no dejar datos del usuario en caché.
+      if (event === "SIGNED_OUT") queryClient.clear();
       if (!cancelled) {
         setSession(next);
         setLoading(false);
@@ -65,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     await supabase.auth.signOut();
+    queryClient.clear();
   }, []);
 
   const value = useMemo<AuthContextValue>(

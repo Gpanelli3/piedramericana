@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
@@ -30,6 +30,8 @@ import { FinanzasDisponibilidad } from "@/components/finanzas/FinanzasDisponibil
 import { FinanzasProveedoresCC } from "@/components/finanzas/FinanzasProveedoresCC";
 import { MovimientoDetallePanel } from "@/components/finanzas/MovimientoDetallePanel";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import {
   FINANZAS_SECCION_LABELS,
   FINANZAS_TABS_HEADER,
@@ -102,6 +104,10 @@ export function VistaFinanzas() {
   return <FinanzasShell seccion={seccion} onGoto={gotoSeccion} />;
 }
 
+const SIN_SALDOS: SaldoCuentaRow[] = [];
+const SIN_CUENTAS: CuentaFinancieraRow[] = [];
+const SIN_SUPPLIERS: SupplierRow[] = [];
+
 function FinanzasShell({
   seccion,
   onGoto,
@@ -109,10 +115,32 @@ function FinanzasShell({
   seccion: FinanzasSeccion;
   onGoto: (s: FinanzasSeccion) => void;
 }) {
-  const [saldos, setSaldos] = useState<SaldoCuentaRow[]>([]);
-  const [cuentas, setCuentas] = useState<CuentaFinancieraRow[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const queryClient = useQueryClient();
+  // Saldos, cuentas y proveedores en caché: volver a Finanzas los muestra al instante.
+  const saldosQuery = useQuery({
+    queryKey: queryKeys.finanzasSaldos,
+    queryFn: async () => {
+      const r = await listSaldosCuentas();
+      if (r.error) toast.error(r.error.message);
+      return r.data;
+    },
+  });
+  const cuentasQuery = useQuery({
+    queryKey: queryKeys.finanzasCuentas,
+    queryFn: async () => {
+      const r = await listCuentasActivas();
+      if (r.error) toast.error(r.error.message);
+      return r.data;
+    },
+  });
+  const suppliersQuery = useQuery({
+    queryKey: queryKeys.proveedores,
+    queryFn: () => fetchSuppliers().catch((): SupplierRow[] => []),
+  });
+  const saldos = saldosQuery.data ?? SIN_SALDOS;
+  const cuentas = cuentasQuery.data ?? SIN_CUENTAS;
+  const suppliers = suppliersQuery.data ?? SIN_SUPPLIERS;
+  const cargando = saldosQuery.isPending || cuentasQuery.isPending;
   const [recargaKey, setRecargaKey] = useState(0);
 
   const [dialogTransf, setDialogTransf] = useState(false);
@@ -130,25 +158,12 @@ function FinanzasShell({
     return map;
   }, [suppliers]);
 
-  const recargar = useCallback(async () => {
-    setCargando(true);
-    const [s, c] = await Promise.all([listSaldosCuentas(), listCuentasActivas()]);
-    void fetchSuppliers().then(setSuppliers).catch(() => {});
-    if (s.error) toast.error(s.error.message);
-    if (c.error) toast.error(c.error.message);
-    setSaldos(s.data);
-    setCuentas(c.data);
-    setCargando(false);
-  }, []);
-
+  /** Tras transferir, cobrar o registrar un gasto: refresca todo Finanzas (y las pestañas sin caché). */
   const recargarYAvisar = useCallback(async () => {
-    await recargar();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.finanzas });
     setRecargaKey((k) => k + 1);
-  }, [recargar]);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
+  }, [queryClient]);
 
   const origenTransf = useMemo(
     () => cuentas.find((c) => c.id === transfForm.origenId) ?? null,

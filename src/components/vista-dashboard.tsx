@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -87,8 +89,21 @@ function KpiCard({ label, value, hint, icon, accent = "default", onClick }: KpiC
 
 export function VistaDashboard() {
   const [, setSearchParams] = useSearchParams();
-  const [data, setData] = useState<DashboardResumen | null>(null);
-  const [cargando, setCargando] = useState(true);
+  // Resumen en caché: al volver al inicio los números se ven al instante y se actualizan por detrás.
+  const resumenQuery = useQuery({
+    queryKey: queryKeys.dashboard,
+    enabled: isSupabaseConfigured,
+    queryFn: async (): Promise<DashboardResumen | null> => {
+      const res = await fetchDashboardResumen();
+      if (res.error) throw res.error;
+      return res.data;
+    },
+  });
+  useEffect(() => {
+    if (resumenQuery.error) toast.error(resumenQuery.error.message);
+  }, [resumenQuery.error]);
+  const data = resumenQuery.data ?? null;
+  const cargando = resumenQuery.isPending && resumenQuery.fetchStatus !== "idle";
 
   const ir = useCallback(
     (tab: WorkspaceTab, extra?: Record<string, string>) => {
@@ -112,26 +127,6 @@ export function VistaDashboard() {
     [setSearchParams],
   );
 
-  const recargar = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setData(null);
-      setCargando(false);
-      return;
-    }
-    setCargando(true);
-    const res = await fetchDashboardResumen();
-    if (res.error) {
-      toast.error(res.error.message);
-      setData(null);
-    } else {
-      setData(res.data);
-    }
-    setCargando(false);
-  }, []);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
 
   const fechaHoy = new Date().toLocaleDateString("es-AR", {
     weekday: "long",

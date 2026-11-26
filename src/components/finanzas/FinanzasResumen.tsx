@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -13,6 +13,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -76,6 +78,12 @@ function totalGrande(n: number, moneda: "ars" | "usd"): string {
   return `${moneda.toUpperCase()} $${n.toLocaleString("es-AR", opts)}`;
 }
 
+const SIN_MOVIMIENTOS: MovimientoCajaRow[] = [];
+const SIN_CONTRAPARTES = new Map<string, ContraparteInfo>();
+const POR_COBRAR_VACIO = { usd: 0, ars: 0, ventasConSaldo: 0 };
+const POR_PAGAR_VACIO = { ars: 0, usd: 0, cantidad: 0 };
+const SIN_MES_METODO: SaldoMesPorMetodo[] = [];
+
 export function FinanzasResumen({
   saldos,
   cuentas,
@@ -85,54 +93,52 @@ export function FinanzasResumen({
   onAbrirMovimiento,
 }: Props) {
   const hoy = new Date().toISOString().slice(0, 10);
-  const [movimientos, setMovimientos] = useState<MovimientoCajaRow[]>([]);
-  const [contrapartes, setContrapartes] = useState<Map<string, ContraparteInfo>>(new Map());
-  const [resumenDia, setResumenDia] = useState<{
-    ingresos: number;
-    egresos: number;
-    neto: number;
-    porMetodo: Record<string, number>;
-  } | null>(null);
-  const [porCobrar, setPorCobrar] = useState({ usd: 0, ars: 0, ventasConSaldo: 0 });
-  const [porPagar, setPorPagar] = useState({ ars: 0, usd: 0, cantidad: 0 });
-  const [mesMetodo, setMesMetodo] = useState<SaldoMesPorMetodo[]>([]);
-  const [tarjetaPendiente, setTarjetaPendiente] = useState(0);
-  const [cajaCerrada, setCajaCerrada] = useState(false);
-  const [cargando, setCargando] = useState(true);
+  const queryClient = useQueryClient();
+  // Todo el resumen en caché. Los nombres de clientes se resuelven apenas llegan los
+  // movimientos, en paralelo con el resto (antes esperaban a que terminara todo).
+  const resumenQuery = useQuery({
+    queryKey: queryKeys.finanzasResumen(hoy),
+    queryFn: async () => {
+      const movsConNombres = (async () => {
+        const m = await listMovimientos({ limit: 10 });
+        if (m.error) toast.error(m.error.message);
+        return { movimientos: m.data, contrapartes: await resolverContrapartesMovimientos(m.data) };
+      })();
+      const [movs, r, cob, pag, mes, tar, cie] = await Promise.all([
+        movsConNombres,
+        resumenCajaDelDia(hoy),
+        resumenPorCobrar(),
+        resumenPorPagarMes(hoy),
+        resumenMesPorMetodo(hoy),
+        listTarjetaPendiente(),
+        hayCierreEnFecha(hoy),
+      ]);
+      // Como antes: si falla una parte se avisa y el resto del resumen se muestra igual.
+      for (const e of [r.error, cob.error, pag.error, mes.error, tar.error, cie.error]) {
+        if (e) toast.error(e.message);
+      }
+      return {
+        ...movs,
+        resumenDia: r.data,
+        porCobrar: cob.data,
+        porPagar: pag.data,
+        mesMetodo: mes.data,
+        tarjetaPendiente: tar.data.length,
+        cajaCerrada: cie.cerrado,
+      };
+    },
+  });
+  const d = resumenQuery.data;
+  const movimientos = d?.movimientos ?? SIN_MOVIMIENTOS;
+  const contrapartes = d?.contrapartes ?? SIN_CONTRAPARTES;
+  const resumenDia = d?.resumenDia ?? null;
+  const porCobrar = d?.porCobrar ?? POR_COBRAR_VACIO;
+  const porPagar = d?.porPagar ?? POR_PAGAR_VACIO;
+  const mesMetodo = d?.mesMetodo ?? SIN_MES_METODO;
+  const tarjetaPendiente = d?.tarjetaPendiente ?? 0;
+  const cajaCerrada = d?.cajaCerrada ?? false;
+  const cargando = resumenQuery.isPending && resumenQuery.fetchStatus !== "idle";
   const [cerrando, setCerrando] = useState(false);
-
-  const recargar = useCallback(async () => {
-    setCargando(true);
-    const [m, r, cob, pag, mes, tar, cie] = await Promise.all([
-      listMovimientos({ limit: 10 }),
-      resumenCajaDelDia(hoy),
-      resumenPorCobrar(),
-      resumenPorPagarMes(hoy),
-      resumenMesPorMetodo(hoy),
-      listTarjetaPendiente(),
-      hayCierreEnFecha(hoy),
-    ]);
-    if (m.error) toast.error(m.error.message);
-    if (r.error) toast.error(r.error.message);
-    if (cob.error) toast.error(cob.error.message);
-    if (pag.error) toast.error(pag.error.message);
-    if (mes.error) toast.error(mes.error.message);
-    if (tar.error) toast.error(tar.error.message);
-    if (cie.error) toast.error(cie.error.message);
-    setMovimientos(m.data);
-    setContrapartes(await resolverContrapartesMovimientos(m.data));
-    setResumenDia(r.data);
-    setPorCobrar(cob.data);
-    setPorPagar(pag.data);
-    setMesMetodo(mes.data);
-    setTarjetaPendiente(tar.data.length);
-    setCajaCerrada(cie.cerrado);
-    setCargando(false);
-  }, [hoy]);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
 
   const totales = useMemo(() => totalesPorMoneda(saldos), [saldos]);
   const cuentasLista = useMemo(
@@ -156,7 +162,7 @@ export function FinanzasResumen({
         }
       }
       toast.success("Caja del día cerrada.");
-      setCajaCerrada(true);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.finanzasResumen(hoy) });
     } finally {
       setCerrando(false);
     }

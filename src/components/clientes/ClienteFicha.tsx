@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, FileText, User, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ import {
 } from "@/lib/ventas-api";
 import type { PresupuestoEstado } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { queryKeys } from "@/lib/query-client";
 
 function fmtMonto(n: number, moneda: "ars" | "usd") {
   const opts: Intl.NumberFormatOptions = {
@@ -84,8 +86,21 @@ export function ClienteFicha({
   onEdit,
 }: ClienteFichaProps) {
   const [, setSearchParams] = useSearchParams();
-  const [act, setAct] = useState<ClienteFichaData | null>(null);
-  const [cargando, setCargando] = useState(true);
+  const queryClient = useQueryClient();
+  // Ficha en caché: volver a un cliente ya abierto muestra sus datos al instante.
+  const fichaQuery = useQuery({
+    queryKey: [...queryKeys.clienteFicha(cliente.id), cliente.nombre],
+    queryFn: async (): Promise<ClienteFichaData> => {
+      const res = await fetchClienteFicha(cliente.id, cliente.nombre);
+      if (res.error) throw res.error;
+      return res.data;
+    },
+  });
+  useEffect(() => {
+    if (fichaQuery.error) toast.error(fichaQuery.error.message);
+  }, [fichaQuery.error]);
+  const act = fichaQuery.data ?? null;
+  const cargando = fichaQuery.isPending && fichaQuery.fetchStatus !== "idle";
 
   const [comprobanteMov, setComprobanteMov] = useState<ClienteFichaMovimiento | null>(null);
   const [comprobanteOpen, setComprobanteOpen] = useState(false);
@@ -104,21 +119,15 @@ export function ClienteFicha({
   const [chapasPendientes, setChapasPendientes] = useState<ChapaReservaPendiente[]>([]);
   const [reemplazoOpen, setReemplazoOpen] = useState(false);
 
-  const recargar = useCallback(async (opts?: { silencioso?: boolean }) => {
-    if (!opts?.silencioso) setCargando(true);
-    const res = await fetchClienteFicha(cliente.id, cliente.nombre);
-    if (res.error) {
-      toast.error(res.error.message);
-      setAct(null);
-    } else {
-      setAct(res.data);
-    }
-    setCargando(false);
-  }, [cliente.id, cliente.nombre]);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
+  /** Tras aprobar, cobrar o eliminar: refresca la ficha y las listas que muestran lo mismo. */
+  const recargar = useCallback(
+    async (_opts?: { silencioso?: boolean }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ots });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.clienteFicha(cliente.id) });
+    },
+    [queryClient, cliente.id],
+  );
 
   const abrirComprobante = (m: ClienteFichaMovimiento) => {
     setComprobanteMov(m);

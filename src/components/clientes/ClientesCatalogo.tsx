@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +23,13 @@ import {
   listClients,
   type ClientePresupuesto,
 } from "@/lib/clients-api";
-import {
-  listPresupuestosResumen,
-  type PresupuestoRowList,
-} from "@/lib/presupuestos-api";
+import type { PresupuestoRowList } from "@/lib/presupuestos-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { queryKeys } from "@/lib/query-client";
+import { usePresupuestosResumen } from "@/hooks/usePresupuestosResumen";
+
+const SIN_CLIENTES: ClientePresupuesto[] = [];
+const SIN_PRESUPUESTOS: PresupuestoRowList[] = [];
 import { urlWhatsapp } from "@/lib/whatsapp";
 import {
   clientePasaFiltros,
@@ -43,43 +46,33 @@ export function ClientesCatalogo() {
   const [searchParams, setSearchParams] = useSearchParams();
   const cid = searchParams.get("cid");
 
-  const [filas, setFilas] = useState<ClientePresupuesto[]>([]);
-  const [presupuestos, setPresupuestos] = useState<PresupuestoRowList[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const queryClient = useQueryClient();
+  // Clientes y presupuestos en caché (los presupuestos se comparten con Ventas).
+  const clientesQuery = useQuery({
+    queryKey: queryKeys.clientesLista,
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await listClients();
+      if (error) throw new Error(`No se pudieron cargar los clientes: ${error.message}`);
+      return data;
+    },
+  });
+  useEffect(() => {
+    if (clientesQuery.error) toast.error(clientesQuery.error.message);
+  }, [clientesQuery.error]);
+  const presQuery = usePresupuestosResumen();
+
+  const filas = clientesQuery.data ?? SIN_CLIENTES;
+  const presupuestos = presQuery.data ?? SIN_PRESUPUESTOS;
+  const cargando =
+    (clientesQuery.isPending && clientesQuery.fetchStatus !== "idle") ||
+    (presQuery.isPending && presQuery.fetchStatus !== "idle");
   const [busqueda, setBusqueda] = useState("");
   const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
   const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [editando, setEditando] = useState<ClientePresupuesto | null>(null);
   const [ficha, setFicha] = useState<ClientePresupuesto | null>(null);
-
-  const recargar = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setFilas([]);
-      setPresupuestos([]);
-      setCargando(false);
-      return;
-    }
-    setCargando(true);
-    const [cli, pres] = await Promise.all([listClients(), listPresupuestosResumen()]);
-    if (cli.error) {
-      toast.error(`No se pudieron cargar los clientes: ${cli.error.message}`);
-      setFilas([]);
-    } else {
-      setFilas(cli.data);
-    }
-    if (pres.error) {
-      toast.error(pres.error.message);
-      setPresupuestos([]);
-    } else {
-      setPresupuestos(pres.data ?? []);
-    }
-    setCargando(false);
-  }, []);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
 
   useEffect(() => {
     if (!cid) {
@@ -179,10 +172,14 @@ export function ClientesCatalogo() {
   };
 
   const onSaved = (cliente: ClientePresupuesto) => {
-    setFilas((prev) => {
+    // Se ve al instante en la lista; después se revalida contra la base.
+    queryClient.setQueryData<ClientePresupuesto[]>(queryKeys.clientesLista, (prev = []) => {
       const sin = prev.filter((c) => c.id !== cliente.id);
       return [...sin, cliente].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
     });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.clientes });
+    // El nombre/contacto del cliente aparece en las listas de Presupuestos y Ventas.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
     if (ficha?.id === cliente.id) setFicha(cliente);
   };
 

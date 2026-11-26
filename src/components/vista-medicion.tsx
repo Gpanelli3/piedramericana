@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRol } from "@/hooks/useRol";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import {
   evaluarEnvioAProduccion,
   listarColaMedicion,
@@ -37,6 +39,8 @@ type GrupoSemana = {
   titulo: string;
   items: MedicionColaItem[];
 };
+
+const SIN_ITEMS: MedicionColaItem[] = [];
 
 function agruparParaMedir(items: MedicionColaItem[]): GrupoSemana[] {
   const hoy = hoyLocalIso();
@@ -85,8 +89,22 @@ export function VistaMedicion() {
   const sinRoles = roles.length === 0;
   const puedeVendedor = esAdmin || sinRoles || tieneAlgunRol("vendedor", "administracion");
 
-  const [items, setItems] = useState<MedicionColaItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  // Cola en caché: al volver a Medición se ve al instante y se actualiza por detrás.
+  const colaQuery = useQuery({
+    queryKey: queryKeys.medicionCola,
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await listarColaMedicion();
+      if (error) throw error;
+      return data;
+    },
+  });
+  useEffect(() => {
+    if (colaQuery.error) toast.error(colaQuery.error.message);
+  }, [colaQuery.error]);
+  const items = colaQuery.data ?? SIN_ITEMS;
+  const loading = colaQuery.isPending && colaQuery.fetchStatus !== "idle";
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyRotuloId, setBusyRotuloId] = useState<string | null>(null);
   const [busyPlanoId, setBusyPlanoId] = useState<string | null>(null);
@@ -94,25 +112,13 @@ export function VistaMedicion() {
   const [detalleItem, setDetalleItem] = useState<MedicionColaItem | null>(null);
   const [detalleHistorial, setDetalleHistorial] = useState(false);
 
+  /** Tras medir, confirmar o eliminar: refresca Medición y marca lo relacionado para revalidar. */
   const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setItems([]);
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await listarColaMedicion();
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      setItems([]);
-      return;
-    }
-    setItems(data);
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ots });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.planificacion });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.medicion });
+  }, [queryClient]);
 
   const paraMedir = useMemo(
     () => items.filter((i) => enColaParaMedir(i.medicion.estado, i.tieneSena)),

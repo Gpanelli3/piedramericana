@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, addMonths, format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import { claveDia, TIPOS_ENTREGA } from "@/lib/planificacion-reglas";
 import {
   agendarEntregas,
@@ -66,6 +68,15 @@ const MODOS: { id: Modo; label: string }[] = [
 ];
 
 const COLA_VACIA: ColaPlanificacion = { grupos: [], mediciones: [] };
+const SIN_EVENTOS: PlanEvento[] = [];
+const SIN_EMPLEADOS: EmpleadoAsignable[] = [];
+
+/** Las funciones de la API devuelven `{ data, error }`; la caché necesita que el error se lance. */
+async function sinError<T>(p: Promise<{ data: T; error: Error | null }>): Promise<T> {
+  const { data, error } = await p;
+  if (error) throw error;
+  return data;
+}
 
 function capitalizar(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -82,11 +93,6 @@ export function VistaPlanificacion() {
   const [modo, setModo] = useState<Modo>("dias");
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
-  const [eventos, setEventos] = useState<PlanEvento[]>([]);
-  const [cola, setCola] = useState<ColaPlanificacion>(COLA_VACIA);
-  const [empleados, setEmpleados] = useState<EmpleadoAsignable[]>([]);
-  const [sinMarcar, setSinMarcar] = useState<PlanEvento[]>([]);
-  const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [otAbierta, setOtAbierta] = useState<OtProduccionItem | null>(null);
@@ -105,38 +111,48 @@ export function VistaPlanificacion() {
     return { desde: dias[0]!, hasta: dias[dias.length - 1]! };
   }, [modo, inicio, dias]);
 
-  // Si se navega rápido, una respuesta vieja puede llegar después de la nueva: se descarta.
-  const pedido = useRef(0);
+  // Todo en caché. Al cambiar de rango se sigue viendo el anterior hasta que llega el nuevo
+  // (y la caché descarta sola las respuestas viejas si se navega rápido).
+  const queryClient = useQueryClient();
+  const eventosQuery = useQuery({
+    queryKey: queryKeys.planEventos(desde, hasta),
+    enabled: isSupabaseConfigured,
+    queryFn: () => sinError(listarEventos({ desde, hasta })),
+    placeholderData: keepPreviousData,
+  });
+  const colaQuery = useQuery({
+    queryKey: queryKeys.planCola,
+    enabled: isSupabaseConfigured,
+    queryFn: () => sinError(listarCola()),
+  });
+  const sinMarcarQuery = useQuery({
+    queryKey: queryKeys.planSinMarcar(hoy),
+    enabled: isSupabaseConfigured,
+    queryFn: () => sinError(listarEntregasSinMarcar(hoy)),
+  });
+  const empleadosQuery = useQuery({
+    queryKey: queryKeys.empleadosAsignables,
+    enabled: isSupabaseConfigured,
+    queryFn: () => sinError(listarEmpleadosAsignables()),
+  });
+  const errorCarga =
+    eventosQuery.error ?? colaQuery.error ?? sinMarcarQuery.error ?? empleadosQuery.error;
+  useEffect(() => {
+    if (errorCarga) toast.error(errorCarga.message);
+  }, [errorCarga]);
+
+  const eventos = eventosQuery.data ?? SIN_EVENTOS;
+  const cola = colaQuery.data ?? COLA_VACIA;
+  const sinMarcar = sinMarcarQuery.data ?? SIN_EVENTOS;
+  const empleados = empleadosQuery.data ?? SIN_EMPLEADOS;
+  const loading = colaQuery.isPending && colaQuery.fetchStatus !== "idle";
+
+  /** Tras agendar, mover o tildar: refresca la agenda y marca OTs y Ventas para revalidar. */
   const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
-    const id = ++pedido.current;
-    setLoading(true);
-    const [evRes, colaRes, smRes] = await Promise.all([
-      listarEventos({ desde, hasta }),
-      listarCola(),
-      listarEntregasSinMarcar(claveDia(new Date())),
-    ]);
-    if (id !== pedido.current) return;
-    setLoading(false);
-    if (evRes.error) toast.error(evRes.error.message);
-    else setEventos(evRes.data);
-    if (colaRes.error) toast.error(colaRes.error.message);
-    else setCola(colaRes.data);
-    if (smRes.error) toast.error(smRes.error.message);
-    else setSinMarcar(smRes.data);
-  }, [desde, hasta]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    void listarEmpleadosAsignables().then((r) => {
-      if (r.error) toast.error(r.error.message);
-      else setEmpleados(r.data);
-    });
-  }, []);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ots });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.planificacion });
+  }, [queryClient]);
 
   const eventosVisibles = useMemo(
     () => (filtro === "todos" ? eventos : eventos.filter((e) => e.tipo === filtro)),

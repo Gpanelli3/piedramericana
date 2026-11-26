@@ -111,6 +111,23 @@ export async function getOrCreateMedicion(
   return { data: ins.data ? mapMedicion(ins.data) : null, error: null };
 }
 
+/**
+ * Estado de medición de todos los presupuestos. No necesita la lista de ids,
+ * así que se puede pedir en paralelo con el listado de Ventas.
+ */
+export async function listarEstadosMedicion(): Promise<{
+  data: Record<string, MedicionEstado>;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase
+    .from("presupuesto_mediciones")
+    .select("presupuesto_id,estado");
+  if (error) return { data: {}, error: new Error(error.message) };
+  const out: Record<string, MedicionEstado> = {};
+  for (const row of data ?? []) out[row.presupuesto_id] = row.estado as MedicionEstado;
+  return { data: out, error: null };
+}
+
 export async function listarMedicionesPorPresupuestos(
   presupuestoIds: string[],
 ): Promise<{ data: Map<string, PresupuestoMedicionRow>; error: Error | null }> {
@@ -342,91 +359,96 @@ export type MedicionColaItem = {
   ots: Array<{ id: string; ordenKey: string }>;
 };
 
+type OtColaEmbebida = { id: string; orden_key: string | null; etapa: unknown; estado: unknown };
+type VentaColaEmbebida = {
+  id: string;
+  estado: string;
+  ventas_pagos: Array<{ venta_id: string }> | null;
+  ordenes_trabajo: OtColaEmbebida[] | null;
+};
+type PresupuestoColaEmbebido = {
+  id: string;
+  numero: string;
+  cliente: string;
+  status: string;
+  payload: Json;
+  moneda: string;
+  ventas: VentaColaEmbebida | VentaColaEmbebida[] | null;
+};
+
+/** PostgREST devuelve objeto en relaciones 1:1 y lista en 1:N; esto unifica. */
+function comoLista<T>(v: T | T[] | null | undefined): T[] {
+  if (!v) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+/**
+ * Cola de medición en 2 viajes a la base (antes eran 5 en fila):
+ * 1) mediciones en curso + las "sin solicitar" de ventas que esperan medición (vía venta → presupuesto);
+ * 2) presupuestos con su venta, cobros y OTs anidados, en paralelo con los nombres de medidores.
+ */
 export async function listarColaMedicion(): Promise<{
   data: MedicionColaItem[];
   error: Error | null;
 }> {
-  const [medRes, ventasColaRes] = await Promise.all([
+  const [medRes, extraRes] = await Promise.all([
     supabase
       .from("presupuesto_mediciones")
       .select("*")
       .in("estado", ["listo_para_medir", "medido"])
       .order("fecha_programada", { ascending: true, nullsFirst: false }),
-    supabase.from("ventas").select("presupuesto_id").in("estado", ["en_medicion", "senado"]),
+    supabase
+      .from("ventas")
+      .select("presupuesto:presupuestos!ventas_presupuesto_id_fkey(presupuesto_mediciones(*))")
+      .in("estado", ["en_medicion", "senado"])
+      .eq("presupuesto.presupuesto_mediciones.estado", "sin_solicitar"),
   ]);
   if (medRes.error) return { data: [], error: new Error(medRes.error.message) };
-  if (ventasColaRes.error) return { data: [], error: new Error(ventasColaRes.error.message) };
+  if (extraRes.error) return { data: [], error: new Error(extraRes.error.message) };
 
-  const extraIds = [
-    ...new Set(
-      (ventasColaRes.data ?? [])
-        .map((v) => v.presupuesto_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    ),
-  ];
-  const extraMedRes =
-    extraIds.length > 0
-      ? await supabase
-          .from("presupuesto_mediciones")
-          .select("*")
-          .in("presupuesto_id", extraIds)
-          .eq("estado", "sin_solicitar")
-      : { data: [] as typeof medRes.data, error: null };
-  if (extraMedRes.error) return { data: [], error: new Error(extraMedRes.error.message) };
+  type MedicionDb = NonNullable<typeof medRes.data>[number];
+  const extraRows = ((extraRes.data ?? []) as unknown as Array<{
+    presupuesto: { presupuesto_mediciones: MedicionDb | MedicionDb[] | null } | null;
+  }>).flatMap((v) => comoLista(v.presupuesto?.presupuesto_mediciones));
 
   const byPres = new Map<string, ReturnType<typeof mapMedicion>>();
-  for (const row of [...(medRes.data ?? []), ...(extraMedRes.data ?? [])]) {
+  for (const row of [...(medRes.data ?? []), ...extraRows]) {
     byPres.set(row.presupuesto_id, mapMedicion(row));
   }
   const mediciones = [...byPres.values()];
   if (mediciones.length === 0) return { data: [], error: null };
 
   const presIds = mediciones.map((m) => m.presupuesto_id);
-  const [presRes, ventasRes] = await Promise.all([
+  const medidorIds = [
+    ...new Set(mediciones.map((m) => m.medido_por).filter((id): id is string => Boolean(id))),
+  ];
+  const [presRes, usuariosRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select("id,numero,cliente,status,payload,moneda")
-      .in("id", presIds),
-    supabase.from("ventas").select("id,presupuesto_id,estado").in("presupuesto_id", presIds),
+      .select(
+        "id,numero,cliente,status,payload,moneda,ventas!ventas_presupuesto_id_fkey(id,estado,ventas_pagos(venta_id),ordenes_trabajo(id,orden_key,etapa,estado))",
+      )
+      .in("id", presIds)
+      .neq("ventas.ordenes_trabajo.estado", "cancelled"),
+    medidorIds.length > 0
+      ? supabase.from("usuarios").select("id, full_name").in("id", medidorIds)
+      : null,
   ]);
   if (presRes.error) return { data: [], error: new Error(presRes.error.message) };
-  if (ventasRes.error) return { data: [], error: new Error(ventasRes.error.message) };
 
-  const presById = new Map((presRes.data ?? []).map((p) => [p.id, p]));
-  const ventaByPres = new Map(
-    (ventasRes.data ?? []).map((v) => [v.presupuesto_id, v] as const),
-  );
-  const ventaIds = [...new Set((ventasRes.data ?? []).map((v) => v.id))];
+  const presById = new Map<string, PresupuestoColaEmbebido>();
+  const ventaByPres = new Map<string, VentaColaEmbebida>();
+  for (const p of (presRes.data ?? []) as unknown as PresupuestoColaEmbebido[]) {
+    presById.set(p.id, p);
+    const venta = comoLista(p.ventas)[0];
+    if (venta) ventaByPres.set(p.id, venta);
+  }
 
-  const pagosCount = new Map<string, number>();
-  const otsByVenta = new Map<
-    string,
-    Array<{ id: string; ordenKey: string; etapa: string; estado: string }>
-  >();
-  if (ventaIds.length > 0) {
-    const [pagosRes, otsRes] = await Promise.all([
-      supabase.from("ventas_pagos").select("venta_id").in("venta_id", ventaIds),
-      supabase
-        .from("ordenes_trabajo")
-        .select("id,orden_key,venta_id,etapa,estado")
-        .in("venta_id", ventaIds)
-        .neq("estado", "cancelled"),
-    ]);
-    if (pagosRes.error) return { data: [], error: new Error(pagosRes.error.message) };
-    if (otsRes.error) return { data: [], error: new Error(otsRes.error.message) };
-    for (const p of pagosRes.data ?? []) {
-      pagosCount.set(p.venta_id, (pagosCount.get(p.venta_id) ?? 0) + 1);
-    }
-    for (const ot of otsRes.data ?? []) {
-      if (!ot.venta_id) continue;
-      const list = otsByVenta.get(ot.venta_id) ?? [];
-      list.push({
-        id: ot.id,
-        ordenKey: ot.orden_key?.trim() ?? "",
-        etapa: String(ot.etapa),
-        estado: String(ot.estado),
-      });
-      otsByVenta.set(ot.venta_id, list);
+  const nombrePorId = new Map<string, string>();
+  if (usuariosRes && !usuariosRes.error) {
+    for (const u of usuariosRes.data ?? []) {
+      const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
+      if (u.id && name) nombrePorId.set(u.id, name);
     }
   }
 
@@ -436,9 +458,14 @@ export async function listarColaMedicion(): Promise<{
     if (!pres) continue;
     if (pres.status === "rechazado") continue;
     const venta = ventaByPres.get(pres.id) ?? null;
-    const tieneSena = venta ? (pagosCount.get(venta.id) ?? 0) > 0 : false;
+    const tieneSena = venta ? comoLista(venta.ventas_pagos).length > 0 : false;
     if (medicion.estado === "sin_solicitar" && !tieneSena) continue;
-    const ots = venta ? (otsByVenta.get(venta.id) ?? []) : [];
+    const ots = comoLista(venta?.ordenes_trabajo).map((ot) => ({
+      id: ot.id,
+      ordenKey: ot.orden_key?.trim() ?? "",
+      etapa: String(ot.etapa),
+      estado: String(ot.estado),
+    }));
     const otsPendientesDeCorte = ots.filter(
       (ot) => ot.etapa === "medicion" && ot.estado !== "done",
     ).length;
@@ -461,34 +488,15 @@ export async function listarColaMedicion(): Promise<{
       tieneSena,
       ventaId: venta?.id ?? null,
       ventaEstado: (venta?.estado as VentaEstado | undefined) ?? null,
-      direccionObra: direccionDesdePayload(pres.payload as Json),
+      direccionObra: direccionDesdePayload(pres.payload),
       puedeEnviar,
       bloqueoEnvio: motivoBloqueoEnvio(puedeEnviar),
       otsPendientesDeCorte,
       yaEnProduccion,
-      medidoPorNombre: null,
+      medidoPorNombre: medicion.medido_por ? nombrePorId.get(medicion.medido_por) ?? null : null,
       ots: ots.map((ot) => ({ id: ot.id, ordenKey: ot.ordenKey })),
     });
   }
-
-  const medidorIds = [
-    ...new Set(items.map((i) => i.medicion.medido_por).filter((id): id is string => Boolean(id))),
-  ];
-  if (medidorIds.length > 0) {
-    const usuarios = await supabase.from("usuarios").select("id, full_name").in("id", medidorIds);
-    if (!usuarios.error) {
-      const nombrePorId = new Map<string, string>();
-      for (const u of usuarios.data ?? []) {
-        const name = typeof u.full_name === "string" ? u.full_name.trim() : "";
-        if (u.id && name) nombrePorId.set(u.id, name);
-      }
-      for (const item of items) {
-        const id = item.medicion.medido_por;
-        if (id) item.medidoPorNombre = nombrePorId.get(id) ?? null;
-      }
-    }
-  }
-
   return { data: items, error: null };
 }
 

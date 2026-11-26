@@ -29,11 +29,10 @@ import {
   FileText,
   Printer,
 } from "lucide-react";
-import {
-  listPresupuestosResumen,
-  type PresupuestoRowList,
-} from "@/lib/presupuestos-api";
-import { isSupabaseConfigured } from "@/lib/supabase";
+import type { PresupuestoRowList } from "@/lib/presupuestos-api";
+import { queryKeys } from "@/lib/query-client";
+import { useQueryClient } from "@tanstack/react-query";
+import { usePresupuestosResumen } from "@/hooks/usePresupuestosResumen";
 import { VentaCobrosDialog } from "@/components/venta/VentaCobrosDialog";
 import { exportVentasCsv } from "@/lib/reportes-export-api";
 import { etiquetaEtapaOt } from "@/lib/etiquetas-ot";
@@ -73,11 +72,19 @@ function formatoFecha(iso: string): string {
   }
 }
 
+const SIN_FILAS: PresupuestoRowList[] = [];
+const soloAprobadas = (rows: PresupuestoRowList[]) => rows.filter((r) => r.status === "aprobado");
+
 export function VistaAdministracion() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [filas, setFilas] = useState<PresupuestoRowList[]>([]);
-  const [cargando, setCargando] = useState(true);
+  const queryClient = useQueryClient();
+  // Ventas aprobadas, en caché compartida con Clientes: al volver se muestran al instante.
+  const ventasQuery = usePresupuestosResumen(soloAprobadas);
+  const filas = ventasQuery.data ?? SIN_FILAS;
+  const cargando = ventasQuery.isPending && ventasQuery.fetchStatus !== "idle";
+  /** Incluye la revalidación por detrás: para abrir un `pid` hay que tener datos frescos. */
+  const actualizando = ventasQuery.isFetching;
   const [busqueda, setBusqueda] = useState("");
   const [filtros, setFiltros] = useState<FiltrosLista>(FILTROS_LISTA_VACIOS);
   const [orden, setOrden] = useState<OrdenLista>(ORDEN_LISTA_DEFAULT);
@@ -85,27 +92,11 @@ export function VistaAdministracion() {
   const [exportBusy, setExportBusy] = useState(false);
   const [filaCobros, setFilaCobros] = useState<PresupuestoRowList | null>(null);
 
+  /** Tras un cobro: refresca Ventas y Presupuestos (saldo) y marca las OTs para revalidar. */
   const recargar = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setFilas([]);
-      setCargando(false);
-      return;
-    }
-    setCargando(true);
-    const { data, error } = await listPresupuestosResumen();
-    if (error) {
-      toast.error(error.message);
-      setFilas([]);
-    } else {
-      const aprob = (data ?? []).filter((r) => r.status === "aprobado");
-      setFilas(aprob);
-    }
-    setCargando(false);
-  }, []);
-
-  useEffect(() => {
-    void recargar();
-  }, [recargar]);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ots });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+  }, [queryClient]);
 
   const limpiarPid = useCallback(() => {
     setSearchParams(
@@ -121,7 +112,7 @@ export function VistaAdministracion() {
 
   useEffect(() => {
     const pid = searchParams.get("pid");
-    if (!pid || cargando) return;
+    if (!pid || cargando || actualizando) return;
     const fila = filas.find((r) => r.id === pid);
     if (!fila) {
       toast.error("No hay una venta abierta para ese presupuesto.");
@@ -131,7 +122,7 @@ export function VistaAdministracion() {
     setFilaCobros(fila);
     setCobrosAbierto(true);
     limpiarPid();
-  }, [cargando, filas, searchParams, limpiarPid]);
+  }, [cargando, actualizando, filas, searchParams, limpiarPid]);
 
   const vendedoresOpciones = useMemo(() => opcionesVendedores(filas), [filas]);
   const clientesOpciones = useMemo(() => opcionesClientes(filas), [filas]);

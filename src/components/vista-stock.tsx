@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,14 +45,33 @@ import {
 import { downloadCsv, rowsToCsv } from "@/lib/export-csv";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
+const SIN_MATERIALES: MaterialOption[] = [];
+const SIN_PRODUCTOS: StockProductoUnidad[] = [];
+
 export function VistaStock() {
   const { user } = useAuth();
   const { chapas, setChapas, reloadChapas, slabsLoading } = useStock();
   const [remitoOpen, setRemitoOpen] = useState(false);
-  const [materialesCatalogo, setMaterialesCatalogo] = useState<MaterialOption[]>([]);
-  const [productosUnidades, setProductosUnidades] = useState<StockProductoUnidad[]>([]);
-  const [productosLoading, setProductosLoading] = useState(false);
-  const [productosError, setProductosError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  // Catálogo de materiales y productos por unidad en caché.
+  const materialesQuery = useQuery({
+    queryKey: queryKeys.stockMateriales,
+    enabled: isSupabaseConfigured,
+    queryFn: () => fetchMaterialsForStock().catch((): MaterialOption[] => []),
+  });
+  const productosQuery = useQuery({
+    queryKey: queryKeys.stockProductos,
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const { data, error } = await listStockProductosUnidades();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const materialesCatalogo = materialesQuery.data ?? SIN_MATERIALES;
+  const productosUnidades = productosQuery.data ?? SIN_PRODUCTOS;
+  const productosLoading = productosQuery.isPending && productosQuery.fetchStatus !== "idle";
+  const productosError = productosQuery.error?.message ?? null;
   const [historialBump, setHistorialBump] = useState(0);
   const [catalogoOpen, setCatalogoOpen] = useState(false);
   const [recortesOpen, setRecortesOpen] = useState(false);
@@ -79,51 +100,28 @@ export function VistaStock() {
     [setSearchParams],
   );
 
-  const reloadMateriales = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setMaterialesCatalogo([]);
-      return;
-    }
-    try {
-      setMaterialesCatalogo(await fetchMaterialsForStock());
-    } catch {
-      setMaterialesCatalogo([]);
-    }
-  }, []);
-
-  const reloadProductos = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setProductosUnidades([]);
-      setProductosError(null);
-      return;
-    }
-    setProductosLoading(true);
-    const { data, error } = await listStockProductosUnidades();
-    setProductosLoading(false);
-    if (error) {
-      setProductosError(error.message);
-      setProductosUnidades([]);
-      return;
-    }
-    setProductosError(null);
-    setProductosUnidades(data);
-  }, []);
-
+  // Las placas se cargan al iniciar la app y quedan en caché: al entrar se muestran ya
+  // y esto solo las revalida por detrás.
   useEffect(() => {
     void reloadChapas();
   }, [reloadChapas]);
 
+  // Si cambia la cantidad de placas (alta por remito, baja por rotura), el stock agregado
+  // del catálogo cambia. Se salta el primer render: la caché ya revalida al entrar.
+  const cantChapasPrevia = useRef<number | null>(null);
   useEffect(() => {
-    void reloadMateriales();
-  }, [reloadMateriales, chapas.length, historialBump]);
+    const previa = cantChapasPrevia.current;
+    cantChapasPrevia.current = chapas.length;
+    if (previa === null || previa === chapas.length) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.stockMateriales });
+  }, [chapas.length, queryClient]);
 
-  useEffect(() => {
-    void reloadProductos();
-  }, [reloadProductos, historialBump]);
-
+  /** Tras un remito o movimiento: refresca historial, catálogo y productos (las placas las recarga quien las cambia). */
   const refreshHistorialRelated = useCallback(() => {
     setHistorialBump((n) => n + 1);
-  }, []);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.stockMateriales });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.stockProductos });
+  }, [queryClient]);
 
   const reloadRemitosHistoria = useCallback(async () => {
     refreshHistorialRelated();
@@ -338,7 +336,7 @@ export function VistaStock() {
           <MaterialesCatalogoTab
             materiales={materialesCatalogo}
             onMaterialCreated={(m) => {
-              setMaterialesCatalogo((prev) =>
+              queryClient.setQueryData<MaterialOption[]>(queryKeys.stockMateriales, (prev = []) =>
                 [...prev, m].sort((a, b) => a.name.localeCompare(b.name, "es")),
               );
             }}

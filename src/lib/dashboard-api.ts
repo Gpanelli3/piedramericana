@@ -1,5 +1,4 @@
-import { limitePresupuestoDormido, listPresupuestosResumen } from "@/lib/presupuestos-api";
-import { loadOtKanbanView } from "@/lib/ventas-api";
+import { limitePresupuestoDormido } from "@/lib/presupuestos-api";
 import { supabase } from "@/lib/supabase";
 import { etiquetaEtapaKanban } from "@/lib/etiquetas-ot";
 
@@ -31,16 +30,44 @@ function enDias(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+type OtDashboard = {
+  id: string;
+  titulo: string | null;
+  etapa: unknown;
+  fecha_programada: string | null;
+  venta: { presupuesto: { numero: string; cliente: string } | null } | null;
+};
+
+/**
+ * Resumen del Dashboard en un solo viaje: solo conteos y las OTs activas con su presupuesto
+ * anidado (antes bajaba la lista completa de presupuestos con saldos y hacía hasta 7 vueltas).
+ */
 export async function fetchDashboardResumen(): Promise<{
   data: DashboardResumen | null;
   error: Error | null;
 }> {
-  const [presRes, otRes, pendientesRes, medicionRes] = await Promise.all([
-    listPresupuestosResumen(),
-    loadOtKanbanView(),
+  const [aprobadosRes, sinSenaRes, otRes, pendientesRes, medicionRes] = await Promise.all([
     supabase
       .from("presupuestos")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
+      .eq("status", "aprobado"),
+    // Aprobados que todavía no tienen venta (anti-join: la venta embebida es null).
+    supabase
+      .from("presupuestos")
+      .select("id, ventas!ventas_presupuesto_id_fkey!left(id)", { count: "exact", head: true })
+      .eq("status", "aprobado")
+      .is("ventas", null),
+    supabase
+      .from("ordenes_trabajo")
+      .select(
+        "id,titulo,etapa,fecha_programada,venta:ventas!ordenes_trabajo_venta_id_fkey(presupuesto:presupuestos!ventas_presupuesto_id_fkey(numero,cliente))",
+      )
+      .not("venta_id", "is", null)
+      .neq("estado", "cancelled")
+      .neq("estado", "done"),
+    supabase
+      .from("presupuestos")
+      .select("id", { count: "exact", head: true })
       .eq("status", "pendiente")
       .lte("created_at", limitePresupuestoDormido()),
     supabase
@@ -49,37 +76,24 @@ export async function fetchDashboardResumen(): Promise<{
       .eq("estado", "listo_para_medir"),
   ]);
 
-  if (presRes.error) return { data: null, error: presRes.error };
-  if (otRes.error) return { data: null, error: otRes.error };
-  if (pendientesRes.error) return { data: null, error: new Error(pendientesRes.error.message) };
-  if (medicionRes.error) return { data: null, error: new Error(medicionRes.error.message) };
-
-  const presupuestos = presRes.data ?? [];
-  const aprobados = presupuestos.filter((p) => p.status === "aprobado");
-
-  let sinSena = 0;
-  for (const r of aprobados) {
-    if (r.venta_estado === null) sinSena += 1;
+  for (const r of [aprobadosRes, sinSenaRes, otRes, pendientesRes, medicionRes]) {
+    if (r.error) return { data: null, error: new Error(r.error.message) };
   }
 
-  const ots = otRes.data ?? [];
-  const otsActivas = ots.length;
-  const otsEnMedicion = medicionRes.count ?? 0;
-  const otsEnProduccion = ots.filter((t) => t.orden.etapa === "corte" || t.orden.etapa === "produccion").length;
-
+  const ots = (otRes.data ?? []) as unknown as OtDashboard[];
   const hoy = hoyIso();
   const limite = enDias(7);
   const proximasEntregas: ProximaEntregaRow[] = ots
     .filter((t) => {
-      const f = t.orden.fecha_programada;
+      const f = t.fecha_programada;
       return f && f >= hoy && f <= limite;
     })
     .map((t) => ({
-      id: t.orden.id,
-      titulo: t.orden.titulo?.trim() || t.presupuestoFuente?.numero || "OT",
-      cliente: t.presupuestoFuente?.cliente?.trim() || "—",
-      fecha: t.orden.fecha_programada as string,
-      etapa: etiquetaEtapaKanban(String(t.orden.etapa)),
+      id: t.id,
+      titulo: t.titulo?.trim() || t.venta?.presupuesto?.numero || "OT",
+      cliente: t.venta?.presupuesto?.cliente?.trim() || "—",
+      fecha: t.fecha_programada as string,
+      etapa: etiquetaEtapaKanban(String(t.etapa)),
     }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
     .slice(0, 5);
@@ -87,11 +101,11 @@ export async function fetchDashboardResumen(): Promise<{
   return {
     data: {
       presupuestosDormidos: pendientesRes.count ?? 0,
-      presupuestosAprobados: aprobados.length,
-      otsActivas,
-      otsEnMedicion,
-      otsEnProduccion,
-      ventasSinSena: sinSena,
+      presupuestosAprobados: aprobadosRes.count ?? 0,
+      otsActivas: ots.length,
+      otsEnMedicion: medicionRes.count ?? 0,
+      otsEnProduccion: ots.filter((t) => t.etapa === "corte" || t.etapa === "produccion").length,
+      ventasSinSena: sinSenaRes.count ?? 0,
       proximasEntregas,
     },
     error: null,

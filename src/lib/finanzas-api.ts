@@ -437,7 +437,11 @@ export async function resumenCajaDelDia(fecha: string): Promise<{
   } | null;
   error: Error | null;
 }> {
-  const { data: movs, error } = await listMovimientos({ desde: fecha, hasta: fecha, limit: 500 });
+  // Movimientos y cobros del día no dependen entre sí: van en paralelo.
+  const [{ data: movs, error }, { data: pagos, error: pErr }] = await Promise.all([
+    listMovimientos({ desde: fecha, hasta: fecha, limit: 500 }),
+    supabase.from("ventas_pagos").select("monto, metodo").eq("fecha", fecha),
+  ]);
   if (error) return { data: null, error };
 
   let ingresos = 0;
@@ -449,10 +453,6 @@ export async function resumenCajaDelDia(fecha: string): Promise<{
     else if (signo < 0) egresos += val;
   }
 
-  const { data: pagos, error: pErr } = await supabase
-    .from("ventas_pagos")
-    .select("monto, metodo")
-    .eq("fecha", fecha);
   if (pErr) return { data: null, error: new Error(pErr.message) };
 
   const porMetodo: Record<string, number> = {};
@@ -1001,88 +1001,74 @@ export type ContraparteInfo = {
 };
 
 /** Cliente real de cobros de venta y exportaciones. */
+type PagoContraparte = {
+  id: string;
+  venta: {
+    presupuesto: { numero: string; cliente: string | null; client: { name: string | null } | null } | null;
+  } | null;
+};
+type ExportacionContraparte = {
+  id: string;
+  descripcion: string | null;
+  nro_factura: string | null;
+  client: { name: string | null } | null;
+};
+
+/**
+ * Nombre del cliente (y nro de presupuesto/factura) de cada movimiento, en un solo viaje:
+ * cobro → venta → presupuesto → cliente y exportación → cliente van anidados y en paralelo.
+ */
 export async function resolverContrapartesMovimientos(
   movs: MovimientoCajaRow[],
 ): Promise<Map<string, ContraparteInfo>> {
   const map = new Map<string, ContraparteInfo>();
-  const pagoIds = [
+  const idsDe = (tipo: string) => [
     ...new Set(
       movs
-        .filter((m) => m.referencia_tipo === "venta_pago" && m.referencia_id)
+        .filter((m) => m.referencia_tipo === tipo && m.referencia_id)
         .map((m) => m.referencia_id as string),
     ),
   ];
-  const expIds = [
-    ...new Set(
-      movs
-        .filter((m) => m.referencia_tipo === "exportacion" && m.referencia_id)
-        .map((m) => m.referencia_id as string),
-    ),
-  ];
+  const pagoIds = idsDe("venta_pago");
+  const expIds = idsDe("exportacion");
 
-  if (pagoIds.length > 0) {
-    const pagosRes = await supabase.from("ventas_pagos").select("id, venta_id").in("id", pagoIds);
-    const ventaIds = [...new Set((pagosRes.data ?? []).map((p) => p.venta_id))];
-    const ventasRes =
-      ventaIds.length > 0
-        ? await supabase.from("ventas").select("id, presupuesto_id").in("id", ventaIds)
-        : { data: [] as Array<{ id: string; presupuesto_id: string }> };
-    const presIds = [...new Set((ventasRes.data ?? []).map((v) => v.presupuesto_id))];
-    const presRes =
-      presIds.length > 0
-        ? await supabase.from("presupuestos").select("id, cliente, numero, client_id").in("id", presIds)
-        : { data: [] as Array<{ id: string; cliente: string; numero: string; client_id: string | null }> };
+  const [pagosRes, expRes] = await Promise.all([
+    pagoIds.length > 0
+      ? supabase
+          .from("ventas_pagos")
+          .select(
+            "id, venta:ventas!ventas_pagos_venta_id_fkey(presupuesto:presupuestos!ventas_presupuesto_id_fkey(numero, cliente, client:clients!presupuestos_client_id_fkey(name)))",
+          )
+          .in("id", pagoIds)
+      : null,
+    expIds.length > 0
+      ? supabase
+          .from("exportaciones")
+          .select("id, descripcion, nro_factura, client:clients!exportaciones_client_id_fkey(name)")
+          .in("id", expIds)
+      : null,
+  ]);
 
-    const clientIds = [
-      ...new Set((presRes.data ?? []).map((p) => p.client_id).filter((id): id is string => Boolean(id))),
-    ];
-    const cliRes =
-      clientIds.length > 0
-        ? await supabase.from("clients").select("id, name").in("id", clientIds)
-        : { data: [] as Array<{ id: string; name: string | null }> };
-    const clientNameById = new Map((cliRes.data ?? []).map((c) => [c.id, c.name?.trim() || ""]));
+  const pagoById = new Map(
+    ((pagosRes?.data ?? []) as unknown as PagoContraparte[]).map((p) => [p.id, p]),
+  );
+  const expById = new Map(
+    ((expRes?.data ?? []) as unknown as ExportacionContraparte[]).map((e) => [e.id, e]),
+  );
 
-    const pagoById = new Map((pagosRes.data ?? []).map((p) => [p.id, p]));
-    const ventaById = new Map((ventasRes.data ?? []).map((v) => [v.id, v]));
-    const presById = new Map((presRes.data ?? []).map((p) => [p.id, p]));
-
-    for (const m of movs) {
-      if (m.referencia_tipo !== "venta_pago" || !m.referencia_id) continue;
-      const pago = pagoById.get(m.referencia_id);
-      const venta = pago ? ventaById.get(pago.venta_id) : undefined;
-      const pres = venta ? presById.get(venta.presupuesto_id) : undefined;
-      const cliente =
-        pres?.cliente?.trim() ||
-        (pres?.client_id ? clientNameById.get(pres.client_id) : null) ||
-        "";
-      if (!cliente) continue;
-      map.set(m.id, { nombre: cliente, subtitulo: pres?.numero ?? null });
-    }
-  }
-
-  if (expIds.length > 0) {
-    const expRes = await supabase
-      .from("exportaciones")
-      .select("id, client_id, descripcion, nro_factura")
-      .in("id", expIds);
-    const clientIds = [...new Set((expRes.data ?? []).map((e) => e.client_id))];
-    const cliRes =
-      clientIds.length > 0
-        ? await supabase.from("clients").select("id, name").in("id", clientIds)
-        : { data: [] as Array<{ id: string; name: string | null }> };
-    const nameById = new Map((cliRes.data ?? []).map((c) => [c.id, c.name?.trim() || ""]));
-    const expById = new Map((expRes.data ?? []).map((e) => [e.id, e]));
-    for (const m of movs) {
-      if (m.referencia_tipo !== "exportacion" || !m.referencia_id) continue;
+  for (const m of movs) {
+    if (!m.referencia_id) continue;
+    if (m.referencia_tipo === "venta_pago") {
+      const pres = pagoById.get(m.referencia_id)?.venta?.presupuesto;
+      const cliente = pres?.cliente?.trim() || pres?.client?.name?.trim() || "";
+      if (cliente) map.set(m.id, { nombre: cliente, subtitulo: pres?.numero ?? null });
+    } else if (m.referencia_tipo === "exportacion") {
       const exp = expById.get(m.referencia_id);
-      const nombre = exp ? nameById.get(exp.client_id) : null;
-      if (!nombre) continue;
-      map.set(m.id, {
-        nombre,
-        subtitulo: exp?.nro_factura || exp?.descripcion || null,
-      });
+      const nombre = exp?.client?.name?.trim() || "";
+      if (nombre) {
+        map.set(m.id, { nombre, subtitulo: exp?.nro_factura || exp?.descripcion || null });
+      }
     }
   }
-
   return map;
 }

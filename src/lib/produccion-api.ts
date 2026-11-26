@@ -11,7 +11,6 @@ import { bloquearChapaPorRotura, crearPedazoBloqueadoDePieza, bajaChapaPorRotura
 import { confirmarCorteDeOt, sincronizarPlanCorteOt } from "@/lib/plan-corte-stock";
 import { evaluarEnvioAProduccion } from "@/lib/medicion-api";
 import { motivoBloqueoEnvio } from "@/lib/medicion-reglas";
-import { MOTIVO_BLOQUEO_BACHA } from "@/lib/bacha-reglas";
 import type {
   Database,
   EtapaOtKanban,
@@ -166,39 +165,7 @@ export async function enrichOts(
 
   const ventaIds = [...new Set(list.map((j) => j.venta_id).filter(Boolean) as string[])];
   const ventaById = new Map<string, { id: string; estado: VentaEstado; presupuesto_id: string }>();
-
-  if (ventaIds.length > 0) {
-    const { data: ventas, error: vErr } = await supabase
-      .from("ventas")
-      .select("id,estado,presupuesto_id")
-      .in("id", ventaIds);
-    if (vErr) return { data: [], error: new Error(vErr.message) };
-    for (const v of ventas ?? []) {
-      ventaById.set(v.id, {
-        id: v.id,
-        estado: v.estado as VentaEstado,
-        presupuesto_id: v.presupuesto_id,
-      });
-    }
-  }
-
-  const presIds = [...new Set(Array.from(ventaById.values()).map((v) => v.presupuesto_id))];
   const fuentePorId = new Map<string, OtKanbanFuentePayload>();
-  if (presIds.length > 0) {
-    const { data: presRows, error: pErr } = await supabase
-      .from("presupuestos")
-      .select("id,numero,cliente,payload")
-      .in("id", presIds);
-    if (pErr) return { data: [], error: new Error(pErr.message) };
-    for (const row of (presRows ?? []) as OtKanbanFuentePayload[]) {
-      fuentePorId.set(row.id, row);
-    }
-  }
-
-  const triosRes = await fetchM2TriosPorPresupuestos(
-    [...fuentePorId.values()].map((p) => ({ id: p.id, payload: p.payload })),
-  );
-  if (triosRes.error) return { data: [], error: triosRes.error };
 
   const origenIds = [
     ...new Set(list.map((o) => o.ot_origen_id).filter(Boolean) as string[]),
@@ -208,15 +175,42 @@ export async function enrichOts(
     origenTituloById.set(o.id, o.titulo);
   }
   const missingOrigen = origenIds.filter((id) => !origenTituloById.has(id));
-  if (missingOrigen.length > 0) {
-    const { data: origenes } = await supabase
-      .from("ordenes_trabajo")
-      .select("id,titulo")
-      .in("id", missingOrigen);
-    for (const o of origenes ?? []) {
-      origenTituloById.set(o.id, o.titulo);
+
+  // Venta + presupuesto en un solo viaje (FK 1:1) y, en paralelo, los títulos de OTs origen.
+  const [ventasRes, origenesRes] = await Promise.all([
+    ventaIds.length > 0
+      ? supabase
+          .from("ventas")
+          .select(
+            "id,estado,presupuesto_id,presupuesto:presupuestos!ventas_presupuesto_id_fkey(id,numero,cliente,payload)",
+          )
+          .in("id", ventaIds)
+      : null,
+    missingOrigen.length > 0
+      ? supabase.from("ordenes_trabajo").select("id,titulo").in("id", missingOrigen)
+      : null,
+  ]);
+
+  if (ventasRes) {
+    if (ventasRes.error) return { data: [], error: new Error(ventasRes.error.message) };
+    for (const v of ventasRes.data ?? []) {
+      ventaById.set(v.id, {
+        id: v.id,
+        estado: v.estado as VentaEstado,
+        presupuesto_id: v.presupuesto_id,
+      });
+      const pres = v.presupuesto as OtKanbanFuentePayload | null;
+      if (pres) fuentePorId.set(pres.id, pres);
     }
   }
+  for (const o of origenesRes?.data ?? []) {
+    origenTituloById.set(o.id, o.titulo);
+  }
+
+  const triosRes = await fetchM2TriosPorPresupuestos(
+    [...fuentePorId.values()].map((p) => ({ id: p.id, payload: p.payload })),
+  );
+  if (triosRes.error) return { data: [], error: triosRes.error };
 
   const data: OtProduccionItem[] = list.map((orden) => {
     const venta = orden.venta_id ? ventaById.get(orden.venta_id) ?? null : null;
@@ -351,8 +345,6 @@ export async function getOtsAgrupadas(): Promise<{
   data: VentaGrupoOt[];
   error: Error | null;
 }> {
-  await consolidarReposicionesAbiertas();
-  await liberarBloqueoPorBachaPendiente();
   const { data, error } = await supabase
     .from("ordenes_trabajo")
     .select("*")
@@ -373,8 +365,6 @@ type FiltroTab = Exclude<ProduccionOtFiltro, "general">;
 export async function getOtsPorFiltro(
   filtro: FiltroTab,
 ): Promise<{ data: OtProduccionItem[]; error: Error | null }> {
-  await consolidarReposicionesAbiertas();
-  await liberarBloqueoPorBachaPendiente();
   let q = supabase.from("ordenes_trabajo").select("*").not("venta_id", "is", null);
 
   if (filtro === "entregadas") {
@@ -599,19 +589,6 @@ async function assertPuedeSalirDeMedicion(
   const motivo = motivoBloqueoEnvio(evalRes.data);
   if (motivo) return new Error(motivo);
   return null;
-}
-
-/** Si una OT quedó bloqueada por bacha pendiente, se desbloquea: solo se avisa. */
-async function liberarBloqueoPorBachaPendiente(): Promise<void> {
-  await supabase
-    .from("ordenes_trabajo")
-    .update({
-      bloqueada: false,
-      motivo_bloqueo: null,
-      actualizado_en: new Date().toISOString(),
-    })
-    .eq("bloqueada", true)
-    .eq("motivo_bloqueo", MOTIVO_BLOQUEO_BACHA);
 }
 
 export async function enviarPresupuestoAProduccion(presupuestoId: string): Promise<{

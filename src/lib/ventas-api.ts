@@ -236,10 +236,14 @@ export async function mergeVentasResumenIntoPresupuestos<
   if (rows.length === 0) return [];
 
   const presIds = [...new Set(rows.map((r) => r.id))];
-  const { data: ventas, error } = await supabase
-    .from("ventas")
-    .select("id,presupuesto_id,estado")
-    .in("presupuesto_id", presIds);
+  // Las OTs no dependen de las ventas: se piden en paralelo para ahorrar un viaje.
+  const [{ data: ventas, error }, otRes] = await Promise.all([
+    supabase.from("ventas").select("id,presupuesto_id,estado").in("presupuesto_id", presIds),
+    supabase
+      .from("ordenes_trabajo")
+      .select("id,venta_id,etapa,estado")
+      .not("venta_id", "is", null),
+  ]);
   if (error) throw new Error(error.message);
 
   const byPres = new Map<string, VentaRow>();
@@ -263,10 +267,6 @@ export async function mergeVentasResumenIntoPresupuestos<
   const pagos = pagosRes.data ?? [];
 
   /** Si la tabla OT aún no existe en el proyecto, el listado no debe fallar. */
-  const otRes = await supabase
-    .from("ordenes_trabajo")
-    .select("id,venta_id,etapa,estado")
-    .not("venta_id", "is", null);
   const filasOt = !otRes.error && otRes.data ? otRes.data : [];
 
   const otPorVenta = new Map<string, OtResumenPorVenta>();
@@ -647,50 +647,6 @@ async function getOrCreateVentaParaPago(
  * Repara casos donde ya hay pagos en `ventas_pagos` pero nunca se creó la fila en `ordenes_trabajo`
  * (p. ej. falló el insert cuando aún no existía la tabla).
  */
-async function repairOrdenesTrabajoFaltantes(): Promise<{ error: Error | null }> {
-  const { data: pagos, error: pErr } = await supabase.from("ventas_pagos").select("venta_id");
-  if (pErr) return { error: new Error(pErr.message) };
-  const ventaIdsConPago = [
-    ...new Set((pagos ?? []).map((p) => p.venta_id).filter(Boolean)),
-  ] as string[];
-  if (ventaIdsConPago.length === 0) return { error: null };
-
-  const { data: ots, error: oErr } = await supabase
-    .from("ordenes_trabajo")
-    .select("venta_id")
-    .in("venta_id", ventaIdsConPago);
-  if (oErr) return { error: new Error(oErr.message) };
-  const conOt = new Set((ots ?? []).map((o) => o.venta_id).filter(Boolean));
-
-  const faltantes = ventaIdsConPago.filter((v) => !conOt.has(v));
-  for (const ventaId of faltantes) {
-    const { data: venta, error: vE } = await supabase
-      .from("ventas")
-      .select("presupuesto_id")
-      .eq("id", ventaId)
-      .maybeSingle();
-    if (vE || !venta?.presupuesto_id) continue;
-
-    const { data: pres, error: prE } = await supabase
-      .from("presupuestos")
-      .select("numero,cliente,payload")
-      .eq("id", venta.presupuesto_id)
-      .maybeSingle();
-    if (prE || !pres) continue;
-
-    const row = pres as Pick<PresupuestoRow, "numero" | "cliente" | "payload">;
-    const r = await crearJobOtSiAusente({
-      ventaId,
-      presupuestoNumero: row.numero,
-      clienteNombre: row.cliente,
-      payload: row.payload as Json,
-      presupuestoId: venta.presupuesto_id,
-    });
-    if (r.error) return { error: r.error };
-  }
-  return { error: null };
-}
-
 export type DeudaClienteVenta = {
   presupuestoId: string;
   numero: string;
@@ -1050,19 +1006,6 @@ export async function marcarVentaEntregado(ventaId: string): Promise<{ error: Er
 
 export type OtKanbanFuentePayload = Pick<PresupuestoRow, "id" | "numero" | "cliente" | "payload">;
 
-export async function fetchPresupuestoResumenOt(
-  ids: string[],
-): Promise<{ data: OtKanbanFuentePayload[]; error: Error | null }> {
-  const unique = [...new Set(ids)];
-  if (unique.length === 0) return { data: [], error: null };
-  const { data, error } = await supabase
-    .from("presupuestos")
-    .select("id,numero,cliente,payload")
-    .in("id", unique);
-  if (error) return { data: [], error: new Error(error.message) };
-  return { data: (data ?? []) as OtKanbanFuentePayload[], error: null };
-}
-
 export function textoDesdeOtPayloadClienteMaterial(
   pres: OtKanbanFuentePayload | null | undefined,
 ): { materialLabel: string; m2Display: string; vendedorLabel: string } {
@@ -1086,63 +1029,6 @@ export function textoDesdeOtPayloadClienteMaterial(
     m2Display: m2,
     vendedorLabel,
   };
-}
-
-export async function listOtJobsKanbanRows(): Promise<{
-  data: OrdenTrabajoRow[] | null;
-  error: Error | null;
-}> {
-  const { data, error } = await supabase
-    .from("ordenes_trabajo")
-    .select("*")
-    .not("venta_id", "is", null)
-    .neq("estado", "cancelled")
-    .neq("estado", "done");
-
-  return {
-    data: (data as OrdenTrabajoRow[] | null) ?? null,
-    error: error ? new Error(error.message) : null,
-  };
-}
-
-export type OtTarjeta = {
-  orden: OrdenTrabajoRow;
-  presupuestoFuente: OtKanbanFuentePayload | null;
-};
-
-export async function loadOtKanbanView(): Promise<{ data: OtTarjeta[]; error: Error | null }> {
-  const rep = await repairOrdenesTrabajoFaltantes();
-  if (rep.error) return { data: [], error: rep.error };
-
-  const { data: otsList, error: jErr } = await listOtJobsKanbanRows();
-  if (jErr) return { data: [], error: jErr };
-  const list = otsList ?? [];
-  if (list.length === 0) return { data: [], error: null };
-
-  const ventaIds = [...new Set(list.map((j) => j.venta_id).filter(Boolean) as string[])];
-  const { data: ventas, error: vErr } = await supabase.from("ventas").select("id,presupuesto_id").in("id", ventaIds);
-  if (vErr) return { data: [], error: new Error(vErr.message) };
-
-  const presupuestoPorVenta = new Map<string, string>();
-  for (const v of ventas ?? []) {
-    presupuestoPorVenta.set(v.id, v.presupuesto_id);
-  }
-
-  const presIds = [...new Set(Array.from(presupuestoPorVenta.values()))];
-  const presRes = await fetchPresupuestoResumenOt(presIds);
-  if (presRes.error) return { data: [], error: presRes.error };
-
-  const fuentePorId = new Map<string, OtKanbanFuentePayload>();
-  for (const row of presRes.data) fuentePorId.set(row.id, row);
-
-  const merged: OtTarjeta[] = list.map((orden) => {
-    const vid = orden.venta_id as string | null;
-    const pid = vid ? presupuestoPorVenta.get(vid) : undefined;
-    const presupuestoFuente = pid ? fuentePorId.get(pid) ?? null : null;
-    return { orden, presupuestoFuente };
-  });
-
-  return { data: merged, error: null };
 }
 
 export type OtPanelResumen = {

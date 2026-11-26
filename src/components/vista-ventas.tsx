@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { PresupuestoWizard } from "@/components/presupuesto/PresupuestoWizard";
 import {
@@ -22,11 +23,16 @@ import { aprobarPresupuestoConVentaInicial } from "@/lib/ventas-api";
 import { enviarAProduccionSiCorresponde } from "@/lib/produccion-api";
 import {
   listarColaMedicion,
-  listarMedicionesPorPresupuestos,
+  listarEstadosMedicion,
   type MedicionColaItem,
 } from "@/lib/medicion-api";
 import type { MedicionEstado } from "@/lib/medicion-reglas";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { queryKeys } from "@/lib/query-client";
+
+const SIN_FILAS: PresupuestoRowLista[] = [];
+const SIN_MEDICIONES: Record<string, MedicionEstado> = {};
+const SIN_CONFORMIDAD: MedicionColaItem[] = [];
 
 function parseTab(v: string | null): PresupuestoFiltroTab {
   if (v === "aprobados" || v === "todos" || v === "dormidos") return v;
@@ -42,11 +48,35 @@ export function VistaVentas() {
   const editPresupuestoId = searchParams.get("id");
   const tab = useMemo(() => parseTab(searchParams.get("ft")), [searchParams]);
 
-  const [rows, setRows] = useState<PresupuestoRowLista[]>([]);
-  const [listaCargando, setListaCargando] = useState(true);
-  const [medicionPorId, setMedicionPorId] = useState<Record<string, MedicionEstado>>({});
+  const queryClient = useQueryClient();
+  // Lista, estados de medición y cola de conformidad van en paralelo y quedan en caché:
+  // al volver a Ventas se muestra lo último y se actualiza por detrás.
+  const listaQuery = useQuery({
+    queryKey: queryKeys.ventasLista,
+    enabled: isSupabaseConfigured,
+    queryFn: async () => {
+      const [lista, med, cola] = await Promise.all([
+        listPresupuestosLista(),
+        listarEstadosMedicion(),
+        listarColaMedicion(),
+      ]);
+      if (lista.error) throw lista.error;
+      return {
+        rows: lista.data ?? [],
+        medicionPorId: med.error ? {} : med.data,
+        conformidadItems: cola.error ? [] : cola.data.filter(esperaConformidad),
+      };
+    },
+  });
+  useEffect(() => {
+    if (listaQuery.error) toast.error(listaQuery.error.message);
+  }, [listaQuery.error]);
+
+  const rows = listaQuery.data?.rows ?? SIN_FILAS;
+  const listaCargando = listaQuery.isPending && listaQuery.fetchStatus !== "idle";
+  const medicionPorId = listaQuery.data?.medicionPorId ?? SIN_MEDICIONES;
   /** Presupuestos donde el vendedor tiene que confirmar con el cliente el importe que cambió al medir. */
-  const [conformidadItems, setConformidadItems] = useState<MedicionColaItem[]>([]);
+  const conformidadItems = listaQuery.data?.conformidadItems ?? SIN_CONFORMIDAD;
   const aConfirmarIds = useMemo(
     () => new Set(conformidadItems.map((i) => i.presupuestoId)),
     [conformidadItems],
@@ -62,37 +92,11 @@ export function VistaVentas() {
   const [chapasPendientes, setChapasPendientes] = useState<ChapaReservaPendiente[]>([]);
   const [reemplazoOpen, setReemplazoOpen] = useState(false);
 
+  /** Tras aprobar, eliminar o editar: refresca Ventas y marca las OTs para revalidar. */
   const refreshLista = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setRows([]);
-      setListaCargando(false);
-      return;
-    }
-    setListaCargando(true);
-    const { data, error } = await listPresupuestosLista();
-    if (error) {
-      toast.error(error.message);
-      setRows([]);
-    } else {
-      setRows(data ?? []);
-      const ids = (data ?? []).map((r) => r.id);
-      const [med, cola] = await Promise.all([
-        listarMedicionesPorPresupuestos(ids),
-        listarColaMedicion(),
-      ]);
-      if (!med.error) {
-        const map: Record<string, MedicionEstado> = {};
-        for (const [id, row] of med.data) map[id] = row.estado;
-        setMedicionPorId(map);
-      }
-      if (!cola.error) setConformidadItems(cola.data.filter(esperaConformidad));
-    }
-    setListaCargando(false);
-  }, []);
-
-  useEffect(() => {
-    void refreshLista();
-  }, [refreshLista]);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ots });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.ventas });
+  }, [queryClient]);
 
   const limpiarRid = useCallback(() => {
     setSearchParams(

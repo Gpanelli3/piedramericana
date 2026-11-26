@@ -167,8 +167,10 @@ export async function listPresupuestosLista(): Promise<{
     };
   });
   try {
-    const merged = await mergeVentasResumenIntoPresupuestos(base);
-    const nombrePorId = await nombresVendedoresPorIds(merged.map((r) => r.created_by));
+    const [merged, nombrePorId] = await Promise.all([
+      mergeVentasResumenIntoPresupuestos(base),
+      nombresVendedoresPorIds(base.map((r) => r.created_by)),
+    ]);
     const filas: PresupuestoRowLista[] = conNombreVendedor(merged, nombrePorId).map((r) => ({
       id: r.id,
       numero: r.numero,
@@ -222,8 +224,10 @@ export async function listPresupuestosResumen(): Promise<{
       updated_at: row.updated_at,
       created_by: row.created_by ?? null,
     }));
-    const merged = await mergeVentasResumenIntoPresupuestos(base);
-    const nombrePorId = await nombresVendedoresPorIds(merged.map((r) => r.created_by));
+    const [merged, nombrePorId] = await Promise.all([
+      mergeVentasResumenIntoPresupuestos(base),
+      nombresVendedoresPorIds(base.map((r) => r.created_by)),
+    ]);
     const withVendedor: PresupuestoRowList[] = conNombreVendedor(merged, nombrePorId).map(
       (r) => ({
         ...r,

@@ -1,16 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
+import { useOtsGrupos } from "@/hooks/useOtsGrupos";
 import { Badge } from "@/components/ui/badge";
 import { OtListRow } from "@/components/produccion/OtListRow";
 import { OtsGruposAccordion } from "@/components/produccion/OtsGruposAccordion";
 import { tabProduccionDesdeOt } from "@/lib/clients-api";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import {
-  getOtsAgrupadas,
   type OtProduccionItem,
-  type VentaGrupoOt,
 } from "@/lib/produccion-api";
 import { cn } from "@/lib/utils";
 import {
@@ -81,29 +78,8 @@ function bucketOt(item: OtProduccionItem): ProduccionOtFiltro {
 }
 
 export function VistaProduccion() {
-  const [grupos, setGrupos] = useState<VentaGrupoOt[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { grupos, loading, refresh } = useOtsGrupos("general");
   const [filtro, setFiltro] = useState<FiltroGeneral | null>(null);
-
-  const refresh = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setGrupos([]);
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await getOtsAgrupadas();
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      setGrupos([]);
-      return;
-    }
-    setGrupos(data);
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   const totalOts = grupos.reduce((acc, g) => acc + g.ots.length, 0);
 

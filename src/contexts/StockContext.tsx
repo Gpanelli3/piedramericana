@@ -2,9 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
@@ -16,6 +14,8 @@ import {
   deleteFirstAvailableSlabMatching,
 } from "@/lib/stock-api";
 import { isSupabaseConfigured } from "@/lib/supabase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-client";
 
 export type { ChapaRow };
 export { STOCK_CHAPAS_INICIAL };
@@ -41,29 +41,43 @@ type StockContextValue = {
 
 const StockContext = createContext<StockContextValue | null>(null);
 
-export function StockProvider({ children }: { children: ReactNode }) {
-  const [chapas, setChapas] = useState<ChapaRow[]>(STOCK_CHAPAS_INICIAL);
-  const [slabsLoading, setSlabsLoading] = useState(false);
+const SIN_CHAPAS: ChapaRow[] = [];
 
+export function StockProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const useRemoteStock = isSupabaseConfigured;
+
+  // Placas en caché. Sin Supabase se trabaja en memoria con los datos de ejemplo.
+  // (Antes arrancaba con los de ejemplo también con Supabase y se veían un instante.)
+  const chapasQuery = useQuery({
+    queryKey: queryKeys.stockChapas,
+    queryFn: async () => {
+      if (!isSupabaseConfigured) return [...STOCK_CHAPAS_INICIAL];
+      try {
+        return await fetchInventorySlabs();
+      } catch {
+        return [];
+      }
+    },
+    // Sin Supabase no hay base que revalidar: lo que se edita en memoria no se pisa.
+    staleTime: isSupabaseConfigured ? 0 : Infinity,
+  });
+  const chapas = chapasQuery.data ?? SIN_CHAPAS;
+  const slabsLoading = chapasQuery.isFetching;
+
+  const setChapas: Dispatch<SetStateAction<ChapaRow[]>> = useCallback(
+    (action) => {
+      queryClient.setQueryData<ChapaRow[]>(queryKeys.stockChapas, (prev = []) =>
+        typeof action === "function" ? action(prev) : action,
+      );
+    },
+    [queryClient],
+  );
 
   const reloadChapas = useCallback(async () => {
     if (!isSupabaseConfigured) return;
-    setSlabsLoading(true);
-    try {
-      const rows = await fetchInventorySlabs();
-      setChapas(rows);
-    } catch {
-      setChapas([]);
-    } finally {
-      setSlabsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    void reloadChapas();
-  }, [reloadChapas]);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.stockChapas });
+  }, [queryClient]);
 
   const tryDeducirChapaPorRotura = useCallback(
     async (materialSelectKey: string): Promise<{ removed: boolean; bulto?: string }> => {
@@ -90,20 +104,16 @@ export function StockProvider({ children }: { children: ReactNode }) {
     [reloadChapas],
   );
 
-  const setChapasSafe: Dispatch<SetStateAction<ChapaRow[]>> = useCallback((action) => {
-    setChapas(action);
-  }, []);
-
   const value = useMemo(
     () => ({
       chapas,
       slabsLoading,
       useRemoteStock,
-      setChapas: setChapasSafe,
+      setChapas,
       reloadChapas,
       tryDeducirChapaPorRotura,
     }),
-    [chapas, slabsLoading, useRemoteStock, setChapasSafe, reloadChapas, tryDeducirChapaPorRotura],
+    [chapas, slabsLoading, useRemoteStock, setChapas, reloadChapas, tryDeducirChapaPorRotura],
   );
 
   return <StockContext.Provider value={value}>{children}</StockContext.Provider>;

@@ -198,19 +198,28 @@ export async function fetchM2TriosPorPresupuestos(
     if (parsed) vigentes.set(f.id, parsed);
   }
 
-  const v1Res = await fetchPayloadVentaPorPresupuestoIds([...vigentes.keys()]);
-  if (v1Res.error) return { data: out, error: v1Res.error };
-
-  const articuloIds = new Set<string>();
+  // V1 y artículos del payload vigente van en paralelo: casi siempre la V1 usa los mismos
+  // artículos, así que el segundo viaje (faltantes) suele no hacer falta.
+  const idsVigentes = new Set<string>();
   for (const p of vigentes.values()) {
-    for (const id of articuloIdsDePayload(p)) articuloIds.add(id);
+    for (const id of articuloIdsDePayload(p)) idsVigentes.add(id);
   }
+  const [v1Res, artsVigentes] = await Promise.all([
+    fetchPayloadVentaPorPresupuestoIds([...vigentes.keys()]),
+    fetchArticulosPorIds([...idsVigentes]),
+  ]);
+  if (v1Res.error) return { data: out, error: v1Res.error };
+  if (artsVigentes.error) return { data: out, error: artsVigentes.error };
+
+  const faltantes = new Set<string>();
   for (const v of v1Res.data.values()) {
-    for (const id of articuloIdsDePayload(v.payload)) articuloIds.add(id);
+    for (const id of articuloIdsDePayload(v.payload)) {
+      if (!idsVigentes.has(id)) faltantes.add(id);
+    }
   }
-  const arts = await fetchArticulosPorIds([...articuloIds]);
-  if (arts.error) return { data: out, error: arts.error };
-  const articulos = arts.data;
+  const artsExtra = await fetchArticulosPorIds([...faltantes]);
+  if (artsExtra.error) return { data: out, error: artsExtra.error };
+  const articulos = [...artsVigentes.data, ...artsExtra.data];
 
   for (const [presId, obra] of vigentes) {
     const venta = v1Res.data.get(presId)?.payload ?? obra;
