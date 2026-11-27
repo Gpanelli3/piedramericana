@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -17,6 +16,10 @@ import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useNombreEmpresa } from "@/components/documentos/EmpresaCabecera";
+import { descargarBlob, elementoComoPdfBlob, puedeCompartirArchivo } from "@/lib/descargar-pdf";
+import { registrarEventoPrecio } from "@/lib/presupuesto-eventos-api";
+import { urlWhatsapp } from "@/lib/whatsapp";
 import {
   getPresupuestoById,
   insertPresupuestoRow,
@@ -30,11 +33,7 @@ import {
   isPresupuestoPayloadV1,
   type PresupuestoPayloadV1,
 } from "@/types/presupuesto-payload";
-import {
-  Trash2,
-  Save,
-  Printer,
-} from "lucide-react";
+import { Check, Save, Share2, Trash2 } from "lucide-react";
 import { useArticulos } from "@/hooks/useArticulos";
 import { fetchPreciosMaterialesPorLista } from "@/lib/articulos-api";
 import {
@@ -62,8 +61,23 @@ import { ajustarLineasBacha } from "@/components/presupuesto/wizard/bacha-lineas
 import { ORIGEN_VENTA_OPCIONES } from "@/data/origen-venta";
 import type { LineaResumenMoneda } from "@/components/presupuesto/PresupuestoResumenInterior";
 import { PresupuestoDocumento } from "@/components/presupuesto/PresupuestoDocumento";
-import { StepOrdenes } from "@/components/presupuesto/wizard/StepOrdenes";
-import { BloqueClienteObra } from "@/components/presupuesto/wizard/BloqueClienteObra";
+import { StepOrdenes, resumenArticulos } from "@/components/presupuesto/wizard/StepOrdenes";
+import {
+  CamposCliente,
+  CamposObra,
+  CamposServicios,
+  ObservacionesGenerales,
+  OrigenYComision,
+} from "@/components/presupuesto/wizard/BloqueClienteObra";
+import { PasoWizard, type EstadoPaso } from "@/components/presupuesto/wizard/PasoWizard";
+import {
+  borrarBorrador,
+  borradorTieneContenido,
+  cuandoSeGuardo,
+  guardarBorrador,
+  leerBorrador,
+  type BorradorPresupuesto,
+} from "@/components/presupuesto/wizard/borrador-local";
 import { TarjetaResumen } from "@/components/presupuesto/wizard/TarjetaResumen";
 import { PickArticulo } from "@/components/presupuesto/wizard/fields";
 import {
@@ -78,6 +92,10 @@ import {
 import {
   parseMoneyInput,
   validarPresupuestoCompleto,
+  camposFaltantes,
+  validarCamposObligatorios,
+  validateCliente,
+  validateMecRequisitos,
 } from "@/components/presupuesto/wizard/validacion";
 import type { MaterialWizardRow } from "@/types/material-catalog";
 import {
@@ -204,6 +222,8 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     () => getConfiguracionEmpresa().dolar_hoy ?? DOLAR_SIN_CARGAR,
   );
   const editando = Boolean(presupuestoId);
+  /** Paso abierto (1 cliente, 2 obra, 3 artículos, 4 servicios). */
+  const [pasoActivo, setPasoActivo] = useState<number | null>(editando ? null : 1);
   useEffect(() => {
     if (!editando && empresa.dolar_hoy) setDolarHoy(empresa.dolar_hoy);
   }, [editando, empresa.dolar_hoy]);
@@ -326,13 +346,72 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     },
     { id: "flete", label: "Fletes e insumos", monto: "0", moneda: "ars" },
   ]);
-  const [resumenAbierto, setResumenAbierto] = useState(false);
 
   const [dialogClienteAbierto, setDialogClienteAbierto] = useState(false);
   const [prefillNombreCliente, setPrefillNombreCliente] = useState("");
 
   const [grabarError, setGrabarError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+
+  /* ── Borrador local: retomar un presupuesto nuevo que quedó sin guardar ── */
+  const [borradorPendiente, setBorradorPendiente] = useState<BorradorPresupuesto | null>(null);
+  /** true cuando ya se decidió (o no había nada): recién ahí se guarda el progreso. */
+  const [borradorResuelto, setBorradorResuelto] = useState(editando);
+  const persistidoRef = useRef(false);
+  /** Presupuesto ya guardado como borrador desde esta pantalla: los siguientes guardados lo actualizan. */
+  const [idGuardado, setIdGuardado] = useState<string | null>(null);
+  const [numeroGuardado, setNumeroGuardado] = useState<string | null>(null);
+  const [compartirPendiente, setCompartirPendiente] = useState<{ id: string; numero: string } | null>(
+    null,
+  );
+  const docCompartirRef = useRef<HTMLDivElement>(null);
+  /** Después de intentar confirmar o compartir con datos incompletos, marcar en rojo lo que falta. */
+  const [marcarFaltantes, setMarcarFaltantes] = useState(false);
+  const nombreEmpresa = useNombreEmpresa();
+  /** Al retomar un borrador, abrir el primer paso que falta completar. */
+  const abrirPrimerPendienteRef = useRef(false);
+
+  useEffect(() => {
+    if (editando || borradorResuelto || !user?.id) return;
+    const b = leerBorrador(user.id);
+    if (b && borradorTieneContenido(b.datos)) setBorradorPendiente(b);
+    else setBorradorResuelto(true);
+  }, [editando, borradorResuelto, user?.id]);
+
+  const retomarBorrador = (b: BorradorPresupuesto) => {
+    const d = b.datos;
+    omitirSyncPreciosRef.current = true;
+    setClienteSeleccionadoId(d.clienteSeleccionadoId);
+    setContacto(d.contacto);
+    setOrigenVentas(d.origenVentas);
+    if (d.vendedorId) setVendedorId(d.vendedorId);
+    setComisionPct(d.comisionPct);
+    setTel(d.tel);
+    setEmail(d.email);
+    setDireccion(d.direccion);
+    setObsCabecera(d.obsCabecera);
+    if (d.listaPrecioId) setListaPrecioId(d.listaPrecioId);
+    setCotizacionMixtaActiva(d.cotizacionMixtaActiva);
+    setMonedaFinal(d.monedaFinal);
+    setOrdenes(d.ordenes.length > 0 ? d.ordenes : [newOrdenTrabajo("")]);
+    setDescuentoGlobalPct(d.descuentoGlobalPct);
+    setLogistica(d.logistica);
+    setMMedicionGlobal(d.mMedicionGlobal);
+    setMEntregaGlobal(d.mEntregaGlobal);
+    setMColocacionGlobal(d.mColocacionGlobal);
+    setTotalMecGlobal(d.totalMecGlobal);
+    setObsServiciosMec(d.obsServiciosMec);
+    if (d.lineasResumen?.length) setLineasResumen(d.lineasResumen);
+    abrirPrimerPendienteRef.current = true;
+    setBorradorPendiente(null);
+    setBorradorResuelto(true);
+  };
+
+  const descartarBorrador = () => {
+    borrarBorrador(user?.id);
+    setBorradorPendiente(null);
+    setBorradorResuelto(true);
+  };
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setClientesCargando(false);
@@ -994,19 +1073,18 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
     articulosBd,
   ]);
 
-  const handleGrabar = async () => {
-    const err = validarAntesGrabar();
-    if (err) {
-      setGrabarError(err);
-      return;
-    }
+  /**
+   * Guarda en Supabase (alta o actualización) sin decidir qué pasa después.
+   * Devuelve el presupuesto guardado o null si falló (el error ya se mostró).
+   */
+  const persistir = async (): Promise<{ id: string; numero: string } | null> => {
     if (monedaPresupuesto === "usd" && !(dolarHoy > 0)) {
       setGrabarError("Cargá el dólar del día para pasar el MEC en pesos a dólares.");
-      return;
+      return null;
     }
     if (!isSupabaseConfigured) {
       setGrabarError("Supabase no está configurado; no se puede guardar.");
-      return;
+      return null;
     }
     const payload = buildPresupuestoPayloadV1({
       dolarHoy,
@@ -1037,16 +1115,15 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       totalUsdEquivalente,
       totalArsEquivalente,
       materialM2: totalesItems.totalM2,
-      materialTon:
-        totalesItems.totalTon > 0 ? totalesItems.totalTon : null,
+      materialTon: totalesItems.totalTon > 0 ? totalesItems.totalTon : null,
       totalPresupuesto,
     });
     const nombreCliente = clienteSeleccionado?.nombre?.trim() || "Sin cliente";
     const vendedorAsignado = vendedorId.trim() || user?.id || null;
-    setGuardando(true);
+    const idActual = presupuestoId ?? idGuardado;
 
-    if (presupuestoId) {
-      let { data, error } = await updatePresupuestoRow(presupuestoId, {
+    if (idActual) {
+      let { data, error } = await updatePresupuestoRow(idActual, {
         cliente: nombreCliente,
         client_id: clienteSeleccionadoId,
         total: totalPresupuesto,
@@ -1055,7 +1132,7 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         created_by: vendedorAsignado,
       });
       if (error?.code === "23503" && vendedorAsignado) {
-        ({ data, error } = await updatePresupuestoRow(presupuestoId, {
+        ({ data, error } = await updatePresupuestoRow(idActual, {
           cliente: nombreCliente,
           client_id: clienteSeleccionadoId,
           total: totalPresupuesto,
@@ -1064,22 +1141,18 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
           created_by: null,
         }));
       }
-      setGuardando(false);
       if (error) {
-        const msg = error.message;
-        toast.error(msg);
-        setGrabarError(msg);
-        return;
+        toast.error(error.message);
+        setGrabarError(error.message);
+        return null;
       }
       if (!data) {
         const msg = "Solo se pueden editar presupuestos pendientes.";
         toast.error(msg);
         setGrabarError(msg);
-        return;
+        return null;
       }
-      toast.success(`Presupuesto ${data.numero} actualizado.`);
-      if (onPersisted) await Promise.resolve(onPersisted({ id: data.id, numero: data.numero }));
-      return;
+      return { id: data.id, numero: data.numero };
     }
 
     let lastMsg: string | null = null;
@@ -1108,31 +1181,158 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         }));
       }
       if (!error && data) {
-        toast.success(`Presupuesto ${data.numero} guardado como pendiente.`);
-        setGuardando(false);
-        if (onPersisted) await Promise.resolve(onPersisted({ id: data.id, numero: data.numero }));
-        return;
+        // Ya está en el servidor: el borrador local deja de hacer falta.
+        persistidoRef.current = true;
+        borrarBorrador(user?.id);
+        return { id: data.id, numero: data.numero };
       }
       lastMsg = error?.message ?? "Error desconocido.";
       const code = error && "code" in error ? String((error as { code?: string }).code) : "";
-      const dup = code === "23505";
-      if (!dup) {
+      if (code !== "23505") {
         toast.error(lastMsg);
-        setGuardando(false);
         setGrabarError(lastMsg);
-        return;
+        return null;
       }
     }
-    setGuardando(false);
-    setGrabarError(
-      lastMsg ?? "No se pudo obtener un número de presupuesto único.",
-    );
+    setGrabarError(lastMsg ?? "No se pudo obtener un número de presupuesto único.");
     toast.error("No se pudo guardar después de varios intentos.");
+    return null;
   };
 
-  const handleImprimir = () => {
-    setResumenAbierto(true);
+  /** Todo lo obligatorio para confirmar o compartir; abre el paso que falta. */
+  const validarCompleto = (): boolean => {
+    const faltante = validarCamposObligatorios({
+      clienteSeleccionadoId,
+      tel,
+      email,
+      contacto,
+      vendedorId,
+      ordenes,
+    });
+    if (faltante) {
+      setMarcarFaltantes(true);
+      setPasoActivo(faltante.paso);
+      toast.error(faltante.mensaje);
+      return false;
+    }
+    const err = validarAntesGrabar();
+    if (err) {
+      const mecErr = validateMecRequisitos(mecScope, {
+        mMedicionGlobal,
+        mEntregaGlobal,
+        mColocacionGlobal,
+        totalMecGlobal,
+        ordenes,
+      });
+      setMarcarFaltantes(true);
+      setPasoActivo(err === mecErr ? 4 : 3);
+      toast.error(err);
+      return false;
+    }
+    return true;
   };
+
+  /**
+   * - borrador: guarda lo que haya (solo pide el cliente) y sigue en el formulario.
+   * - confirmar: pide todo, guarda y vuelve a la lista.
+   * - compartir: pide todo, guarda, arma el PDF y lo manda por WhatsApp.
+   */
+  const handleGrabar = async (modo: "borrador" | "confirmar" | "compartir") => {
+    if (modo === "borrador") {
+      const sinCliente = validateCliente(clienteSeleccionadoId);
+      if (sinCliente) {
+        setPasoActivo(1);
+        toast.error(sinCliente);
+        return;
+      }
+    } else if (!validarCompleto()) {
+      return;
+    }
+
+    setGuardando(true);
+    const guardado = await persistir();
+    if (!guardado) {
+      setGuardando(false);
+      return;
+    }
+
+    if (modo === "borrador") {
+      setIdGuardado(guardado.id);
+      setNumeroGuardado(guardado.numero);
+      setGuardando(false);
+      toast.success(`Borrador ${guardado.numero} guardado.`);
+      return;
+    }
+    if (modo === "compartir") {
+      // El PDF se arma cuando el documento oculto termina de dibujarse.
+      setCompartirPendiente(guardado);
+      return;
+    }
+    setGuardando(false);
+    toast.success(`Presupuesto ${guardado.numero} confirmado.`);
+    if (onPersisted) await Promise.resolve(onPersisted(guardado));
+  };
+
+  useEffect(() => {
+    const pendiente = compartirPendiente;
+    const el = docCompartirRef.current;
+    if (!pendiente || !el) return;
+    let cancelado = false;
+    void (async () => {
+      const texto = `Presupuesto ${pendiente.numero}${nombreEmpresa ? ` · ${nombreEmpresa}` : ""}`;
+      try {
+        const { blob, filename } = await elementoComoPdfBlob(
+          el,
+          `Presupuesto_${pendiente.numero}_${clienteSeleccionado?.nombre ?? ""}`,
+        );
+        if (cancelado) return;
+        const file = new File([blob], filename, { type: "application/pdf" });
+        const nav = navigator as Navigator & {
+          share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
+        };
+        let compartido = false;
+        if (puedeCompartirArchivo(file) && typeof nav.share === "function") {
+          try {
+            await nav.share({ files: [file], title: texto, text: texto });
+            compartido = true;
+          } catch (e) {
+            if (!(e instanceof Error && e.name === "AbortError")) throw e;
+          }
+        } else {
+          // Sin "compartir" del sistema: bajar el PDF y abrir el chat del cliente.
+          descargarBlob(blob, filename);
+          const wa = urlWhatsapp(tel);
+          if (wa) {
+            window.open(`${wa}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+          }
+          compartido = true;
+        }
+        if (compartido) {
+          await registrarEventoPrecio({
+            presupuestoId: pendiente.id,
+            tipo: "enviado_pdf",
+            monto: totalPresupuesto,
+            moneda: monedaPresupuesto,
+          });
+          toast.success(`Presupuesto ${pendiente.numero} guardado y listo para mandar.`);
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "No se pudo armar el PDF.");
+      } finally {
+        if (!cancelado) {
+          setCompartirPendiente(null);
+          setGuardando(false);
+          if (onPersisted) await Promise.resolve(onPersisted(pendiente));
+        }
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // Solo cuando aparece un pedido de compartir nuevo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compartirPendiente]);
+
 
   const origenLabelDisplay = useMemo(
     () =>
@@ -1142,7 +1342,170 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
   );
 
   const listaPrecioLabel = listaPrecioActual?.label ?? "—";
+
+  const direccionesObra = useMemo(() => {
+    const dirs = (compartenUbicacion ? ordenes.slice(0, 1) : ordenes)
+      .map((o) => o.direccionObra.trim())
+      .filter(Boolean);
+    return dirs;
+  }, [ordenes, compartenUbicacion]);
+
+  const pasosCompletos = useMemo(
+    () => ({
+      1: Boolean(
+        clienteSeleccionadoId && tel.trim() && email.trim() && contacto.trim() && vendedorId,
+      ),
+      2:
+        ordenes.length > 0 &&
+        (ordenes.length > 1 ? ordenes : ordenes.slice(0, 1)).every((o) =>
+          Boolean(o.direccionObra.trim()),
+        ),
+      3: ordenes.some(
+        (o) =>
+          Boolean(o.materialId || o.materialLibre?.trim()) &&
+          o.items.some((l) => Boolean(l.articuloId)),
+      ),
+      4: mMedicionGlobal || mEntregaGlobal || mColocacionGlobal,
+    }),
+    [
+      clienteSeleccionadoId,
+      tel,
+      email,
+      contacto,
+      vendedorId,
+      ordenes,
+      mMedicionGlobal,
+      mEntregaGlobal,
+      mColocacionGlobal,
+    ],
+  );
+
+  useEffect(() => {
+    if (!abrirPrimerPendienteRef.current) return;
+    abrirPrimerPendienteRef.current = false;
+    const pendiente = ([1, 2, 3] as const).find((n) => !pasosCompletos[n]);
+    setPasoActivo(pendiente ?? null);
+  }, [pasosCompletos]);
+
+  const estadoPaso = (n: 1 | 2 | 3 | 4): EstadoPaso =>
+    pasoActivo === n ? "activo" : pasosCompletos[n] ? "hecho" : "pendiente";
+
+  const resumenPasos = {
+    1: clienteSeleccionado?.nombre ?? "",
+    2: direccionesObra.join(" · "),
+    3: pasosCompletos[3] ? resumenArticulos(ordenes) : "",
+    4: [
+      mMedicionGlobal ? "Medición" : "",
+      mEntregaGlobal ? "Envío" : "",
+      mColocacionGlobal ? "Colocación" : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+  // Guarda el progreso de un presupuesto nuevo en esta computadora.
+  useEffect(() => {
+    if (editando || !borradorResuelto || persistidoRef.current) return;
+    const t = window.setTimeout(() => {
+      if (persistidoRef.current) return;
+      const datos: BorradorPresupuesto["datos"] = {
+        clienteSeleccionadoId,
+        contacto,
+        origenVentas,
+        vendedorId,
+        comisionPct,
+        tel,
+        email,
+        direccion,
+        obsCabecera,
+        listaPrecioId,
+        cotizacionMixtaActiva,
+        monedaFinal,
+        ordenes,
+        descuentoGlobalPct,
+        logistica,
+        mMedicionGlobal,
+        mEntregaGlobal,
+        mColocacionGlobal,
+        totalMecGlobal,
+        obsServiciosMec,
+        lineasResumen,
+      };
+      if (!borradorTieneContenido(datos)) {
+        borrarBorrador(user?.id);
+        return;
+      }
+      const articulos = ordenes
+        .map(
+          (o) =>
+            materials.find((m) => m.id === o.materialId)?.name ??
+            (o.materialLibre?.trim() || o.chapaSugeridaLabel || ""),
+        )
+        .filter(Boolean);
+      guardarBorrador(user?.id, {
+        version: 1,
+        guardadoEn: Date.now(),
+        resumen: { cliente: clienteSeleccionado?.nombre ?? "", articulos },
+        datos,
+      });
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [
+    editando,
+    borradorResuelto,
+    user?.id,
+    clienteSeleccionadoId,
+    clienteSeleccionado?.nombre,
+    contacto,
+    origenVentas,
+    vendedorId,
+    comisionPct,
+    tel,
+    email,
+    direccion,
+    obsCabecera,
+    listaPrecioId,
+    cotizacionMixtaActiva,
+    monedaFinal,
+    ordenes,
+    descuentoGlobalPct,
+    logistica,
+    mMedicionGlobal,
+    mEntregaGlobal,
+    mColocacionGlobal,
+    totalMecGlobal,
+    obsServiciosMec,
+    lineasResumen,
+    materials,
+  ]);
+
   const mecExcluidoTodasOts = todasOtsExcluyenMec(ordenes);
+
+  const faltantes = marcarFaltantes
+    ? camposFaltantes({
+        clienteSeleccionadoId,
+        tel,
+        email,
+        contacto,
+        vendedorId,
+        ordenes,
+        mecActivo:
+          !mecExcluidoTodasOts && (mMedicionGlobal || mEntregaGlobal || mColocacionGlobal),
+        totalMecGlobal,
+      })
+    : null;
+  const pasoConFaltantes = {
+    1: Boolean(
+      faltantes &&
+        (faltantes.cliente ||
+          faltantes.tel ||
+          faltantes.email ||
+          faltantes.contacto ||
+          faltantes.vendedor),
+    ),
+    2: Boolean(faltantes && faltantes.direccion.size > 0),
+    3: Boolean(faltantes && (faltantes.tituloOt.size > 0 || faltantes.material.size > 0)),
+    4: Boolean(faltantes?.mecImporte),
+  };
 
   const renderLineaCells = (
     ot: OrdenTrabajoWizard,
@@ -1358,8 +1721,6 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       setDescuentoGlobalPct={setDescuentoGlobalPct}
       netoItems={totalesItems.totalConDesc}
       totalMecImporte={totalMecImporte}
-      totalMecGlobal={totalMecGlobal}
-      setTotalMecGlobal={setTotalMecGlobal}
       mMedicionGlobal={mMedicionGlobal}
       mEntregaGlobal={mEntregaGlobal}
       mColocacionGlobal={mColocacionGlobal}
@@ -1374,66 +1735,122 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
       <div className="flex w-full flex-col gap-6 pb-8">
         <header>
           <h1 className="text-xl font-bold tracking-tight text-foreground">
-            {editando && editNumero ? `Editando ${editNumero}` : "Nuevo presupuesto"}
+            {editando && editNumero
+              ? `Editando ${editNumero}`
+              : numeroGuardado
+                ? `Borrador ${numeroGuardado}`
+                : "Nuevo presupuesto"}
           </h1>
         </header>
 
         <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
-          <div className="order-3 space-y-6 md:order-none md:col-start-1 md:row-start-1">
-            <BloqueClienteObra
-              clientesLocales={clientesLocales}
-              clientesCargando={clientesCargando}
-              clienteSeleccionadoId={clienteSeleccionadoId}
-              aplicarCliente={aplicarCliente}
-              limpiarCliente={limpiarCliente}
-              abrirNuevoCliente={abrirNuevoCliente}
+          <div className="order-3 space-y-3 md:order-none md:col-start-1 md:row-start-1">
+            <OrigenYComision
               origenVentas={origenVentas}
               setOrigenVentas={setOrigenVentas}
-              vendedorId={vendedorId}
-              setVendedorId={setVendedorId}
-              usuarios={usuarios}
-              usuariosCargando={usuariosCargando}
-              usuarioActualId={user?.id ?? null}
               comisionPct={comisionPct}
               setComisionPct={setComisionPct}
-              contacto={contacto}
-              setContacto={setContacto}
-              tel={tel}
-              setTel={setTel}
-              email={email}
-              setEmail={setEmail}
-              obsCabecera={obsCabecera}
-              setObsCabecera={setObsCabecera}
-              mMedicionGlobal={mMedicionGlobal}
-              setMMedicionGlobal={setMMedicionGlobal}
-              mEntregaGlobal={mEntregaGlobal}
-              setMEntregaGlobal={setMEntregaGlobal}
-              mColocacionGlobal={mColocacionGlobal}
-              setMColocacionGlobal={setMColocacionGlobal}
-              totalMecGlobal={totalMecGlobal}
-              setTotalMecGlobal={setTotalMecGlobal}
-              obsServiciosMec={obsServiciosMec}
-              setObsServiciosMec={setObsServiciosMec}
-              mecExcluidoTodasOts={mecExcluidoTodasOts}
-              otUbicacion={ordenes[0] ?? null}
-              patchUbicacion={patchUbicacionCompartida}
-              mostrarUbicacionCompartida={compartenUbicacion}
             />
-            <StepOrdenes
-              catalogoCargando={catalogoCargando}
-              ordenes={ordenes}
-              materials={materials}
-              planchas={planchas}
-              materialesCargando={materialesCargando || !planchasListas}
-              monedaMaterial={monedaPresupuesto}
-              patchOrden={patchOrden}
-              addOrdenTrabajo={addOrdenTrabajo}
-              removeOrdenTrabajo={removeOrdenTrabajo}
-              addItem={addItem}
-              renderLineaCells={renderLineaCells}
-              ocultarUbicacion={compartenUbicacion}
-              planCorteLoading={planCorteLoading}
-            />
+            <PasoWizard
+              numero={1}
+              titulo="Cliente"
+              resumen={resumenPasos[1]}
+              estado={estadoPaso(1)}
+              conFaltantes={pasoConFaltantes[1]}
+              onAbrir={() => setPasoActivo(1)}
+              onSiguiente={() => setPasoActivo(2)}
+            >
+              <CamposCliente
+                clientesLocales={clientesLocales}
+                clientesCargando={clientesCargando}
+                clienteSeleccionadoId={clienteSeleccionadoId}
+                aplicarCliente={aplicarCliente}
+                limpiarCliente={limpiarCliente}
+                abrirNuevoCliente={abrirNuevoCliente}
+                vendedorId={vendedorId}
+                setVendedorId={setVendedorId}
+                usuarios={usuarios}
+                usuariosCargando={usuariosCargando}
+                usuarioActualId={user?.id ?? null}
+                contacto={contacto}
+                setContacto={setContacto}
+                tel={tel}
+                setTel={setTel}
+                email={email}
+                setEmail={setEmail}
+                faltantes={faltantes}
+              />
+            </PasoWizard>
+            <PasoWizard
+              numero={2}
+              titulo="Dirección de obra"
+              resumen={resumenPasos[2]}
+              estado={estadoPaso(2)}
+              conFaltantes={pasoConFaltantes[2]}
+              onAbrir={() => setPasoActivo(2)}
+              onSiguiente={() => setPasoActivo(3)}
+            >
+              <CamposObra
+                ordenes={ordenes}
+                patchUbicacion={patchUbicacionCompartida}
+                patchOrden={patchOrden}
+                mostrarUbicacionCompartida={compartenUbicacion}
+                direccionesFaltantes={faltantes?.direccion}
+              />
+            </PasoWizard>
+            <PasoWizard
+              numero={3}
+              titulo="Artículos"
+              resumen={resumenPasos[3]}
+              estado={estadoPaso(3)}
+              conFaltantes={pasoConFaltantes[3]}
+              onAbrir={() => setPasoActivo(3)}
+              onSiguiente={() => setPasoActivo(4)}
+              cuerpoAncho
+            >
+              <StepOrdenes
+                catalogoCargando={catalogoCargando}
+                ordenes={ordenes}
+                materials={materials}
+                planchas={planchas}
+                materialesCargando={materialesCargando || !planchasListas}
+                monedaMaterial={monedaPresupuesto}
+                patchOrden={patchOrden}
+                addOrdenTrabajo={addOrdenTrabajo}
+                removeOrdenTrabajo={removeOrdenTrabajo}
+                addItem={addItem}
+                renderLineaCells={renderLineaCells}
+                ocultarUbicacion
+                planCorteLoading={planCorteLoading}
+                sinMarco
+                titulosFaltantes={faltantes?.tituloOt}
+                materialesFaltantes={faltantes?.material}
+              />
+            </PasoWizard>
+            <PasoWizard
+              numero={4}
+              titulo="Servicios"
+              resumen={resumenPasos[4]}
+              estado={estadoPaso(4)}
+              conFaltantes={pasoConFaltantes[4]}
+              onAbrir={() => setPasoActivo(4)}
+            >
+              <CamposServicios
+                mMedicionGlobal={mMedicionGlobal}
+                setMMedicionGlobal={setMMedicionGlobal}
+                mEntregaGlobal={mEntregaGlobal}
+                setMEntregaGlobal={setMEntregaGlobal}
+                mColocacionGlobal={mColocacionGlobal}
+                setMColocacionGlobal={setMColocacionGlobal}
+                totalMecGlobal={totalMecGlobal}
+                setTotalMecGlobal={setTotalMecGlobal}
+                obsServiciosMec={obsServiciosMec}
+                setObsServiciosMec={setObsServiciosMec}
+                mecExcluidoTodasOts={mecExcluidoTodasOts}
+                importeFaltante={faltantes?.mecImporte}
+              />
+            </PasoWizard>
+            <ObservacionesGenerales obsCabecera={obsCabecera} setObsCabecera={setObsCabecera} />
           </div>
           <div className="order-2 md:order-none md:col-start-2 md:row-start-1 md:sticky md:top-4">
             {tarjetaResumen}
@@ -1441,6 +1858,58 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         </div>
       </div>
 
+
+      <Dialog open={!!borradorPendiente}>
+        <DialogContent
+          className="sm:max-w-md"
+          showCloseButton={false}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          {borradorPendiente ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Estabas haciendo un presupuesto</DialogTitle>
+                <DialogDescription>
+                  Lo dejaste {cuandoSeGuardo(borradorPendiente.guardadoEn)}. ¿Seguís con ese o
+                  empezás uno nuevo?
+                </DialogDescription>
+              </DialogHeader>
+              <dl className="divide-y divide-border border-y border-border text-sm">
+                <div className="grid grid-cols-[6rem_1fr] gap-3 py-2.5">
+                  <dt className="text-muted-foreground">Cliente</dt>
+                  <dd>{borradorPendiente.resumen.cliente || "Todavía sin cliente"}</dd>
+                </div>
+                <div className="grid grid-cols-[6rem_1fr] gap-3 py-2.5">
+                  <dt className="text-muted-foreground">Artículos</dt>
+                  <dd>
+                    {borradorPendiente.resumen.articulos.length > 0
+                      ? borradorPendiente.resumen.articulos.join(", ")
+                      : "Todavía sin artículos"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="accent"
+                    onClick={() => retomarBorrador(borradorPendiente)}
+                  >
+                    Seguir con este
+                  </Button>
+                  <Button type="button" variant="outline" onClick={descartarBorrador}>
+                    Empezar uno nuevo
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Si empezás uno nuevo, este se descarta.
+                </p>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <ClienteFormDialog
         open={dialogClienteAbierto}
@@ -1466,24 +1935,12 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={resumenAbierto} onOpenChange={setResumenAbierto}>
-        <DialogContent
-          className="gap-0 p-0 sm:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
-          showCloseButton
-        >
-          <DialogHeader className="border-b bg-muted/30 px-5 py-4 shrink-0 print:hidden">
-            <DialogTitle className="text-lg font-bold">
-              Resumen del presupuesto
-            </DialogTitle>
-            <DialogDescription>
-              {listaPrecioLabel}
-              {monedaPresupuesto === "usd"
-                ? ` · Dólar hoy ${formatUsd(dolarHoy)}`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="overflow-y-auto px-4 py-4 sm:px-6 bg-neutral-100/80 print:bg-white print:p-0">
+      {compartirPendiente ? (
+        // Documento fuera de pantalla: de acá sale el PDF que se comparte.
+        <div aria-hidden className="pointer-events-none fixed left-[-10000px] top-0 w-[794px]">
+          <div ref={docCompartirRef}>
             <PresupuestoDocumento
+              numero={compartirPendiente.numero}
               clienteNombre={clienteSeleccionado?.nombre ?? ""}
               contacto={contacto}
               tel={tel}
@@ -1505,25 +1962,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               mColocacion={mColocacionGlobal}
               totalMec={totalMecImporte}
               obsMec={obsServiciosMec}
-              className="mx-auto max-w-3xl shadow-sm border border-neutral-200 print:shadow-none print:border-0"
             />
           </div>
-          <DialogFooter className="border-t px-6 py-4 gap-2 print:hidden">
-            <Button
-              type="button"
-              variant="outline"
-              className="gap-2"
-              onClick={() => window.print()}
-            >
-              <Printer className="h-4 w-4" />
-              Imprimir / PDF
-            </Button>
-            <DialogClose asChild>
-              <Button variant="outline">Cerrar</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : null}
 
       <div
         className={cn(
@@ -1543,10 +1985,22 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               size="sm"
               variant="outline"
               className="gap-1"
-              onClick={handleImprimir}
+              disabled={guardando}
+              onClick={() => void handleGrabar("borrador")}
             >
-              <Printer className="h-4 w-4" />
-              Imprimir
+              <Save className="h-4 w-4" />
+              Guardar borrador
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              disabled={guardando}
+              onClick={() => void handleGrabar("compartir")}
+            >
+              <Share2 className="h-4 w-4" />
+              Compartir con el cliente
             </Button>
             <Button
               type="button"
@@ -1554,10 +2008,10 @@ export function PresupuestoWizard(props: PresupuestoWizardProps = {}) {
               variant="accent"
               className="gap-1"
               disabled={guardando}
-              onClick={() => void handleGrabar()}
+              onClick={() => void handleGrabar("confirmar")}
             >
-              <Save className="h-4 w-4" />
-              {editando ? "Guardar cambios" : "Guardar borrador"}
+              <Check className="h-4 w-4" />
+              Confirmar presupuesto
             </Button>
           </div>
         </div>

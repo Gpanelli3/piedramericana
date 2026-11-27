@@ -5,20 +5,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { geocodeObra, mapsUrlForCoords } from "@/lib/geocode-obra";
+import {
+  direccionDesdeCoords,
+  geocodeObra,
+  nombreLugarDesdeLink,
+  pareceLinkOCoordenadas,
+} from "@/lib/geocode-obra";
 import {
   getPlanoSignedUrl,
   removePlano,
   uploadPlano,
 } from "@/lib/presupuesto-planos-storage";
 import type { OrdenTrabajoWizard } from "./types";
-import { CheckCircle2, FileUp, Loader2, MapPin, Paperclip, Plus, Trash2 } from "lucide-react";
+import { Check, FileUp, Loader2, MapPin, Paperclip, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type OtUbicacionYPlanoProps = {
   ot: OrdenTrabajoWizard;
   patchOrden: (key: string, patch: Partial<OrdenTrabajoWizard>) => void;
   variant?: "ot" | "cabecera";
+  /** Marcar en rojo la dirección (falta para confirmar). */
+  direccionInvalida?: boolean;
 };
 
 function formatBytes(n: number): string {
@@ -31,6 +38,7 @@ export function OtUbicacionYPlano({
   ot,
   patchOrden,
   variant = "ot",
+  direccionInvalida = false,
 }: OtUbicacionYPlanoProps) {
   const cabecera = variant === "cabecera";
   const [geocoding, setGeocoding] = useState(false);
@@ -52,19 +60,32 @@ export function OtUbicacionYPlano({
     });
   };
 
-  const onBuscar = async () => {
+  const onBuscar = async (texto: string = ot.direccionObra) => {
     setGeocoding(true);
     try {
-      const { data, error } = await geocodeObra(ot.direccionObra);
+      const { data, error } = await geocodeObra(texto);
       if (error || !data) {
         toast.error(error?.message ?? "No se pudo ubicar la dirección.");
         return;
       }
+      // Si pegaron un link o coordenadas, mostrar la dirección y no el link.
+      let direccion = texto.trim() || data.displayName;
+      let formateada = data.displayName;
+      if (pareceLinkOCoordenadas(texto)) {
+        const legible =
+          nombreLugarDesdeLink(texto) ?? (await direccionDesdeCoords(data.lat, data.lng));
+        if (legible) {
+          direccion = legible;
+          formateada = legible;
+        } else {
+          direccion = `${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}`;
+        }
+      }
       patchOrden(ot.key, {
         obraLat: data.lat,
         obraLng: data.lng,
-        obraFormattedAddress: data.displayName,
-        direccionObra: ot.direccionObra.trim() || data.displayName,
+        obraFormattedAddress: formateada,
+        direccionObra: direccion,
       });
     } finally {
       setGeocoding(false);
@@ -122,21 +143,41 @@ export function OtUbicacionYPlano({
       <div className="space-y-1.5">
         <Label htmlFor={`${ot.key}-direccion-obra`} className="text-xs font-medium">
           Dirección de obra{" "}
-          {cabecera ? <span className="text-destructive">*</span> : null}
+          <span className="text-destructive">*</span>
         </Label>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-          <Input
-            id={`${ot.key}-direccion-obra`}
-            className="h-9 flex-1 text-sm"
-            value={ot.direccionObra}
-            onChange={(e) => onDireccionChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
+          <div className="relative flex-1">
+            <Input
+              id={`${ot.key}-direccion-obra`}
+              className={cn("h-9 text-sm", hasCoords && "pr-9")}
+              placeholder="Dirección, coordenadas o link de Google Maps"
+              aria-invalid={direccionInvalida || undefined}
+              value={ot.direccionObra}
+              onChange={(e) => onDireccionChange(e.target.value)}
+              onPaste={(e) => {
+                const pegado = e.clipboardData.getData("text").trim();
+                if (!pegado || !pareceLinkOCoordenadas(pegado)) return;
                 e.preventDefault();
-                void onBuscar();
-              }
-            }}
-          />
+                onDireccionChange(pegado);
+                void onBuscar(pegado);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void onBuscar();
+                }
+              }}
+            />
+            {hasCoords ? (
+              <span
+                className="pointer-events-none absolute right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-emerald-500 text-white animate-in zoom-in-50 fade-in-0 duration-300"
+                aria-label="Dirección encontrada"
+                role="img"
+              >
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
+            ) : null}
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -148,33 +189,16 @@ export function OtUbicacionYPlano({
             {geocoding ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <MapPin className="h-3.5 w-3.5" />
+              <MapPin
+                className={cn(
+                  "h-3.5 w-3.5 transition-colors",
+                  hasCoords && "fill-emerald-100 text-emerald-600",
+                )}
+              />
             )}
             Buscar
           </Button>
         </div>
-        {hasCoords ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span>Dirección encontrada</span>
-            <span className="tabular-nums text-muted-foreground">
-              lat {ot.obraLat!.toFixed(4)} lng {ot.obraLng!.toFixed(4)}
-            </span>
-            <a
-              href={mapsUrlForCoords(ot.obraLat!, ot.obraLng!)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
-            >
-              Ver mapa
-            </a>
-            {ot.obraFormattedAddress ? (
-              <span className="w-full text-[11px] text-muted-foreground">
-                {ot.obraFormattedAddress}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
       <div className="space-y-1.5">

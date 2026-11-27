@@ -58,7 +58,18 @@ export type StepOrdenesProps = {
   /** Si true, la ubicación se carga en la cabecera y no se repite por OT. */
   ocultarUbicacion?: boolean;
   planCorteLoading?: boolean;
+  /** Sin tarjeta ni encabezado propio (cuando va dentro de un paso). */
+  sinMarco?: boolean;
+  /** keys de OTs a marcar en rojo por falta de nombre o de material. */
+  titulosFaltantes?: Set<string>;
+  materialesFaltantes?: Set<string>;
 };
+
+export function resumenArticulos(ordenes: OrdenTrabajoWizard[]): string {
+  const totalSubItems = ordenes.reduce((acc, ot) => acc + ot.items.length, 0);
+  const nArt = ordenes.length;
+  return `${nArt} artículo${nArt === 1 ? "" : "s"} · ${totalSubItems} sub-ítem${totalSubItems === 1 ? "" : "s"}`;
+}
 
 export function StepOrdenes({
   catalogoCargando,
@@ -74,10 +85,11 @@ export function StepOrdenes({
   renderLineaCells,
   ocultarUbicacion = false,
   planCorteLoading = false,
+  sinMarco = false,
+  titulosFaltantes,
+  materialesFaltantes,
 }: StepOrdenesProps) {
-  const totalSubItems = ordenes.reduce((acc, ot) => acc + ot.items.length, 0);
-  const nArt = ordenes.length;
-  const articulosLabel = `${nArt} artículo${nArt === 1 ? "" : "s"} · ${totalSubItems} sub-ítem${totalSubItems === 1 ? "" : "s"}`;
+  const articulosLabel = resumenArticulos(ordenes);
 
   return (
     <div className="space-y-6">
@@ -101,12 +113,18 @@ export function StepOrdenes({
         </p>
       ) : null}
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/70 px-4 py-3 sm:px-5">
-          <h3 className="text-sm font-semibold text-foreground">Artículos</h3>
-          <span className="text-xs text-muted-foreground">{articulosLabel}</span>
-        </div>
-        <div className="space-y-4 px-4 py-4 sm:px-5">
+      <section
+        className={cn(
+          !sinMarco && "overflow-hidden rounded-2xl border border-border bg-card shadow-sm",
+        )}
+      >
+        {sinMarco ? null : (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/70 px-4 py-3 sm:px-5">
+            <h3 className="text-sm font-semibold text-foreground">Artículos</h3>
+            <span className="text-xs text-muted-foreground">{articulosLabel}</span>
+          </div>
+        )}
+        <div className={cn("space-y-4", !sinMarco && "px-4 py-4 sm:px-5")}>
           <div className="space-y-3">
             {ordenes.map((ot, idx) => {
               return (
@@ -139,11 +157,22 @@ export function StepOrdenes({
                       </span>
                       <Input
                         id={`${ot.key}-titulo`}
-                        className="h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-1 focus-visible:ring-white/30"
-                        placeholder="Nombre"
+                        aria-invalid={titulosFaltantes?.has(ot.key) || undefined}
+                        className={cn(
+                          "h-8 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm text-white shadow-none placeholder:text-white/40 focus-visible:ring-1 focus-visible:ring-white/30",
+                          titulosFaltantes?.has(ot.key) &&
+                            "ring-2 ring-red-400 placeholder:text-red-200 focus-visible:ring-red-400 aria-invalid:ring-red-400",
+                        )}
+                        placeholder="Nombre *"
                         value={ot.titulo}
                         onChange={(e) => patchOrden(ot.key, { titulo: e.target.value })}
                       />
+                      <div
+                        className={cn(
+                          "rounded-md",
+                          materialesFaltantes?.has(ot.key) && "ring-2 ring-red-400",
+                        )}
+                      >
                       <BuscadorMaterial
                         materials={materials.filter(
                           (m) => m.uso !== "producto" || m.id === ot.materialId,
@@ -166,6 +195,7 @@ export function StepOrdenes({
                           })
                         }
                       />
+                      </div>
                       {ordenes.length > 1 ? (
                         <Button
                           type="button"
@@ -230,16 +260,18 @@ export function StepOrdenes({
                             <Plus className="h-3.5 w-3.5" />
                             Agregar sub-ítem
                           </Button>
-                          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                            <Checkbox
-                              id={`${ot.key}-lleva-bacha`}
-                              checked={ot.llevaBacha}
-                              onCheckedChange={(c) =>
-                                patchOrden(ot.key, { llevaBacha: Boolean(c) })
-                              }
-                            />
-                            Lleva bacha
-                          </label>
+                          {ot.items.length > 0 || ot.llevaBacha ? (
+                            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                              <Checkbox
+                                id={`${ot.key}-lleva-bacha`}
+                                checked={ot.llevaBacha}
+                                onCheckedChange={(c) =>
+                                  patchOrden(ot.key, { llevaBacha: Boolean(c) })
+                                }
+                              />
+                              Lleva bacha
+                            </label>
+                          ) : null}
                         </div>
 
                         <PlanCorteOtBanner

@@ -39,6 +39,88 @@ export function validateCliente(
   return null;
 }
 
+/**
+ * Campos que tienen que estar completos para guardar. Quedan opcionales:
+ * observaciones (generales y MEC), "¿Con qué cotizaste?", referencia, origen y comisión.
+ * Devuelve el paso del formulario donde está lo que falta (1 cliente, 2 obra, 3 artículos).
+ */
+export function validarCamposObligatorios(p: {
+  clienteSeleccionadoId: string | null;
+  tel: string;
+  email: string;
+  contacto: string;
+  vendedorId: string;
+  ordenes: OrdenTrabajoWizard[];
+}): { mensaje: string; paso: 1 | 2 | 3 } | null {
+  const cliente = validateCliente(p.clienteSeleccionadoId);
+  if (cliente) return { mensaje: cliente, paso: 1 };
+  if (!p.tel.trim()) return { mensaje: "Cargá el teléfono.", paso: 1 };
+  if (!p.email.trim()) return { mensaje: "Cargá el email.", paso: 1 };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email.trim())) {
+    return { mensaje: "Revisá el email: no parece válido.", paso: 1 };
+  }
+  if (!p.contacto.trim()) return { mensaje: "Cargá el contacto.", paso: 1 };
+  if (!p.vendedorId.trim()) return { mensaje: "Elegí el vendedor.", paso: 1 };
+
+  const conDireccion = p.ordenes.length > 1 ? p.ordenes : p.ordenes.slice(0, 1);
+  for (const [i, ot] of conDireccion.entries()) {
+    if (!ot.direccionObra.trim()) {
+      const cual = p.ordenes.length > 1 ? ` de ${tituloOt(ot, i)}` : "";
+      return { mensaje: `Cargá la dirección de obra${cual}.`, paso: 2 };
+    }
+  }
+
+  for (const [i, ot] of p.ordenes.entries()) {
+    if (!ot.titulo.trim()) {
+      return { mensaje: `Poné un nombre a la OT ${i + 1}.`, paso: 3 };
+    }
+  }
+  return null;
+}
+
+export type CamposFaltantes = {
+  cliente: boolean;
+  tel: boolean;
+  email: boolean;
+  contacto: boolean;
+  vendedor: boolean;
+  /** keys de las OTs sin dirección de obra. */
+  direccion: Set<string>;
+  /** keys de las OTs sin nombre. */
+  tituloOt: Set<string>;
+  /** keys de las OTs sin material (salvo piedra del cliente). */
+  material: Set<string>;
+  mecImporte: boolean;
+};
+
+/** Qué campos marcar en rojo al intentar confirmar o compartir. */
+export function camposFaltantes(p: {
+  clienteSeleccionadoId: string | null;
+  tel: string;
+  email: string;
+  contacto: string;
+  vendedorId: string;
+  ordenes: OrdenTrabajoWizard[];
+  mecActivo: boolean;
+  totalMecGlobal: string;
+}): CamposFaltantes {
+  const email = p.email.trim();
+  const conDireccion = p.ordenes.length > 1 ? p.ordenes : p.ordenes.slice(0, 1);
+  return {
+    cliente: !p.clienteSeleccionadoId,
+    tel: !p.tel.trim(),
+    email: !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    contacto: !p.contacto.trim(),
+    vendedor: !p.vendedorId.trim(),
+    direccion: new Set(conDireccion.filter((o) => !o.direccionObra.trim()).map((o) => o.key)),
+    tituloOt: new Set(p.ordenes.filter((o) => !o.titulo.trim()).map((o) => o.key)),
+    material: new Set(
+      p.ordenes.filter((o) => !o.piedraDelCliente && !o.materialId?.trim()).map((o) => o.key),
+    ),
+    mecImporte: p.mecActivo && !(parseMoneyInput(p.totalMecGlobal) > 0),
+  };
+}
+
 /** @deprecated Usar validateCliente. Origen ya no es obligatorio. */
 export function validateClienteYOrigen(
   clienteSeleccionadoId: string | null,

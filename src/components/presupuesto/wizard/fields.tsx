@@ -80,7 +80,9 @@ export function PickCliente({
   onNuevoCliente,
   loading = false,
   placeholder,
+  invalido = false,
 }: {
+  invalido?: boolean;
   clientes: ClientePresupuesto[];
   value: string | null;
   onChange: (c: ClientePresupuesto) => void;
@@ -90,11 +92,15 @@ export function PickCliente({
   loading?: boolean;
   placeholder?: string;
 }) {
-  const [search, setSearch] = useState("");
+  // Al volver a montarse (p. ej. al reabrir el paso) arranca con el cliente ya elegido.
+  const [search, setSearch] = useState(
+    () => (value ? clientes.find((c) => c.id === value)?.nombre : undefined) ?? "",
+  );
   const [showSuggestions, setShowSuggestions] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const prevValueRef = useRef<string | null>(value);
+  const prevNombreRef = useRef<string | undefined>(undefined);
   const editingRef = useRef(false);
 
   const selected = useMemo(
@@ -118,13 +124,17 @@ export function PickCliente({
   // Solo resincronizar el input cuando cambia la selección desde afuera,
   // nunca mientras el usuario está escribiendo.
   useEffect(() => {
+    const nombre = selected?.nombre;
+    const nombreLlego = nombre !== undefined && prevNombreRef.current === undefined;
+    prevNombreRef.current = nombre;
     if (editingRef.current) {
       prevValueRef.current = value;
       return;
     }
-    if (prevValueRef.current === value) return;
+    // También cuando la lista de clientes termina de cargar después del montaje.
+    if (prevValueRef.current === value && !nombreLlego) return;
     prevValueRef.current = value;
-    setSearch(selected?.nombre ?? "");
+    setSearch(nombre ?? "");
   }, [value, selected?.nombre]);
 
   useEffect(() => {
@@ -161,6 +171,7 @@ export function PickCliente({
         aria-haspopup="listbox"
         aria-autocomplete="list"
         aria-label="Buscar cliente o profesional"
+        aria-invalid={invalido || undefined}
         placeholder={
           loading ? "Cargando clientes…" : placeholder ?? "Nombre o firma…"
         }

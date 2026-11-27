@@ -13,6 +13,7 @@ import {
   LogOut,
   Mountain,
   Package,
+  Plus,
   Settings,
   Ship,
   Truck,
@@ -527,6 +528,9 @@ export function AppSidebar() {
     setFinanzasMenuAbierto((prev) => !prev);
   }, [activeTab, gotoFinanzasSeccion]);
 
+  const puedeCrearPresupuesto = navItems.some((i) => i.id === "ventas");
+  const enNuevoPresupuesto = activeTab === "ventas" && pv === "nuevo";
+
   const meta = user?.user_metadata as { full_name?: string } | undefined;
   const displayName = meta?.full_name?.trim() || user?.email?.split("@")[0] || "Usuario";
   const initials = initialsFromUser(user?.email, meta?.full_name);
@@ -597,6 +601,36 @@ export function AppSidebar() {
         </div>
       </div>
 
+      {/* Acción principal: nuevo presupuesto */}
+      {puedeCrearPresupuesto ? (
+        <div className="px-2 pt-4">
+          <button
+            type="button"
+            data-guia="nuevo-presupuesto"
+            onClick={() => gotoVentasQuery("nuevo")}
+            aria-label={!expandido ? "Nuevo presupuesto" : undefined}
+            className={cn(
+              "group flex w-full items-center rounded-xl py-1.5 text-left text-sm font-semibold transition-colors",
+              enNuevoPresupuesto ? "text-accent-foreground" : "text-sidebar-foreground hover:bg-muted",
+            )}
+          >
+            <span className="flex w-12 shrink-0 items-center justify-center">
+              <span
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-sm transition-transform duration-200 group-hover:scale-105 group-active:scale-95 motion-reduce:transition-none",
+                  enNuevoPresupuesto && "ring-2 ring-accent/40 ring-offset-2 ring-offset-sidebar",
+                )}
+              >
+                <Plus className="h-5 w-5" strokeWidth={2.5} />
+              </span>
+            </span>
+            <span aria-hidden={!expandido} className={sidebarFadeCn(expandido, "truncate whitespace-nowrap")}>
+              Nuevo presupuesto
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       {/* Navigation */}
       <nav className="flex-1 space-y-0.5 px-2 py-4" data-guia="nav">
         {navItems.map((item) => {
@@ -612,13 +646,6 @@ export function AppSidebar() {
                 onToggleSubmenu={onPresupuestosSubmenu}
                 submenuId="sidebar-presupuestos-submenu"
               >
-                <button
-                  type="button"
-                  onClick={() => gotoVentasQuery("nuevo")}
-                  className={submenuLinkCn(pv === "nuevo")}
-                >
-                  Nuevo presupuesto
-                </button>
                 <button
                   type="button"
                   onClick={() => gotoVentasQuery("lista", "todos")}
